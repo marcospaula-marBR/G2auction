@@ -13,20 +13,21 @@ import { PartnerNetwork } from './components/PartnerNetwork';
 import { PortfolioDashboard } from './components/PortfolioDashboard';
 import { PropertyReportModal } from './components/PropertyReportModal';
 import { IntroSplash } from './components/IntroSplash';
+import { CaixaScraperTest } from './components/CaixaScraperTest';
 
 import { mockProperties } from './data/mockProperties';
 import { mockParceiros } from './data/mockParceiros';
 import type { Property, LedgerEntry, UserProfile, LifecycleStep } from './types/auction';
-import { Search, Wallet, Wrench, Users, PieChart, Layers, Bot } from 'lucide-react';
+import { Search, Wallet, Wrench, Users, PieChart, Layers, Bot, TestTube2 } from 'lucide-react';
 
 export function App() {
-  const APP_VERSION = 'v1.3.0';
+  const APP_VERSION = 'v1.4.0';
   const [properties] = useState<Property[]>(mockProperties);
   const [selectedProperty, setSelectedProperty] = useState<Property | undefined>(mockProperties[0]);
   const [currentLifecycleStep, setCurrentLifecycleStep] = useState<LifecycleStep>(2);
 
   const [isIntroVisible, setIsIntroVisible] = useState(true);
-  const [activeMainTab, setActiveMainTab] = useState<'discovery' | 'detail' | 'ledger' | 'renovation' | 'partners' | 'portfolio'>('discovery');
+  const [activeMainTab, setActiveMainTab] = useState<'discovery' | 'detail' | 'ledger' | 'renovation' | 'partners' | 'portfolio' | 'caixa-test'>('caixa-test');
   const [viewMode, setViewMode] = useState<'grid' | 'map' | 'split'>('split');
   const [activeMapLayer, setActiveMapLayer] = useState<'default' | 'price' | 'flood' | 'safety' | 'noise'>('default');
 
@@ -211,6 +212,18 @@ export function App() {
               <PieChart className="w-4 h-4 text-red-500" />
               <span>Carteira & Aprendizado</span>
             </button>
+
+            <button
+              onClick={() => setActiveMainTab('caixa-test')}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center space-x-2 ${
+                activeMainTab === 'caixa-test'
+                  ? 'bg-gradient-to-r from-orange-500 to-red-600 text-white shadow-md'
+                  : 'bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200'
+              }`}
+            >
+              <TestTube2 className="w-4 h-4 text-orange-400" />
+              <span>🧪 Teste Imóvel CAIXA</span>
+            </button>
           </div>
 
           {/* Toggle de Modo de Visão no Mapa/Grid */}
@@ -333,6 +346,11 @@ export function App() {
               setIsDetailModalOpen(true);
             }}
           />
+        )}
+
+        {/* Teste Isolado de Imóvel CAIXA (Etapas 1 a 8) */}
+        {activeMainTab === 'caixa-test' && (
+          <CaixaScraperTest />
         )}
 
       </main>
