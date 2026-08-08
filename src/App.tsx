@@ -103,7 +103,7 @@ export function App() {
     });
   };
 
-  const handleSelectCoverOption = (option: 'arrematar' | 'imoveis' | 'parceiros') => {
+  const handleSelectCoverOption = (option: 'arrematar' | 'imoveis' | 'parceiros' | 'ledger' | 'renovation') => {
     setIsCoverVisible(false);
     if (option === 'arrematar') {
       setActiveMainTab('discovery');
@@ -112,6 +112,10 @@ export function App() {
       setActiveMainTab('discovery');
     } else if (option === 'parceiros') {
       setActiveMainTab('partners');
+    } else if (option === 'ledger') {
+      setActiveMainTab('ledger');
+    } else if (option === 'renovation') {
+      setActiveMainTab('renovation');
     }
   };
 
