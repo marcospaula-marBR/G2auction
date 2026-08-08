@@ -3,11 +3,11 @@ import type { Property } from '../types/auction';
 export const mockProperties: Property[] = [
   {
     id: 'prop-1',
-    code: 'G2-CMP-8492',
-    title: 'Apartamento 3 Dormitórios no Cambuí - leilão Extrajudicial Caixa',
-    description: 'Excelente apartamento residencial localizado no bairro Cambuí em Campinas. Possui suíte, varanda gourmet, 2 vagas de garagem demarcadas e lazer completo no condomínio. Excelente oportunidade para arrematação com deságio de 38%.',
+    code: 'CX-CMP-8492',
+    title: 'Apartamento 3 Dorms no Cambuí - Venda Direta Extrajudicial Caixa',
+    description: 'Imóvel de propriedade da Caixa Econômica Federal (Contrato nº 8.7732.0192837-1). Apartamento no bairro nobre Cambuí em Campinas com suíte, varanda gourmet e 2 vagas de garagem. Imóvel elegível para uso do FGTS e Financiamento Habitação Caixa em até 95%. A Caixa entrega o imóvel com IPTU e condomínio quitados até a data do contrato.',
     category: 'Apartamento',
-    acquisitionType: 'Leilão Extrajudicial',
+    acquisitionType: 'Venda Direta Banco',
     occupancyStatus: 'Ocupado',
     address: {
       street: 'Rua Maria Monteiro',
@@ -22,55 +22,60 @@ export const mockProperties: Property[] = [
     appraisalValue: 720000,
     firstAuctionPrice: 720000,
     firstAuctionDate: '2026-08-18',
-    secondAuctionPrice: 446400,
+    secondAuctionPrice: 345600, // 52% de desconto no valor de avaliação
     secondAuctionDate: '2026-08-28',
     area: 98,
     bedrooms: 3,
     bathrooms: 2,
     parkingSpaces: 2,
     floor: 7,
-    auctioneerName: 'Mega Leilões (Homologado Juiz/Caixa)',
-    auctioneerSite: 'https://www.megaleiloes.com.br',
+    auctioneerName: 'Venda Direta Caixa (Portal Oficial CEF)',
+    auctioneerSite: 'https://venda-imoveis.caixa.gov.br',
     isAuctioneerVerified: true,
     bankName: 'Caixa Econômica Federal',
-    processNumber: '1004839-42.2025.8.26.0114',
+    originBank: 'Caixa Econômica Federal',
+    caixaModalidad: 'Venda Direta Extrajudicial Caixa',
+    acceptsFGTS: true,
+    acceptsBankFinancing: true,
+    caixaContractNumber: '8.7732.0192837-1',
+    processNumber: 'Matrícula 48.912 - 1º CRI de Campinas',
     debts: {
-      iptu: 8400,
-      condominium: 16200,
+      iptu: 0,
+      condominium: 0,
       legalDebts: 0,
-      utilityDebts: 1200,
-      isBuyerResponsible: false, // Caixa assume débitos anteriores no edital
+      utilityDebts: 0,
+      isBuyerResponsible: false, // Responsabilidade da Caixa até a contratação
     },
     estimatedMarketPrice: 720000,
     askingPricePerM2Range: [7100, 7800],
     estimatedMarketPricePerM2: 7346,
-    acquisitionPricePerM2: 4555,
-    apparentDiscountPercentage: 38.0,
-    opportunityScore: 9.2,
-    riskScore: 3.4,
-    liquidityScore: 9.5,
-    locationScore: 9.8,
-    legalComplexityScore: 3.8,
-    renovationEstimate: 45000,
+    acquisitionPricePerM2: 3526,
+    apparentDiscountPercentage: 52.0,
+    opportunityScore: 9.8,
+    riskScore: 2.1,
+    liquidityScore: 9.7,
+    locationScore: 9.9,
+    legalComplexityScore: 2.1,
+    renovationEstimate: 35000,
     safetyIndex: {
       level: 'Baixo Risco',
-      score: 9.1,
-      recentIncidentsCount: 3,
-      summary: 'Área nobre de Campinas com excelente monitoramento privado e baixa incidência de ocorrências de rua.',
+      score: 9.3,
+      recentIncidentsCount: 2,
+      summary: 'Bairro nobre de Campinas com patrulhamento ostensivo e segurança privada homologada.',
       provenance: 'DADO OFICIAL'
     },
     floodRisk: {
       level: 'Mínimo',
       distanceToRiskZoneMeters: 1850,
-      summary: 'Imóvel situado em topo de cota topográfica no Cambuí sem histórico de drenagem deficiente.'
+      summary: 'Topo de cota topográfica no Cambuí sem histórico de alagamentos.'
     },
     noiseIndex: {
       level: 'Moderado',
-      sources: ['Restaurantes executivos', 'Tráfego local moderado'],
-      summary: 'Bairro gastronômico. Movimento social moderado até às 23h nos finais de semana.'
+      sources: ['Restaurantes executivos', 'Tráfego residencial local'],
+      summary: 'Região valorizada e tranquila no miolo do Cambuí.'
     },
     urbanAmenities: {
-      walkabilityScore: 96,
+      walkabilityScore: 97,
       schoolsNearby: 8,
       hospitalsNearby: 3,
       supermarketsNearby: 5,
@@ -79,19 +84,10 @@ export const mockProperties: Property[] = [
     newsIntelligence: [
       {
         id: 'news-1',
-        headline: 'Prefeitura anuncia nova ciclofaixa e recapeamento na Rua Maria Monteiro',
-        summary: 'Obras de infraestrutura viária e revitalização do bairro Cambuí devem aumentar valorização residencial.',
-        source: 'Correio Popular de Campinas',
-        date: '2026-07-20',
-        verificationStatus: 'CONFIRMED',
-        impact: 'POSITIVE'
-      },
-      {
-        id: 'news-2',
-        headline: 'Cambuí lidera ranking de liquidez para locação residencial de alto padrão',
-        summary: 'Tempo médio de vacância para 3 dormitórios no bairro caiu para 24 dias.',
-        source: 'Relatório Secovi-SP',
-        date: '2026-06-15',
+        headline: 'Caixa lança programa especial de Venda Direta com financiamento de até 95%',
+        summary: 'Imóveis adjudicados pela Caixa contam com isenção de débitos anteriores e uso liberado do FGTS.',
+        source: 'Assessoria de Imprensa Caixa Econômica Federal',
+        date: '2026-08-01',
         verificationStatus: 'CONFIRMED',
         impact: 'POSITIVE'
       }
@@ -106,52 +102,31 @@ export const mockProperties: Property[] = [
         distanceMeters: 120,
         bedrooms: 3,
         source: 'VivaReal'
-      },
-      {
-        id: 'comp-2',
-        title: 'Apto 100m² Rua Coronel Quirino',
-        area: 100,
-        price: 710000,
-        pricePerM2: 7100,
-        distanceMeters: 340,
-        bedrooms: 3,
-        source: 'ZapImóveis'
-      },
-      {
-        id: 'comp-3',
-        title: 'Apto 92m² Rua Sampainho',
-        area: 92,
-        price: 680000,
-        pricePerM2: 7391,
-        distanceMeters: 450,
-        bedrooms: 3,
-        source: 'Imovelweb'
       }
     ],
     images: [
       'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80'
+      'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1200&q=80'
     ],
-    editalUrl: 'https://exemplo.g2auction.com.br/editais/edital-cambui-8492.pdf',
-    matriculaUrl: 'https://exemplo.g2auction.com.br/matriculas/matricula-cambui-8492.pdf',
+    editalUrl: 'https://venda-imoveis.caixa.gov.br/editais/edital-caixa-cambui-8492.pdf',
+    matriculaUrl: 'https://venda-imoveis.caixa.gov.br/matriculas/matricula-caixa-cambui-8492.pdf',
     lifecycleStep: 2,
     isFinancable: true,
-    minDownPaymentPercentage: 20
+    minDownPaymentPercentage: 5
   },
 
   {
     id: 'prop-2',
-    code: 'G2-SPO-3910',
-    title: 'Casa Residencial em Condomínio Fechado - Leilão Judicial 2ª Praça',
-    description: 'Sobrado em condomínio fechado no Alto da Boa Vista, São Paulo. 4 suítes, piscina privativa, escritório e 4 vagas. Imóvel desocupado por liminar concedida na 4ª Vara Cível.',
+    code: 'CX-SPO-3910',
+    title: 'Casa em Condomínio no Alto da Boa Vista - 2º Leilão Caixa',
+    description: 'Sobrado de leilão extrajudicial da Caixa Econômica Federal (Contrato CEF nº 8.4410.0384712-9). 4 suítes, piscina privativa e 4 vagas. Imóvel desocupado por liminar de reintegração de posse expedida em favor da Caixa. Aceita financiamento bancário Caixa e uso do saldo FGTS.',
     category: 'Casa',
-    acquisitionType: 'Leilão Judicial',
+    acquisitionType: 'Venda Direta Banco',
     occupancyStatus: 'Desocupado',
     address: {
       street: 'Rua Alexandre Dumas',
       number: '450',
-      neighborhood: 'Santo Amaro / Alto da Boa Vista',
+      neighborhood: 'Alto da Boa Vista',
       city: 'São Paulo',
       state: 'SP',
       zip: '04717-002',
@@ -161,54 +136,59 @@ export const mockProperties: Property[] = [
     appraisalValue: 1850000,
     firstAuctionPrice: 1850000,
     firstAuctionDate: '2026-08-10',
-    secondAuctionPrice: 1110000,
+    secondAuctionPrice: 999000, // 46% de desconto
     secondAuctionDate: '2026-08-22',
     area: 280,
     bedrooms: 4,
     bathrooms: 5,
     parkingSpaces: 4,
-    auctioneerName: 'Zukerman Leilões',
+    auctioneerName: 'Zukerman Leilões (Homologado Caixa)',
     auctioneerSite: 'https://www.zukerman.com.br',
     isAuctioneerVerified: true,
-    courtName: '4ª Vara Cível do Foro Regional de Santo Amaro',
-    processNumber: '1084920-11.2024.8.26.0002',
+    bankName: 'Caixa Econômica Federal',
+    originBank: 'Caixa Econômica Federal',
+    caixaModalidad: '2º Leilão Caixa (Deságio Mínimo)',
+    acceptsFGTS: true,
+    acceptsBankFinancing: true,
+    caixaContractNumber: '8.4410.0384712-9',
+    processNumber: 'Matrícula 194.810 - 11º CRI de São Paulo',
     debts: {
-      iptu: 14500,
-      condominium: 38000,
-      legalDebts: 12000,
+      iptu: 0,
+      condominium: 0,
+      legalDebts: 0,
       utilityDebts: 0,
-      isBuyerResponsible: true, // Arrematante deve quitar sub-rogado no preço ou abater do lance
+      isBuyerResponsible: false, // Débitos anteriores sob responsabilidade da Caixa
     },
     estimatedMarketPrice: 1900000,
     askingPricePerM2Range: [6500, 7200],
     estimatedMarketPricePerM2: 6785,
-    acquisitionPricePerM2: 3964,
-    apparentDiscountPercentage: 40.0,
-    opportunityScore: 9.6,
-    riskScore: 2.8,
-    liquidityScore: 8.8,
-    locationScore: 9.2,
-    legalComplexityScore: 4.2,
-    renovationEstimate: 85000,
+    acquisitionPricePerM2: 3567,
+    apparentDiscountPercentage: 46.0,
+    opportunityScore: 9.7,
+    riskScore: 1.8,
+    liquidityScore: 9.1,
+    locationScore: 9.5,
+    legalComplexityScore: 2.2,
+    renovationEstimate: 60000,
     safetyIndex: {
       level: 'Baixo Risco',
-      score: 9.5,
+      score: 9.6,
       recentIncidentsCount: 1,
-      summary: 'Condomínio fechado com portaria blindada 24h e controle estrito de acesso.',
+      summary: 'Condomínio fechado de alto padrão com portaria 24h e biometria.',
       provenance: 'DADO OFICIAL'
     },
     floodRisk: {
       level: 'Mínimo',
       distanceToRiskZoneMeters: 2400,
-      summary: 'Terreno elevado e drenagem urbana subterrânea de alta capacidade.'
+      summary: 'Excelente drenagem urbana no Alto da Boa Vista.'
     },
     noiseIndex: {
       level: 'Silencioso',
-      sources: ['Residencial isolado'],
-      summary: 'Rua estritamente residencial com tráfego exclusivo de moradores.'
+      sources: ['Rua estritamente residencial'],
+      summary: 'Tranquilidade e privacidade total.'
     },
     urbanAmenities: {
-      walkabilityScore: 82,
+      walkabilityScore: 85,
       schoolsNearby: 6,
       hospitalsNearby: 4,
       supermarketsNearby: 3,
@@ -216,18 +196,18 @@ export const mockProperties: Property[] = [
     },
     newsIntelligence: [
       {
-        id: 'news-3',
-        headline: 'Expansão da Linha 17-Ouro do Metrô valoriza eixo Santo Amaro-Berrini',
-        summary: 'Proximidade com a estação e eixos corporativos atrai famílias e executivos.',
-        source: 'Folha de S.Paulo',
-        date: '2026-07-02',
+        id: 'news-2',
+        headline: 'Caixa bate recorde de liquidação de imóveis retidos em leilões em SP',
+        summary: 'Deságios médios superam 45% com atratividade no financiamento imobiliário.',
+        source: 'Valor Econômico',
+        date: '2026-07-29',
         verificationStatus: 'CONFIRMED',
         impact: 'POSITIVE'
       }
     ],
     comparables: [
       {
-        id: 'comp-4',
+        id: 'comp-2',
         title: 'Casa 290m² Condomínio Alexandre Dumas',
         area: 290,
         price: 1950000,
@@ -235,35 +215,24 @@ export const mockProperties: Property[] = [
         distanceMeters: 50,
         bedrooms: 4,
         source: 'Lopes Imóveis'
-      },
-      {
-        id: 'comp-5',
-        title: 'Sobrado 260m² Alto da Boa Vista',
-        area: 260,
-        price: 1800000,
-        pricePerM2: 6923,
-        distanceMeters: 300,
-        bedrooms: 4,
-        source: 'Coelho da Fonseca'
       }
     ],
     images: [
       'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1600566753376-12c8ab7fb75b?auto=format&fit=crop&w=1200&q=80'
+      'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=80'
     ],
-    editalUrl: 'https://exemplo.g2auction.com.br/editais/edital-santoamaro-3910.pdf',
-    matriculaUrl: 'https://exemplo.g2auction.com.br/matriculas/matricula-santoamaro-3910.pdf',
+    editalUrl: 'https://venda-imoveis.caixa.gov.br/editais/edital-caixa-santoamaro-3910.pdf',
+    matriculaUrl: 'https://venda-imoveis.caixa.gov.br/matriculas/matricula-caixa-santoamaro-3910.pdf',
     lifecycleStep: 3,
     isFinancable: true,
-    minDownPaymentPercentage: 30
+    minDownPaymentPercentage: 10
   },
 
   {
     id: 'prop-3',
-    code: 'G2-SAN-1102',
-    title: 'Apartamento Vista Mar no Gonzaga - Venda Direta Banco Santander',
-    description: 'Apartamento frente ao mar no bairro Gonzaga em Santos. 2 dormitórios com dependência completa, reformado e pronto para morar ou aluguel de temporada (Airbnb / Booking).',
+    code: 'CX-SAN-1102',
+    title: 'Apartamento Vista Mar no Gonzaga - Licitação Aberta Caixa',
+    description: 'Imóvel residencial adjudicado pela Caixa Econômica Federal (Contrato nº 8.1102.0492811-3). Frente para o mar no bairro Gonzaga em Santos. 2 dormitórios reformados com vista panorâmica. Imóvel desocupado, com escritura imediata e elegível para FGTS + Financiamento Caixa.',
     category: 'Apartamento',
     acquisitionType: 'Venda Direta Banco',
     occupancyStatus: 'Desocupado',
@@ -280,51 +249,57 @@ export const mockProperties: Property[] = [
     appraisalValue: 580000,
     firstAuctionPrice: 580000,
     firstAuctionDate: '2026-07-30',
-    secondAuctionPrice: 365000,
+    secondAuctionPrice: 278400, // 52% de deságio
     secondAuctionDate: '2026-08-15',
     area: 76,
     bedrooms: 2,
     bathrooms: 2,
     parkingSpaces: 1,
     floor: 11,
-    auctioneerName: 'Superbid Exchange',
+    auctioneerName: 'Superbid (Credenciado Caixa)',
     auctioneerSite: 'https://www.superbid.net',
     isAuctioneerVerified: true,
-    bankName: 'Banco Santander Brasil',
+    bankName: 'Caixa Econômica Federal',
+    originBank: 'Caixa Econômica Federal',
+    caixaModalidad: 'Licitação Aberta Caixa',
+    acceptsFGTS: true,
+    acceptsBankFinancing: true,
+    caixaContractNumber: '8.1102.0492811-3',
+    processNumber: 'Matrícula 89.201 - 2º CRI de Santos',
     debts: {
       iptu: 0,
       condominium: 0,
       legalDebts: 0,
       utilityDebts: 0,
-      isBuyerResponsible: false, // Santander entrega imóvel quitado de débitos
+      isBuyerResponsible: false, // Caixa entrega imóvel 100% livre e desembaraçado
     },
     estimatedMarketPrice: 580000,
     askingPricePerM2Range: [7400, 8200],
     estimatedMarketPricePerM2: 7631,
-    acquisitionPricePerM2: 4802,
-    apparentDiscountPercentage: 37.0,
-    opportunityScore: 9.4,
-    riskScore: 1.5,
+    acquisitionPricePerM2: 3663,
+    apparentDiscountPercentage: 52.0,
+    opportunityScore: 9.9,
+    riskScore: 1.2,
     liquidityScore: 9.9,
     locationScore: 9.9,
-    legalComplexityScore: 1.5,
-    renovationEstimate: 20000,
+    legalComplexityScore: 1.1,
+    renovationEstimate: 15000,
     safetyIndex: {
       level: 'Baixo Risco',
-      score: 9.2,
-      recentIncidentsCount: 2,
-      summary: 'Orla do Gonzaga com câmera da Guarda Municipal e iluminação LED de última geração.',
+      score: 9.4,
+      recentIncidentsCount: 1,
+      summary: 'Orla do Gonzaga iluminada e monitorada pela Guarda Municipal de Santos.',
       provenance: 'DADO OFICIAL'
     },
     floodRisk: {
       level: 'Moderado',
       distanceToRiskZoneMeters: 450,
-      summary: 'Proximidade com a praia exige verificação de maré de ressaca extrema no piso térreo/garagem.'
+      summary: 'Proximidade com a praia. 11º andar imune a qualquer evento de maré.'
     },
     noiseIndex: {
-      level: 'Intenso (Vida Noturna/Vias)',
-      sources: ['Avenida turística', 'Comércio e quiosques da praia'],
-      summary: 'Excelente para rentabilidade de locação por temporada; ruído moderado em finais de semana de verão.'
+      level: 'Moderado',
+      sources: ['Avenida turística de Santos'],
+      summary: 'Alta rentabilidade para locação por temporada (Airbnb).'
     },
     urbanAmenities: {
       walkabilityScore: 99,
@@ -335,34 +310,125 @@ export const mockProperties: Property[] = [
     },
     newsIntelligence: [
       {
-        id: 'news-4',
-        headline: 'Turismo em Santos bate recorde de ocupação em flats e imóveis de temporada no Gonzaga',
-        summary: 'Demanda por locação de curta temporada subiu 22% no último trimestre.',
+        id: 'news-3',
+        headline: 'Caixa simplifica aquisição de imóveis de leilão em Santos via Aplicativo Habitação',
+        summary: 'Processo de proposta e aprovação de crédito passou a ser 100% digital.',
         source: 'A Tribuna de Santos',
-        date: '2026-07-28',
+        date: '2026-08-03',
         verificationStatus: 'CONFIRMED',
         impact: 'POSITIVE'
       }
     ],
     comparables: [
       {
-        id: 'comp-6',
+        id: 'comp-3',
         title: 'Apto 78m² Ana Costa vista lateral',
         area: 78,
         price: 590000,
         pricePerM2: 7564,
         distanceMeters: 80,
         bedrooms: 2,
-        source: 'Olx Brasil'
+        source: 'ZapImóveis'
       }
     ],
     images: [
       'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=1200&q=80',
       'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=1200&q=80'
     ],
-    editalUrl: 'https://exemplo.g2auction.com.br/editais/edital-gonzaga-1102.pdf',
-    matriculaUrl: 'https://exemplo.g2auction.com.br/matriculas/matricula-gonzaga-1102.pdf',
-    lifecycleStep: 4,
+    editalUrl: 'https://venda-imoveis.caixa.gov.br/editais/edital-caixa-gonzaga-1102.pdf',
+    matriculaUrl: 'https://venda-imoveis.caixa.gov.br/matriculas/matricula-caixa-gonzaga-1102.pdf',
+    lifecycleStep: 2,
+    isFinancable: true,
+    minDownPaymentPercentage: 5
+  },
+
+  {
+    id: 'prop-4',
+    code: 'BB-SPO-4481',
+    title: 'Apartamento 2 Dorms em Pinheiros - Venda Direta Banco do Brasil',
+    description: 'Imóvel de propriedade do Banco do Brasil. Localizado no coração de Pinheiros, São Paulo. 2 dormitórios, varanda e 1 vaga. Imóvel desocupado, com quitação total de IPTU e condomínio assumida pelo Banco do Brasil até a lavratura da escritura público.',
+    category: 'Apartamento',
+    acquisitionType: 'Venda Direta Banco',
+    occupancyStatus: 'Desocupado',
+    address: {
+      street: 'Rua dos Pinheiros',
+      number: '890',
+      neighborhood: 'Pinheiros',
+      city: 'São Paulo',
+      state: 'SP',
+      zip: '05422-001',
+      lat: -23.5671,
+      lng: -46.6854,
+    },
+    appraisalValue: 850000,
+    firstAuctionPrice: 850000,
+    firstAuctionDate: '2026-07-20',
+    secondAuctionPrice: 467500, // 45% de deságio
+    secondAuctionDate: '2026-08-14',
+    area: 68,
+    bedrooms: 2,
+    bathrooms: 2,
+    parkingSpaces: 1,
+    floor: 5,
+    auctioneerName: 'Reserva Leilões (Banco do Brasil)',
+    auctioneerSite: 'https://www.seuimovelbb.com.br',
+    isAuctioneerVerified: true,
+    bankName: 'Banco do Brasil',
+    originBank: 'Banco do Brasil',
+    caixaModalidad: 'Leilão Extrajudicial Banco',
+    acceptsFGTS: false,
+    acceptsBankFinancing: true,
+    processNumber: 'Matrícula 112.482 - 13º CRI de São Paulo',
+    debts: {
+      iptu: 0,
+      condominium: 0,
+      legalDebts: 0,
+      utilityDebts: 0,
+      isBuyerResponsible: false,
+    },
+    estimatedMarketPrice: 860000,
+    askingPricePerM2Range: [12000, 13500],
+    estimatedMarketPricePerM2: 12647,
+    acquisitionPricePerM2: 6875,
+    apparentDiscountPercentage: 45.0,
+    opportunityScore: 9.5,
+    riskScore: 1.9,
+    liquidityScore: 9.8,
+    locationScore: 9.9,
+    legalComplexityScore: 1.8,
+    renovationEstimate: 28000,
+    safetyIndex: {
+      level: 'Baixo Risco',
+      score: 9.1,
+      recentIncidentsCount: 3,
+      summary: 'Região gastronômica nobre de Pinheiros com intenso policiamento comunitário.',
+      provenance: 'DADO OFICIAL'
+    },
+    floodRisk: {
+      level: 'Mínimo',
+      distanceToRiskZoneMeters: 1900,
+      summary: 'Elevado nível topográfico de Pinheiros.'
+    },
+    noiseIndex: {
+      level: 'Intenso (Vida Noturna/Vias)',
+      sources: ['Comércio e bares de Pinheiros'],
+      summary: 'Bairro cosmopolita com alta demanda de jovens executivos.'
+    },
+    urbanAmenities: {
+      walkabilityScore: 98,
+      schoolsNearby: 7,
+      hospitalsNearby: 5,
+      supermarketsNearby: 8,
+      publicTransportNearby: 18
+    },
+    newsIntelligence: [],
+    comparables: [],
+    images: [
+      'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=1200&q=80'
+    ],
+    editalUrl: 'https://www.seuimovelbb.com.br/editais/edital-pinheiros-4481.pdf',
+    matriculaUrl: 'https://www.seuimovelbb.com.br/matriculas/matricula-pinheiros-4481.pdf',
+    lifecycleStep: 2,
     isFinancable: true,
     minDownPaymentPercentage: 20
   }

@@ -65,7 +65,12 @@ export interface Property {
   auctioneerName: string;
   auctioneerSite: string;
   isAuctioneerVerified: boolean;
-  bankName?: string;
+  bankName: string; // Origem do Banco: Caixa Econômica Federal, Bradesco, Itaú, BB, etc.
+  originBank?: 'Caixa Econômica Federal' | 'Banco do Brasil' | 'Bradesco' | 'Itaú' | 'Santander' | 'Outro Banco';
+  caixaModalidad?: 'Venda Direta Extrajudicial Caixa' | '1º Leilão Caixa (100% Avaliação)' | '2º Leilão Caixa (Deságio Mínimo)' | 'Licitação Aberta Caixa' | 'Leilão Extrajudicial Banco';
+  acceptsFGTS?: boolean;
+  acceptsBankFinancing?: boolean;
+  caixaContractNumber?: string;
   processNumber?: string;
   courtName?: string;
   

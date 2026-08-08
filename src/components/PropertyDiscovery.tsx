@@ -15,6 +15,7 @@ export const PropertyDiscovery: React.FC<PropertyDiscoveryProps> = ({
   onOpenMaxBid,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedBank, setSelectedBank] = useState<string>('Todas');
   const [selectedCity, setSelectedCity] = useState<string>('Todas');
   const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
   const [selectedAcquisition, setSelectedAcquisition] = useState<string>('Todas');
@@ -26,8 +27,10 @@ export const PropertyDiscovery: React.FC<PropertyDiscoveryProps> = ({
     const matchesSearch =
       p.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.address.city.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.address.neighborhood.toLowerCase().includes(searchTerm.toLowerCase());
+      p.address.neighborhood.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.bankName.toLowerCase().includes(searchTerm.toLowerCase());
 
+    const matchesBank = selectedBank === 'Todas' || (p.originBank && p.originBank === selectedBank) || p.bankName.includes(selectedBank);
     const matchesCity = selectedCity === 'Todas' || p.address.city === selectedCity;
     const matchesCategory = selectedCategory === 'Todos' || p.category === selectedCategory;
     const matchesAcquisition = selectedAcquisition === 'Todas' || p.acquisitionType === selectedAcquisition;
@@ -35,12 +38,37 @@ export const PropertyDiscovery: React.FC<PropertyDiscoveryProps> = ({
     const matchesFinancable = !onlyFinancable || p.isFinancable;
     const matchesDiscount = p.apparentDiscountPercentage >= minDiscount;
 
-    return matchesSearch && matchesCity && matchesCategory && matchesAcquisition && matchesOccupancy && matchesFinancable && matchesDiscount;
+    return matchesSearch && matchesBank && matchesCity && matchesCategory && matchesAcquisition && matchesOccupancy && matchesFinancable && matchesDiscount;
   });
 
   return (
     <div className="space-y-6">
       
+      {/* Banner de Destaque Leilões de Banco & Caixa Econômica Federal */}
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white p-5 rounded-3xl border border-slate-700/80 shadow-md flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="flex items-center space-x-3">
+          <div className="w-12 h-12 rounded-2xl bg-orange-500/20 border border-orange-500/40 flex items-center justify-center text-orange-400 font-black text-xl">
+            🏦
+          </div>
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="bg-orange-500 text-slate-950 font-black text-[10px] px-2 py-0.5 rounded-md uppercase tracking-wider">
+                Exclusivo Banco
+              </span>
+              <span className="text-xs font-bold text-slate-300">Imóveis Adjudicados & Retomados</span>
+            </div>
+            <h2 className="text-base font-extrabold text-white mt-0.5">
+              Portfólio 100% Imóveis de Banco — Destaque Caixa Econômica Federal
+            </h2>
+          </div>
+        </div>
+
+        <div className="flex items-center space-x-2 text-xs font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-xl border border-emerald-500/20">
+          <ShieldCheck className="w-4 h-4" />
+          <span>Isenção de Débitos Anteriores pela Caixa + Financiamento até 95%</span>
+        </div>
+      </div>
+
       {/* Barra de Filtros Avançados */}
       <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 space-y-4">
         
@@ -52,10 +80,21 @@ export const PropertyDiscovery: React.FC<PropertyDiscoveryProps> = ({
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Busque por cidade, bairro, condomínio ou edital (Ex: Cambuí, 30% deságio)"
+              placeholder="Busque imóveis Caixa, Venda Direta ou bairro (Ex: Caixa Econômica, Cambuí)"
               className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-11 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 font-medium text-slate-800"
             />
           </div>
+
+          {/* Seletor Origem do Banco */}
+          <select
+            value={selectedBank}
+            onChange={(e) => setSelectedBank(e.target.value)}
+            className="bg-orange-50 border border-orange-200 rounded-2xl px-4 py-3 text-sm font-extrabold text-orange-950 focus:outline-none focus:ring-2 focus:ring-orange-500"
+          >
+            <option value="Todas">🏦 Todos os Bancos</option>
+            <option value="Caixa Econômica Federal">🏦 Caixa Econômica Federal (CEF)</option>
+            <option value="Banco do Brasil">🏦 Banco do Brasil</option>
+          </select>
 
           {/* Seletor Cidade */}
           <select
@@ -78,7 +117,6 @@ export const PropertyDiscovery: React.FC<PropertyDiscoveryProps> = ({
             <option value="Todos">Todos os Tipos</option>
             <option value="Apartamento">Apartamento</option>
             <option value="Casa">Casa em Condomínio</option>
-            <option value="Comercial">Comercial</option>
           </select>
         </div>
 
@@ -96,9 +134,8 @@ export const PropertyDiscovery: React.FC<PropertyDiscoveryProps> = ({
                 className="bg-transparent font-bold text-slate-700 focus:outline-none"
               >
                 <option value="Todas">Todas</option>
-                <option value="Leilão Extrajudicial">Extrajudicial</option>
-                <option value="Leilão Judicial">Judicial</option>
                 <option value="Venda Direta Banco">Venda Direta Banco</option>
+                <option value="Leilão Extrajudicial">Leilão Extrajudicial</option>
               </select>
             </div>
 
@@ -124,7 +161,7 @@ export const PropertyDiscovery: React.FC<PropertyDiscoveryProps> = ({
                 onChange={(e) => setOnlyFinancable(e.target.checked)}
                 className="rounded text-orange-500 focus:ring-orange-500"
               />
-              <span>Aceita Financiamento Bank</span>
+              <span>Aceita Financiamento Caixa / Banco</span>
             </label>
 
           </div>
@@ -167,14 +204,21 @@ export const PropertyDiscovery: React.FC<PropertyDiscoveryProps> = ({
                 <Sparkles className="w-3 h-3" /> {p.apparentDiscountPercentage}% DESÁGIO
               </div>
 
-              {/* Badge Modalidade */}
-              <div className="absolute top-3 right-3 bg-slate-900/80 backdrop-blur-md text-white font-bold text-[10px] px-2.5 py-1 rounded-full border border-white/20">
-                {p.acquisitionType}
+              {/* Badge Origem Banco */}
+              <div className="absolute top-3 right-3 bg-slate-900/90 backdrop-blur-md text-orange-400 font-extrabold text-[10px] px-2.5 py-1 rounded-full border border-orange-500/30 flex items-center gap-1 shadow-md">
+                <span>🏦 {p.bankName}</span>
               </div>
 
-              {/* Ocupação */}
-              <div className="absolute bottom-3 left-3 bg-white/90 backdrop-blur-md text-slate-800 font-bold text-[10px] px-2.5 py-1 rounded-lg border border-slate-200">
-                Status: {p.occupancyStatus}
+              {/* Ocupação & FGTS */}
+              <div className="absolute bottom-3 left-3 flex items-center gap-1.5">
+                <div className="bg-white/90 backdrop-blur-md text-slate-800 font-bold text-[10px] px-2.5 py-1 rounded-lg border border-slate-200 shadow-xs">
+                  Status: {p.occupancyStatus}
+                </div>
+                {p.acceptsFGTS && (
+                  <div className="bg-emerald-600 text-white font-black text-[10px] px-2.5 py-1 rounded-lg shadow-xs">
+                    FGTS + Financiamento
+                  </div>
+                )}
               </div>
             </div>
 
@@ -194,7 +238,7 @@ export const PropertyDiscovery: React.FC<PropertyDiscoveryProps> = ({
               {/* Tabela de Preços e Valores */}
               <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-2">
                 <div className="flex justify-between items-baseline">
-                  <span className="text-xs text-slate-500 font-medium">Mínimo 2ª Praça:</span>
+                  <span className="text-xs text-slate-500 font-medium">Mínimo Aquisição:</span>
                   <span className="text-lg font-black text-emerald-600">{formatCurrencyBRL(p.secondAuctionPrice)}</span>
                 </div>
                 
@@ -209,14 +253,14 @@ export const PropertyDiscovery: React.FC<PropertyDiscoveryProps> = ({
                 </div>
               </div>
 
-              {/* Leiloeiro Verificado */}
+              {/* Leiloeiro / Canal de Venda Verificado */}
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center space-x-1 text-slate-600">
                   <ShieldCheck className="w-4 h-4 text-emerald-600" />
                   <span className="font-bold truncate max-w-[170px]">{p.auctioneerName}</span>
                 </div>
                 <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                  Antifraude OK
+                  Canal Oficial CEF OK
                 </span>
               </div>
 

@@ -98,6 +98,50 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
           {activeTab === 'overview' && (
             <div className="space-y-6">
               
+              {/* Destaque Institucional do Banco / Caixa Econômica Federal */}
+              <div className="bg-gradient-to-br from-slate-900 to-slate-950 text-white p-5 rounded-3xl border border-slate-800 shadow-md space-y-3">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xl">🏦</span>
+                    <div>
+                      <h3 className="font-extrabold text-orange-400 text-sm">{property.bankName}</h3>
+                      <p className="text-xs text-slate-300 font-medium">
+                        {property.caixaModalidad || 'Leilão Extrajudicial Banco'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {property.caixaContractNumber && (
+                    <div className="bg-slate-800 px-3 py-1 rounded-xl text-xs font-mono text-orange-300 border border-slate-700">
+                      Nº Contrato CEF: {property.caixaContractNumber}
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 text-xs">
+                  <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700">
+                    <span className="text-slate-400 font-bold block text-[10px]">USO DO FGTS:</span>
+                    <span className="font-extrabold text-emerald-400">
+                      {property.acceptsFGTS ? '✓ Permitido (Saldo Liberado)' : '✗ Não Elegível'}
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700">
+                    <span className="text-slate-400 font-bold block text-[10px]">FINANCIAMENTO CAIXA:</span>
+                    <span className="font-extrabold text-emerald-400">
+                      {property.isFinancable ? `✓ Até ${100 - property.minDownPaymentPercentage}% do valor` : '✗ Apenas à Vista'}
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700">
+                    <span className="text-slate-400 font-bold block text-[10px]">DÉBITOS ANTERIORES:</span>
+                    <span className="font-extrabold text-orange-300">
+                      {property.debts.isBuyerResponsible ? 'Abatido do Lance' : '✓ Isenção Total (Quitado pela Caixa)'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
               {/* Card Destaque de Preço e Deságio */}
               <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white p-6 rounded-3xl shadow-lg flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
