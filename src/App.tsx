@@ -13,6 +13,7 @@ import { PartnerNetwork } from './components/PartnerNetwork';
 import { PortfolioDashboard } from './components/PortfolioDashboard';
 import { PropertyReportModal } from './components/PropertyReportModal';
 import { SplashCover } from './components/SplashCover';
+import { IntroSplash } from './components/IntroSplash';
 
 import { mockProperties } from './data/mockProperties';
 import { mockParceiros } from './data/mockParceiros';
@@ -20,11 +21,13 @@ import type { Property, LedgerEntry, UserProfile, LifecycleStep } from './types/
 import { Search, Wallet, Wrench, Users, PieChart, Layers, Bot } from 'lucide-react';
 
 export function App() {
+  const APP_VERSION = 'v1.2.0';
   const [properties] = useState<Property[]>(mockProperties);
   const [selectedProperty, setSelectedProperty] = useState<Property | undefined>(mockProperties[0]);
   const [currentLifecycleStep, setCurrentLifecycleStep] = useState<LifecycleStep>(2);
 
-  const [isCoverVisible, setIsCoverVisible] = useState(true);
+  const [isIntroVisible, setIsIntroVisible] = useState(true);
+  const [isCoverVisible, setIsCoverVisible] = useState(false);
   const [activeMainTab, setActiveMainTab] = useState<'discovery' | 'detail' | 'ledger' | 'renovation' | 'partners' | 'portfolio'>('discovery');
   const [viewMode, setViewMode] = useState<'grid' | 'map' | 'split'>('split');
   const [activeMapLayer, setActiveMapLayer] = useState<'default' | 'price' | 'flood' | 'safety' | 'noise'>('default');
@@ -122,12 +125,23 @@ export function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-orange-500 selection:text-white">
       
-      {/* Capa 3D Dinâmica Inicial */}
-      {isCoverVisible && (
+      {/* Intro Splash Mobile-First (3 Segundos) */}
+      {isIntroVisible && (
+        <IntroSplash
+          version={APP_VERSION}
+          onComplete={() => {
+            setIsIntroVisible(false);
+            setIsCoverVisible(true);
+          }}
+        />
+      )}
+
+      {/* Capa Orbital Dinâmica Inicial */}
+      {isCoverVisible && !isIntroVisible && (
         <SplashCover onSelectOption={handleSelectCoverOption} />
       )}
 
-      {/* Header com slogan oficial G2 AUCTION */}
+      {/* Header com slogan oficial G2 AUCTION e Versionamento v1.2.0 */}
       <Header
         userProfile={userProfile}
         setUserProfile={setUserProfile}
@@ -135,6 +149,7 @@ export function App() {
         onOpenWhatsApp={() => setIsWhatsAppOpen(true)}
         onOpenCover={() => setIsCoverVisible(true)}
         unreadNotifications={2}
+        version={APP_VERSION}
       />
 
       {/* Stepper Metáfora dos 6 Passos de Arrematação */}

@@ -9,6 +9,7 @@ interface HeaderProps {
   onOpenWhatsApp: () => void;
   onOpenCover?: () => void;
   unreadNotifications: number;
+  version?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -17,21 +18,28 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenWhatsApp,
   onOpenCover,
   unreadNotifications,
+  version = 'v1.2.0',
 }) => {
   return (
     <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-20">
           
-          {/* Brand Logo & Slogan */}
+          {/* Brand Logo, Version & Slogan */}
           <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2.5">
               <img
                 src="/logo/logo.jpeg"
                 alt="G2 AUCTION"
-                className="h-12 w-auto object-contain rounded-xl shadow-xs"
+                className="h-10 sm:h-12 w-auto object-contain rounded-xl shadow-xs"
               />
-              <div className="hidden sm:block">
+
+              {/* Tag de Versao Sempre Visivel */}
+              <span className="bg-slate-900 text-orange-400 text-[10px] font-black px-2 py-0.5 rounded-md border border-orange-500/30 shadow-2xs">
+                {version}
+              </span>
+
+              <div className="hidden md:block">
                 <div className="flex items-center space-x-2">
                   <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border border-emerald-200">
                     <ShieldCheck className="w-3 h-3 text-emerald-600" /> IA Homologada
