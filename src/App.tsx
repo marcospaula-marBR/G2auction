@@ -12,7 +12,6 @@ import { WhatsAppSimulator } from './components/WhatsAppSimulator';
 import { PartnerNetwork } from './components/PartnerNetwork';
 import { PortfolioDashboard } from './components/PortfolioDashboard';
 import { PropertyReportModal } from './components/PropertyReportModal';
-import { SplashCover } from './components/SplashCover';
 import { IntroSplash } from './components/IntroSplash';
 
 import { mockProperties } from './data/mockProperties';
@@ -27,7 +26,6 @@ export function App() {
   const [currentLifecycleStep, setCurrentLifecycleStep] = useState<LifecycleStep>(2);
 
   const [isIntroVisible, setIsIntroVisible] = useState(true);
-  const [isCoverVisible, setIsCoverVisible] = useState(false);
   const [activeMainTab, setActiveMainTab] = useState<'discovery' | 'detail' | 'ledger' | 'renovation' | 'partners' | 'portfolio'>('discovery');
   const [viewMode, setViewMode] = useState<'grid' | 'map' | 'split'>('split');
   const [activeMapLayer, setActiveMapLayer] = useState<'default' | 'price' | 'flood' | 'safety' | 'noise'>('default');
@@ -106,39 +104,15 @@ export function App() {
     });
   };
 
-  const handleSelectCoverOption = (option: 'arrematar' | 'imoveis' | 'parceiros' | 'ledger' | 'renovation') => {
-    setIsCoverVisible(false);
-    if (option === 'arrematar') {
-      setActiveMainTab('discovery');
-      if (selectedProperty) setIsMaxBidOpen(true);
-    } else if (option === 'imoveis') {
-      setActiveMainTab('discovery');
-    } else if (option === 'parceiros') {
-      setActiveMainTab('partners');
-    } else if (option === 'ledger') {
-      setActiveMainTab('ledger');
-    } else if (option === 'renovation') {
-      setActiveMainTab('renovation');
-    }
-  };
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-orange-500 selection:text-white">
       
-      {/* Intro Splash Mobile-First (3 Segundos) */}
+      {/* Intro Splash Mobile-First (Logotipo Flutuante & Slogan) */}
       {isIntroVisible && (
         <IntroSplash
           version={APP_VERSION}
-          onComplete={() => {
-            setIsIntroVisible(false);
-            setIsCoverVisible(true);
-          }}
+          onComplete={() => setIsIntroVisible(false)}
         />
-      )}
-
-      {/* Capa Orbital Dinâmica Inicial */}
-      {isCoverVisible && !isIntroVisible && (
-        <SplashCover onSelectOption={handleSelectCoverOption} />
       )}
 
       {/* Header com slogan oficial G2 AUCTION e Versionamento v1.2.0 */}
@@ -147,7 +121,7 @@ export function App() {
         setUserProfile={setUserProfile}
         onOpenCopilot={() => setIsCopilotOpen(true)}
         onOpenWhatsApp={() => setIsWhatsAppOpen(true)}
-        onOpenCover={() => setIsCoverVisible(true)}
+        onReplayIntro={() => setIsIntroVisible(true)}
         unreadNotifications={2}
         version={APP_VERSION}
       />

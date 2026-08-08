@@ -7,7 +7,7 @@ interface HeaderProps {
   setUserProfile: (profile: UserProfile) => void;
   onOpenCopilot: () => void;
   onOpenWhatsApp: () => void;
-  onOpenCover?: () => void;
+  onReplayIntro?: () => void;
   unreadNotifications: number;
   version?: string;
 }
@@ -16,7 +16,7 @@ export const Header: React.FC<HeaderProps> = ({
   userProfile,
   onOpenCopilot,
   onOpenWhatsApp,
-  onOpenCover,
+  onReplayIntro,
   unreadNotifications,
   version = 'v1.2.0',
 }) => {
@@ -27,11 +27,15 @@ export const Header: React.FC<HeaderProps> = ({
           
           {/* Brand Logo, Version & Slogan */}
           <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2.5">
+            <div
+              onClick={onReplayIntro}
+              className="flex items-center space-x-2.5 cursor-pointer group"
+              title="Clique para rever a apresentação do G2 AUCTION"
+            >
               <img
                 src="/logo/logo.jpeg"
                 alt="G2 AUCTION"
-                className="h-10 sm:h-12 w-auto object-contain rounded-xl shadow-xs"
+                className="h-10 sm:h-12 w-auto object-contain rounded-xl shadow-xs group-hover:scale-105 transition-transform"
               />
 
               {/* Tag de Versao Sempre Visivel */}
@@ -75,18 +79,6 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Action Trigger Buttons */}
           <div className="flex items-center space-x-3">
             
-            {/* Capa 3D Trigger */}
-            {onOpenCover && (
-              <button
-                onClick={onOpenCover}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs px-3 py-2 rounded-xl flex items-center space-x-1.5 transition-all"
-                title="Voltar para a Capa 3D Dinâmica"
-              >
-                <span className="w-2 h-2 rounded-full bg-orange-500 animate-ping" />
-                <span>Capa 3D</span>
-              </button>
-            )}
-
             {/* Copilot IA Voice Trigger */}
             <button
               onClick={onOpenCopilot}

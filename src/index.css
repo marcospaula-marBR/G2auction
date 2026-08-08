@@ -17,6 +17,20 @@
   background: #94a3b8;
 }
 
+/* Floating animation for logo */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-12px) rotate(1deg);
+  }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
 /* Glassmorphism & custom utility classes */
 .glass-panel {
   background: rgba(255, 255, 255, 0.85);
