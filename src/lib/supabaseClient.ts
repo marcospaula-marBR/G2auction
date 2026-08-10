@@ -32,6 +32,7 @@ export interface PropertyUpsertPayload {
   first_auction_value?: number | null;
   second_auction_value?: number | null;
   discount_percentage?: number | null;
+  calculated_discount_percentage?: number | null;
   bedrooms?: number | null;
   parking_spaces?: number | null;
   total_area?: number | null;
