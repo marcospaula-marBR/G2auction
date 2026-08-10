@@ -14,6 +14,8 @@ import {
   Building2,
 } from 'lucide-react';
 
+import { PropertyCatalogPage } from './PropertyCatalogPage';
+
 import {
   buildCaixaFeedUrl,
   parseCaixaCsv,
@@ -517,6 +519,11 @@ export const CaixaFeedAdminTestPage: React.FC<CaixaFeedAdminTestPageProps> = ({ 
           </div>
         </div>
       )}
+
+      {/* CATÁLOGO E PAINEL DE FILTROS IMEDIATO APÓS A IMPORTAÇÃO */}
+      <div className="border-t-2 border-dashed border-slate-300 pt-6">
+        <PropertyCatalogPage />
+      </div>
 
       {/* ÁREA COLLAPSÁVEL DE AUDITORIA E DEBUG TÉCNICO */}
       <div className="bg-slate-900 text-slate-100 rounded-3xl border border-slate-800 overflow-hidden shadow-xl">
