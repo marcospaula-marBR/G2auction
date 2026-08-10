@@ -10,48 +10,53 @@ export default defineConfig({
         server.middlewares.use('/api/caixa-proxy', async (req, res) => {
           const urlObj = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
           const action = urlObj.searchParams.get('action') || 'fetch_detail';
-          const uf = urlObj.searchParams.get('uf') || 'SP';
+          const uf = (urlObj.searchParams.get('uf') || 'SP').toUpperCase();
           const id = urlObj.searchParams.get('id');
           const photoUrl = urlObj.searchParams.get('url');
 
           res.setHeader('Content-Type', 'application/json; charset=utf-8');
 
           try {
-            // AÇÃO 1: BAIXAR A RELAÇÃO OFICIAL DE IMÓVEIS DA CAIXA (download-lista.asp)
-            if (action === 'download_list') {
-              const downloadPageUrl = 'https://venda-imoveis.caixa.gov.br/sistema/download-lista.asp';
+            // AÇÃO 1: DOWNLOAD DO FEED CSV OFICIAL POR UF (/listaweb/Lista_imoveis_{UF}.csv)
+            if (action === 'download_feed' || action === 'download_list') {
+              const targetFeedUrl = `https://venda-imoveis.caixa.gov.br/listaweb/Lista_imoveis_${uf}.csv`;
               const headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept': 'text/html,application/xhtml+xml,application/xml,application/octet-stream,text/csv,text/plain;q=0.9,*/*;q=0.8',
                 'Accept-Language': 'pt-BR,pt;q=0.9',
               };
 
-              // 1. Fetch da página inicial para obter os campos do formulário
-              await fetch(downloadPageUrl, { headers });
+              const feedRes = await fetch(targetFeedUrl, { headers });
+              const feedStatus = feedRes.status;
+              const contentType = feedRes.headers.get('content-type') || 'application/octet-stream';
 
-              // 2. Submissão HTTP do formulário oficial com a UF selecionada
-              const targetListUrl = `https://venda-imoveis.caixa.gov.br/sistema/download-lista-imoveis.asp?hdnEstado=${uf.toUpperCase()}`;
-              const listRes = await fetch(targetListUrl, { headers });
+              if (feedStatus !== 200) {
+                res.statusCode = feedStatus;
+                return res.end(
+                  JSON.stringify({
+                    status: feedStatus,
+                    error: 'FEED_HTTP_ERROR',
+                    targetFeedUrl,
+                    uf,
+                  })
+                );
+              }
 
-              const listStatus = listRes.status;
-              const listBuffer = await listRes.arrayBuffer();
+              const arrayBuf = await feedRes.arrayBuffer();
               
-              // Decodificação Latin1 / UTF-8
-              const decoder = new TextDecoder('iso-8859-1');
-              const listContent = decoder.decode(listBuffer);
+              // Decodificação Windows-1252 / ISO-8859-1 para preservar acentuação em Reais e nomes brasileiros
+              const decoder = new TextDecoder('windows-1252');
+              const fileContent = decoder.decode(arrayBuf);
 
               res.statusCode = 200;
               return res.end(
                 JSON.stringify({
-                  status: listStatus,
-                  downloadPageUrl,
-                  submittedUrl: targetListUrl,
+                  status: feedStatus,
+                  contentType,
+                  targetFeedUrl,
                   uf,
-                  formAction: 'download-lista-imoveis.asp',
-                  formMethod: 'POST/GET',
-                  ufFieldName: 'hdnEstado',
-                  contentLength: listContent.length,
-                  fileContent: listContent,
+                  contentLength: fileContent.length,
+                  fileContent,
                 })
               );
             }
@@ -83,7 +88,7 @@ export default defineConfig({
             }
 
             // AÇÃO 3: BUSCAR FICHA INDIVIDUAL DE UM IMÓVEL
-            const cleanId = id ? String(id).replace(/\D/g, '') : '1444411844663';
+            const cleanId = id ? String(id).replace(/\D/g, '') : '1444408501866';
             const targetUrl = `https://venda-imoveis.caixa.gov.br/sistema/detalhe-imovel.asp?hdnOrigem=index&hdnimovel=${cleanId}`;
 
             const fetchRes = await fetch(targetUrl, {
@@ -103,7 +108,7 @@ export default defineConfig({
             res.statusCode = 500;
             return res.end(
               JSON.stringify({
-                error: 'Não foi possível consultar a fonte oficial da CAIXA.',
+                error: 'FEED_HTTP_ERROR',
                 details: err.message,
               })
             );

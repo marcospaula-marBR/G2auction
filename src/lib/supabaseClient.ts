@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Leitura das variáveis de ambiente Supabase (se disponíveis)
 const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY || '';
 
@@ -10,7 +9,6 @@ export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
 
-// Estrutura em memória para fallback local / demonstração de verificação em ambiente de teste
 const memoryStore = {
   properties: new Map<string, any>(),
   photos: new Map<string, any[]>(),
@@ -59,6 +57,10 @@ export interface PropertyUpsertPayload {
   main_photo_url?: string | null;
   status?: string;
   source_hash?: string | null;
+  source_generated_at?: string | null;
+  source_fetched_at?: string | null;
+  source_file_url?: string | null;
+  source_file_hash?: string | null;
   enrichment_status?: string;
   raw_list_data?: any;
   raw_detail_data?: any;
@@ -76,9 +78,6 @@ export interface DocumentUpsertPayload {
   source_url: string;
 }
 
-/**
- * Realiza o UPSERT do Imóvel no Supabase utilizando a chave (source, source_property_id).
- */
 export async function upsertPropertyToSupabase(
   propertyData: PropertyUpsertPayload,
   photos: PhotoUpsertPayload[] = [],
@@ -88,7 +87,6 @@ export async function upsertPropertyToSupabase(
   
   if (supabase) {
     try {
-      // 1. UPSERT em public.properties
       const { data: propData, error: propError } = await supabase
         .from('properties')
         .upsert(propertyData, {
@@ -100,7 +98,6 @@ export async function upsertPropertyToSupabase(
       if (propError) throw propError;
       const internalId = propData.id;
 
-      // 2. UPSERT em public.property_photos
       if (photos.length > 0) {
         const photoRecords = photos.map((p) => ({
           property_id: internalId,
@@ -114,7 +111,6 @@ export async function upsertPropertyToSupabase(
         });
       }
 
-      // 3. UPSERT em public.property_documents
       if (documents.length > 0) {
         const docRecords = documents.map((d) => ({
           property_id: internalId,
@@ -139,7 +135,6 @@ export async function upsertPropertyToSupabase(
     }
   }
 
-  // Fallback em memória para teste local quando Supabase não estiver configurado
   const mockId = `sb-uuid-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   const existing = memoryStore.properties.get(compositeKey);
   const internalId = existing?.id || mockId;
@@ -164,9 +159,6 @@ export async function upsertPropertyToSupabase(
   };
 }
 
-/**
- * Realiza o SELECT de verificação no Supabase após o UPSERT para provar a persistência.
- */
 export async function verifySavedPropertyInSupabase(
   source: string,
   sourcePropertyId: string

@@ -1,249 +1,325 @@
 /**
- * Módulo: caixaListImporter
+ * Módulo: caixaListImporter (Feed Oficial CSV por UF)
  * Responsável por:
- * 1. fetchCaixaDownloadPage()
- * 2. parseCaixaDownloadForm()
- * 3. downloadCaixaStateList(uf)
- * 4. parseCaixaList(fileContent)
- * 5. normalizeCaixaId(value)
- * 6. buildCanonicalProperty()
+ * 1. buildCaixaFeedUrl(uf) -> https://venda-imoveis.caixa.gov.br/listaweb/Lista_imoveis_{UF}.csv
+ * 2. parseCaixaCsvFeed(fileContent)
+ * 3. normalizeCaixaId(value)
+ * 4. Validação ID x Link (source_property_id === hdnimovel)
+ * 5. Extraction de metadados (source_generated_at)
+ * 6. Deterministic description parser (property_type, áreas, quartos)
  */
 
-export interface CaixaFormParsed {
-  actionUrl: string;
-  method: string;
-  ufFieldName: string;
-  hiddenFields: Record<string, string>;
-  availableUfs: string[];
-}
+import { parseBrazilianMoney } from './caixaParser';
 
-export interface CaixaListRowParsed {
-  source_property_id: string; // TEXT! Preserva zeros à esquerda ex: "0000010306954"
+export interface CaixaFeedMetadata {
+  source: 'CAIXA';
   uf: string;
-  cidade: string;
-  bairro: string;
-  endereco: string;
-  preco_venda: string;
-  valor_avaliacao: string;
-  desconto: string;
-  modalidade: string;
-  link: string;
-  raw_list_data: Record<string, any>;
+  source_file_url: string;
+  source_generated_at: string | null; // ISO YYYY-MM-DD ex: "2026-08-07"
+  source_fetched_at: string; // ISO Timestamptz
+  source_file_hash: string;
+  encoding: string;
+  delimiter: string;
+  total_records_found: number;
+  valid_records_count: number;
+  rejected_mismatch_count: number;
 }
 
-export interface CanonicalProperty {
-  source: string; // "CAIXA"
-  source_property_id: string; // TEXT preservando zeros
-  source_url: string;
-  title: string | null;
-  property_type: string | null;
-  sale_modality: string | null;
-  state: string | null;
-  city: string | null;
-  neighborhood: string | null;
-  address: string | null;
-  zipcode: string | null;
-
-  appraisal_value: number | null;
+export interface CaixaFeedRowParsed {
+  source_property_id: string; // TEXT preservando zeros ex: "1444408501866"
+  state: string;
+  city: string;
+  neighborhood: string;
+  address: string;
   sale_value: number | null;
-  current_minimum_value: number | null;
-  first_auction_value: number | null;
-  second_auction_value: number | null;
+  appraisal_value: number | null;
   discount_percentage: number | null;
-
-  bedrooms: number | null;
-  parking_spaces: number | null;
-
+  accepts_financing: boolean | null;
+  description: string;
+  sale_modality: string;
+  source_url: string; // URL do Link de acesso do CSV!
+  
+  // Dados determinísticos extraídos da descrição (auxiliares)
+  property_type: string | null;
   total_area: number | null;
   private_area: number | null;
-  useful_area: number | null;
   land_area: number | null;
+  bedrooms: number | null;
 
-  registration_number: string | null;
-  district: string | null;
-  registry_office: string | null;
-  municipal_registration: string | null;
+  raw_list_data: Record<string, string>;
+  validation_error?: string | null;
+}
 
-  description: string | null;
-
-  accepts_financing: boolean | null;
-  accepts_fgts: boolean | null;
-  occupied: boolean | null;
-
-  condominium_notes: string | null;
-  tax_notes: string | null;
-
-  auction_notice_number: string | null;
-  auction_notice_item: string | null;
-  auctioneer: string | null;
-
-  first_auction_date: string | null;
-  second_auction_date: string | null;
-
-  main_photo_url: string | null;
-  photos: { url: string; position: number; is_main: boolean }[];
-  documents: { type: string; title: string; url: string }[];
-
-  raw_list_data: Record<string, any>;
-  raw_detail_data: Record<string, any>;
-  source_hash?: string;
+/**
+ * Gera a URL oficial do feed CSV público por UF da CAIXA.
+ */
+export function buildCaixaFeedUrl(uf: string): string {
+  const cleanUf = String(uf || 'SP').trim().toUpperCase();
+  return `https://venda-imoveis.caixa.gov.br/listaweb/Lista_imoveis_${cleanUf}.csv`;
 }
 
 /**
  * Normaliza o ID do Imóvel da CAIXA.
- * REGRA CRÍTICA: Remove tudo que não for número, mas MANTÉM COMO STRING/TEXT.
- * NUNCA converter para Integer. Preserva zeros à esquerda!
- * Exemplo: "000001030695-4" -> "0000010306954"
+ * REGRA CRÍTICA: Manter estritamente como STRING/TEXT. NUNCA converter para Integer.
  */
 export function normalizeCaixaId(value: string | number | null | undefined): string {
-  if (!value) return '';
+  if (value === null || value === undefined) return '';
   const strVal = String(value).trim();
-  const cleanStr = strVal.replace(/\D/g, '');
-  return cleanStr; // Retorna TEXT sem conversão matemática
+  return strVal.replace(/\D/g, ''); // String TEXT sem alterar zeros ou tamanho
 }
 
 /**
- * Analisa o formulário HTML da página oficial download-lista.asp da CAIXA.
+ * Extrai o parâmetro hdnimovel da URL do Link de acesso.
  */
-export function parseCaixaDownloadForm(html: string): CaixaFormParsed {
-  const defaultAction = 'https://venda-imoveis.caixa.gov.br/sistema/download-lista.asp';
-  const actionMatch = html.match(/<form[^>]*action=["']([^"']+)["']/i);
-  const methodMatch = html.match(/<form[^>]*method=["']([^"']+)["']/i);
+export function extractHdnImovelFromUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  try {
+    const match = url.match(/[?&]hdnimovel=([^&]+)/i) || url.match(/\/(\d{10,15})/);
+    return match ? normalizeCaixaId(match[1]) : '';
+  } catch {
+    return '';
+  }
+}
 
-  let actionUrl = actionMatch ? actionMatch[1] : defaultAction;
-  if (actionUrl.startsWith('/')) {
-    actionUrl = `https://venda-imoveis.caixa.gov.br${actionUrl}`;
-  } else if (!actionUrl.startsWith('http')) {
-    actionUrl = `https://venda-imoveis.caixa.gov.br/sistema/${actionUrl}`;
+/**
+ * Parser de Linha CSV considerando delimitador `;` e aspas escapadas.
+ */
+export function parseCsvLine(line: string, delimiter: string = ';'): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"' || char === "'") {
+      if (inQuotes && line[i + 1] === char) {
+        current += char;
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === delimiter && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result.map((c) => c.replace(/^["']|["']$/g, '').trim());
+}
+
+/**
+ * Parser Determinístico do Texto da Descrição do Imóvel (sem usar IA).
+ */
+export function parseDescriptionFields(description: string): {
+  property_type: string | null;
+  total_area: number | null;
+  private_area: number | null;
+  land_area: number | null;
+  bedrooms: number | null;
+} {
+  if (!description) {
+    return { property_type: null, total_area: null, private_area: null, land_area: null, bedrooms: null };
   }
 
-  const method = (methodMatch ? methodMatch[1] : 'POST').toUpperCase();
-
-  // Inspeciona inputs hidden
-  const hiddenFields: Record<string, string> = {};
-  const hiddenRegex = /<input[^>]*type=["']hidden["'][^>]*name=["']([^"']+)["'][^>]*value=["']([^"']*)["']/gi;
-  let hMatch: RegExpExecArray | null;
-  while ((hMatch = hiddenRegex.exec(html)) !== null) {
-    hiddenFields[hMatch[1]] = hMatch[2];
+  // 1. Tipo do Imóvel (primeira palavra ex: "Casa", "Apartamento", "Terreno", "Sobrado", "Galpão")
+  let property_type: string | null = null;
+  const typeMatch = description.match(/^(Apartamento|Casa|Terreno|Sobrado|Galpão|Prédio|Loja|Comercial|Chácara|Sítio|Fazenda)/i);
+  if (typeMatch) {
+    property_type = typeMatch[1];
   }
 
-  // Identifica o nome do select/input de UF
-  let ufFieldName = 'hdnEstado';
-  const ufSelectMatch = html.match(/<select[^>]*name=["']([^"']*uf[^"']*|[^"']*estado[^"']*)["']/i);
-  if (ufSelectMatch) {
-    ufFieldName = ufSelectMatch[1];
+  // 2. Áreas (m²)
+  let total_area: number | null = null;
+  let private_area: number | null = null;
+  let land_area: number | null = null;
+
+  const parseAreaMatch = (match: RegExpMatchArray | null) => {
+    if (!match) return null;
+    const cleanStr = match[1].replace(/\./g, '').replace(',', '.');
+    const val = parseFloat(cleanStr);
+    return isNaN(val) ? null : val;
+  };
+
+  total_area = parseAreaMatch(description.match(/([\d.,]+)\s*de\s*área\s*total/i));
+  private_area = parseAreaMatch(description.match(/([\d.,]+)\s*de\s*área\s*privativa/i));
+  land_area = parseAreaMatch(description.match(/([\d.,]+)\s*de\s*área\s*do\s*terreno/i));
+
+  // 3. Quartos
+  let bedrooms: number | null = null;
+  const bedMatch = description.match(/(\d+)\s*qto\(s\)/i) || description.match(/(\d+)\s*quarto\(s\)/i);
+  if (bedMatch) {
+    bedrooms = parseInt(bedMatch[1], 10);
   }
 
-  // Extrai lista de UFs suportadas do HTML
-  const availableUfs: string[] = [];
-  const ufOptionRegex = /<option[^>]*value=["']([A-Z]{2})["']/gi;
-  let oMatch: RegExpExecArray | null;
-  while ((oMatch = ufOptionRegex.exec(html)) !== null) {
-    if (!availableUfs.includes(oMatch[1])) {
-      availableUfs.push(oMatch[1]);
+  return { property_type, total_area, private_area, land_area, bedrooms };
+}
+
+/**
+ * Parser Oficial do Feed CSV da CAIXA por UF.
+ */
+export function parseCaixaCsvFeed(
+  fileContent: string,
+  uf: string,
+  sourceFileUrl: string
+): {
+  metadata: CaixaFeedMetadata;
+  rows: CaixaFeedRowParsed[];
+} {
+  const sourceFetchedAt = new Date().toISOString();
+  const delimiter = ';';
+
+  if (!fileContent || !fileContent.trim()) {
+    return {
+      metadata: {
+        source: 'CAIXA',
+        uf: uf.toUpperCase(),
+        source_file_url: sourceFileUrl,
+        source_generated_at: null,
+        source_fetched_at: sourceFetchedAt,
+        source_file_hash: '',
+        encoding: 'UTF-8',
+        delimiter,
+        total_records_found: 0,
+        valid_records_count: 0,
+        rejected_mismatch_count: 0,
+      },
+      rows: [],
+    };
+  }
+
+  // Cálculo de Hash SHA-256 / Simples do conteúdo bruto
+  let hashVal = 0;
+  for (let i = 0; i < fileContent.length; i++) {
+    hashVal = (hashVal << 5) - hashVal + fileContent.charCodeAt(i);
+    hashVal |= 0;
+  }
+  const sourceFileHash = Math.abs(hashVal).toString(16);
+
+  const rawLines = fileContent.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+
+  // 1. Extração da Data de geração da base do cabeçalho (ex: "Data de geração: 07/08/2026")
+  let sourceGeneratedAt: string | null = null;
+  for (let i = 0; i < Math.min(5, rawLines.length); i++) {
+    const dateMatch = rawLines[i].match(/Data\s*de\s*geração:\s*;?\s*(\d{2}\/\d{2}\/\d{4})/i);
+    if (dateMatch) {
+      const parts = dateMatch[1].split('/');
+      if (parts.length === 3) {
+        sourceGeneratedAt = `${parts[2]}-${parts[1]}-${parts[0]}`; // ISO YYYY-MM-DD
+      }
+      break;
     }
   }
 
-  return {
-    actionUrl,
-    method,
-    ufFieldName,
-    hiddenFields,
-    availableUfs: availableUfs.length > 0 ? availableUfs : ['SP', 'RJ', 'MG', 'PR', 'RS', 'SC', 'BA'],
-  };
-}
-
-/**
- * Detecta delimitador (;, tab, virgula) e analisa o conteúdo CSV/Tabular da lista oficial da CAIXA.
- */
-export function parseCaixaList(fileContent: string): {
-  encoding: string;
-  separator: string;
-  totalRows: number;
-  rows: CaixaListRowParsed[];
-  headers: string[];
-} {
-  if (!fileContent || !fileContent.trim()) {
-    return { encoding: 'UTF-8', separator: ';', totalRows: 0, rows: [], headers: [] };
-  }
-
-  // Detecta codificação (heurística UTF-8 vs Latin1)
-  const isUtf8 = fileContent.includes('Ã') || fileContent.includes('Ç') || !/[\xFF-\xFF]/.test(fileContent);
-  const encoding = isUtf8 ? 'UTF-8' : 'ISO-8859-1';
-
-  // Divide em linhas
-  const rawLines = fileContent.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  if (rawLines.length === 0) {
-    return { encoding, separator: ';', totalRows: 0, rows: [], headers: [] };
-  }
-
-  // Detecta delimitador na primeira linha válida
-  const sampleLine = rawLines.find((l) => l.includes(';') || l.includes(',') || l.includes('\t')) || rawLines[0];
-  let separator = ';';
-  const countSemi = (sampleLine.match(/;/g) || []).length;
-  const countComma = (sampleLine.match(/,/g) || []).length;
-  const countTab = (sampleLine.match(/\t/g) || []).length;
-
-  if (countTab > countSemi && countTab > countComma) separator = '\t';
-  else if (countComma > countSemi) separator = ',';
-
-  // Localiza a linha do cabeçalho
-  let headerIndex = 0;
+  // 2. Localizar a linha do cabeçalho das colunas (contendo "N° do imóvel" e "Link de acesso")
+  let headerIndex = -1;
   for (let i = 0; i < Math.min(10, rawLines.length); i++) {
     const l = rawLines[i].toLowerCase();
-    if (l.includes('cidade') || l.includes('imóvel') || l.includes('imovel') || l.includes('preço') || l.includes('preco')) {
+    if ((l.includes('n° do imóvel') || l.includes('imóvel') || l.includes('imovel')) && l.includes('link de acesso')) {
       headerIndex = i;
       break;
     }
   }
 
-  const parseLine = (line: string) => line.split(separator).map((c) => c.replace(/^["']|["']$/g, '').trim());
+  if (headerIndex === -1) {
+    headerIndex = rawLines.findIndex((l) => l.includes(';') && (l.toLowerCase().includes('cidade') || l.toLowerCase().includes('preço')));
+  }
 
-  const headers = parseLine(rawLines[headerIndex]);
+  if (headerIndex === -1) {
+    headerIndex = 0;
+  }
+
+  const headers = parseCsvLine(rawLines[headerIndex], delimiter);
   const headersLower = headers.map((h) => h.toLowerCase());
 
-  // Mapeamento dinâmico de colunas pelos nomes dos cabeçalhos
   const findIdx = (terms: string[]) => headersLower.findIndex((h) => terms.some((t) => h.includes(t)));
 
-  const idxId = findIdx(['imóvel', 'imovel', 'id', 'numero']);
+  const idxId = findIdx(['imóvel', 'imovel', 'n°', 'numero']);
   const idxUf = findIdx(['uf', 'estado']);
-  const idxCidade = findIdx(['cidade', 'município', 'municipio']);
+  const idxCidade = findIdx(['cidade']);
   const idxBairro = findIdx(['bairro']);
-  const idxEndereco = findIdx(['endereço', 'endereco', 'logradouro']);
-  const idxPreco = findIdx(['preço', 'preco', 'valor']);
+  const idxEndereco = findIdx(['endereço', 'endereco']);
+  const idxPreco = findIdx(['preço', 'preco']);
   const idxAval = findIdx(['avaliação', 'avaliacao']);
   const idxDesc = findIdx(['desconto']);
+  const idxFinanc = findIdx(['financiamento']);
+  const idxDescricao = findIdx(['descrição', 'descricao']);
   const idxMod = findIdx(['modalidade']);
-  const idxLink = findIdx(['link', 'edital', 'acesso']);
+  const idxLink = findIdx(['link de acesso', 'link']);
 
-  const rows: CaixaListRowParsed[] = [];
+  const rows: CaixaFeedRowParsed[] = [];
+  let rejectedMismatchCount = 0;
 
   for (let i = headerIndex + 1; i < rawLines.length; i++) {
-    const cols = parseLine(rawLines[i]);
-    if (cols.length < 2) continue;
+    const cols = parseCsvLine(rawLines[i], delimiter);
+    if (cols.length < 3) continue;
 
     const rawId = idxId >= 0 && idxId < cols.length ? cols[idxId] : cols[0];
     const source_property_id = normalizeCaixaId(rawId);
 
     if (!source_property_id) continue;
 
-    // Preserva a linha original em formato JSON
-    const raw_list_data: Record<string, any> = {};
+    const rawLink = idxLink >= 0 && idxLink < cols.length ? cols[idxLink] : '';
+    const hdnImovel = extractHdnImovelFromUrl(rawLink);
+
+    // REGRA DE VALIDAÇÃO CRÍTICA: ID x Link de acesso
+    if (hdnImovel && source_property_id !== hdnImovel) {
+      rejectedMismatchCount++;
+      continue; // REJEITAR A LINHA (SOURCE_ID_URL_MISMATCH)
+    }
+
+    const raw_list_data: Record<string, string> = {};
     headers.forEach((h, colIdx) => {
       raw_list_data[h || `col_${colIdx}`] = cols[colIdx] || '';
     });
 
-    const rowObj: CaixaListRowParsed = {
-      source_property_id, // TEXT! ex: "0000010306954"
-      uf: idxUf >= 0 && idxUf < cols.length ? cols[idxUf] : 'SP',
-      cidade: idxCidade >= 0 && idxCidade < cols.length ? cols[idxCidade] : '',
-      bairro: idxBairro >= 0 && idxBairro < cols.length ? cols[idxBairro] : '',
-      endereco: idxEndereco >= 0 && idxEndereco < cols.length ? cols[idxEndereco] : '',
-      preco_venda: idxPreco >= 0 && idxPreco < cols.length ? cols[idxPreco] : '',
-      valor_avaliacao: idxAval >= 0 && idxAval < cols.length ? cols[idxAval] : '',
-      desconto: idxDesc >= 0 && idxDesc < cols.length ? cols[idxDesc] : '',
-      modalidade: idxMod >= 0 && idxMod < cols.length ? cols[idxMod] : 'Venda Direta Caixa',
-      link: idxLink >= 0 && idxLink < cols.length ? cols[idxLink] : `https://venda-imoveis.caixa.gov.br/sistema/detalhe-imovel.asp?hdnOrigem=index&hdnimovel=${source_property_id}`,
+    const precoStr = idxPreco >= 0 && idxPreco < cols.length ? cols[idxPreco] : '';
+    const avalStr = idxAval >= 0 && idxAval < cols.length ? cols[idxAval] : '';
+    const descStr = idxDesc >= 0 && idxDesc < cols.length ? cols[idxDesc] : '';
+    const financStr = idxFinanc >= 0 && idxFinanc < cols.length ? cols[idxFinanc] : '';
+    const descricaoStr = idxDescricao >= 0 && idxDescricao < cols.length ? cols[idxDescricao] : '';
+
+    const sale_value = parseBrazilianMoney(precoStr);
+    const appraisal_value = parseBrazilianMoney(avalStr);
+
+    let discount_percentage: number | null = null;
+    if (descStr) {
+      const parsedDesc = parseFloat(descStr.replace(',', '.'));
+      if (!isNaN(parsedDesc)) discount_percentage = parsedDesc;
+    }
+
+    if (discount_percentage === null && appraisal_value && sale_value && appraisal_value > 0) {
+      discount_percentage = Number((((appraisal_value - sale_value) / appraisal_value) * 100).toFixed(2));
+    }
+
+    let accepts_financing: boolean | null = null;
+    if (/sim/i.test(financStr)) accepts_financing = true;
+    else if (/não|nao/i.test(financStr)) accepts_financing = false;
+
+    // Parser determinístico da descrição
+    const parsedDesc = parseDescriptionFields(descricaoStr);
+
+    const rowObj: CaixaFeedRowParsed = {
+      source_property_id, // TEXT preservando zeros!
+      state: idxUf >= 0 && idxUf < cols.length ? cols[idxUf] : uf.toUpperCase(),
+      city: idxCidade >= 0 && idxCidade < cols.length ? cols[idxCidade] : '',
+      neighborhood: idxBairro >= 0 && idxBairro < cols.length ? cols[idxBairro] : '',
+      address: idxEndereco >= 0 && idxEndereco < cols.length ? cols[idxEndereco] : '',
+      sale_value,
+      appraisal_value,
+      discount_percentage,
+      accepts_financing,
+      description: descricaoStr,
+      sale_modality: idxMod >= 0 && idxMod < cols.length ? cols[idxMod] : 'Venda Direta Caixa',
+      source_url: rawLink || `https://venda-imoveis.caixa.gov.br/sistema/detalhe-imovel.asp?hdnimovel=${source_property_id}`,
+      
+      property_type: parsedDesc.property_type,
+      total_area: parsedDesc.total_area,
+      private_area: parsedDesc.private_area,
+      land_area: parsedDesc.land_area,
+      bedrooms: parsedDesc.bedrooms,
+
       raw_list_data,
     };
 
@@ -251,131 +327,65 @@ export function parseCaixaList(fileContent: string): {
   }
 
   return {
-    encoding,
-    separator,
-    totalRows: rows.length,
+    metadata: {
+      source: 'CAIXA',
+      uf: uf.toUpperCase(),
+      source_file_url: sourceFileUrl,
+      source_generated_at: sourceGeneratedAt,
+      source_fetched_at: sourceFetchedAt,
+      source_file_hash: sourceFileHash,
+      encoding: 'windows-1252',
+      delimiter,
+      total_records_found: rows.length + rejectedMismatchCount,
+      valid_records_count: rows.length,
+      rejected_mismatch_count: rejectedMismatchCount,
+    },
     rows,
-    headers,
   };
 }
 
-/**
- * Constrói a URL da ficha individual oficial da CAIXA a partir do ID.
- */
-export function buildCaixaDetailUrl(id: string): string {
-  const cleanId = normalizeCaixaId(id);
-  return `https://venda-imoveis.caixa.gov.br/sistema/detalhe-imovel.asp?hdnOrigem=index&hdnimovel=${cleanId}`;
+// Compatibilidade legada
+export type CaixaListRowParsed = CaixaFeedRowParsed;
+export type CanonicalProperty = any;
+
+export function parseCaixaList(fileContent: string) {
+  const result = parseCaixaCsvFeed(fileContent, 'SP', 'https://venda-imoveis.caixa.gov.br/listaweb/Lista_imoveis_SP.csv');
+  return {
+    encoding: result.metadata.encoding,
+    separator: result.metadata.delimiter,
+    totalRows: result.metadata.valid_records_count,
+    rows: result.rows,
+    headers: [],
+  };
 }
 
-/**
- * Monta o objeto de propriedade canônica unificada a ser persistido ou exibido.
- */
-export function buildCanonicalProperty(
-  listRow: CaixaListRowParsed,
-  detailParsed: any
-): CanonicalProperty {
-  const source_property_id = normalizeCaixaId(listRow.source_property_id);
-  const source_url = detailParsed.source_url || buildCaixaDetailUrl(source_property_id);
-
-  const prop = detailParsed.property || {};
-
-  // Formatação de fotos em estrutura canônica [{url, position, is_main}]
-  const photos: { url: string; position: number; is_main: boolean }[] = [];
-  const mainPhotoUrl = detailParsed.main_photo_url || null;
-
-  if (mainPhotoUrl) {
-    photos.push({ url: mainPhotoUrl, position: 0, is_main: true });
-  }
-
-  if (Array.isArray(detailParsed.photos)) {
-    detailParsed.photos.forEach((url: string) => {
-      if (url && url !== mainPhotoUrl && !photos.some((p) => p.url === url)) {
-        photos.push({ url, position: photos.length, is_main: false });
-      }
-    });
-  }
-
-  // Documentos
-  const documents: { type: string; title: string; url: string }[] = [];
-  if (detailParsed.documents?.auction_notice_url) {
-    documents.push({
-      type: 'AUCTION_NOTICE',
-      title: 'Edital e Anexos',
-      url: detailParsed.documents.auction_notice_url,
-    });
-  }
-  if (detailParsed.documents?.registration_url) {
-    documents.push({
-      type: 'REGISTRATION',
-      title: 'Matrícula do Imóvel',
-      url: detailParsed.documents.registration_url,
-    });
-  }
-
-  // Cálculo determinístico de hash de alteração
-  const hashInput = `${source_property_id}_${prop.sale_value || listRow.preco_venda}_${prop.appraisal_value || listRow.valor_avaliacao}_${prop.address || listRow.endereco}`;
-  let simpleHash = 0;
-  for (let i = 0; i < hashInput.length; i++) {
-    simpleHash = (simpleHash << 5) - simpleHash + hashInput.charCodeAt(i);
-    simpleHash |= 0;
-  }
-  const source_hash = Math.abs(simpleHash).toString(16);
-
+export function buildCanonicalProperty(listRow: any, detailParsed: any) {
   return {
     source: 'CAIXA',
-    source_property_id,
-    source_url,
-    title: prop.address ? `${prop.property_type || 'Imóvel'} - ${listRow.cidade}` : `Imóvel CAIXA nº ${source_property_id}`,
-    property_type: prop.property_type || null,
-    sale_modality: prop.sale_modality || listRow.modalidade || null,
-    state: prop.state || listRow.uf || null,
-    city: prop.city || listRow.cidade || null,
-    neighborhood: prop.neighborhood || listRow.bairro || null,
-    address: prop.address || listRow.endereco || null,
-    zipcode: prop.zipcode || null,
-
-    appraisal_value: prop.appraisal_value ?? null,
-    sale_value: prop.sale_value ?? null,
-    current_minimum_value: prop.sale_value ?? null,
-    first_auction_value: prop.first_auction_value ?? null,
-    second_auction_value: prop.second_auction_value ?? null,
-    discount_percentage: prop.discount_percentage ?? null,
-
-    bedrooms: prop.bedrooms ?? null,
-    parking_spaces: prop.parking_spaces ?? null,
-
-    total_area: prop.total_area ?? null,
-    private_area: prop.private_area ?? null,
-    useful_area: prop.useful_area ?? null,
-    land_area: prop.land_area ?? null,
-
-    registration_number: prop.registration_number ?? null,
-    district: prop.district ?? null,
-    registry_office: prop.registry_office ?? null,
-    municipal_registration: prop.municipal_registration ?? null,
-
-    description: prop.description ?? null,
-
-    accepts_financing: prop.accepts_financing ?? null,
-    accepts_fgts: prop.accepts_fgts ?? null,
-    occupied: prop.occupied === 'Ocupado' ? true : prop.occupied === 'Desocupado' ? false : null,
-
-    condominium_notes: prop.condominium_notes ?? null,
-    tax_notes: prop.tax_notes ?? null,
-
-    auction_notice_number: prop.auction_notice_number ?? null,
-    auction_notice_item: prop.auction_notice_item ?? null,
-    auctioneer: prop.auctioneer ?? null,
-
-    first_auction_date: prop.first_auction_date ?? null,
-    second_auction_date: prop.second_auction_date ?? null,
-
-    main_photo_url: mainPhotoUrl,
-    photos,
-    documents,
-
+    source_property_id: listRow.source_property_id,
+    source_url: listRow.source_url || detailParsed?.source_url || '',
+    title: `${listRow.property_type || 'Imóvel'} - ${listRow.city}`,
+    property_type: listRow.property_type,
+    sale_modality: listRow.sale_modality,
+    state: listRow.state,
+    city: listRow.city,
+    neighborhood: listRow.neighborhood,
+    address: listRow.address,
+    appraisal_value: listRow.appraisal_value,
+    sale_value: listRow.sale_value,
+    discount_percentage: listRow.discount_percentage,
+    bedrooms: listRow.bedrooms,
+    parking_spaces: detailParsed?.property?.parking_spaces || null,
+    total_area: listRow.total_area,
+    private_area: listRow.private_area,
+    land_area: listRow.land_area,
+    description: listRow.description,
+    accepts_financing: listRow.accepts_financing,
+    main_photo_url: detailParsed?.main_photo_url || null,
+    photos: detailParsed?.photos || [],
+    documents: detailParsed?.documents?.list || [],
     raw_list_data: listRow.raw_list_data || {},
-    raw_detail_data: detailParsed.debug || {},
-    source_hash,
+    raw_detail_data: detailParsed?.debug || {},
   };
 }
+

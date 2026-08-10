@@ -1,40 +1,46 @@
 export default async function handler(req, res) {
   const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const action = urlObj.searchParams.get('action') || 'fetch_detail';
-  const uf = urlObj.searchParams.get('uf') || 'SP';
+  const uf = (urlObj.searchParams.get('uf') || 'SP').toUpperCase();
   const id = urlObj.searchParams.get('id');
   const photoUrl = urlObj.searchParams.get('url');
 
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
 
   try {
-    // 1. Download da Relação por UF
-    if (action === 'download_list') {
-      const downloadPageUrl = 'https://venda-imoveis.caixa.gov.br/sistema/download-lista.asp';
+    // 1. Download do Feed CSV Oficial por UF
+    if (action === 'download_feed' || action === 'download_list') {
+      const targetFeedUrl = `https://venda-imoveis.caixa.gov.br/listaweb/Lista_imoveis_${uf}.csv`;
       const headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept': 'text/html,application/xhtml+xml,application/xml,application/octet-stream,text/csv,text/plain;q=0.9,*/*;q=0.8',
         'Accept-Language': 'pt-BR,pt;q=0.9',
       };
 
-      const targetListUrl = `https://venda-imoveis.caixa.gov.br/sistema/download-lista-imoveis.asp?hdnEstado=${uf.toUpperCase()}`;
-      const listRes = await fetch(targetListUrl, { headers });
+      const feedRes = await fetch(targetFeedUrl, { headers });
+      const feedStatus = feedRes.status;
+      const contentType = feedRes.headers.get('content-type') || 'application/octet-stream';
 
-      const listStatus = listRes.status;
-      const listBuffer = await listRes.arrayBuffer();
-      const decoder = new TextDecoder('iso-8859-1');
-      const listContent = decoder.decode(listBuffer);
+      if (feedStatus !== 200) {
+        return res.status(feedStatus).json({
+          status: feedStatus,
+          error: 'FEED_HTTP_ERROR',
+          targetFeedUrl,
+          uf,
+        });
+      }
+
+      const arrayBuf = await feedRes.arrayBuffer();
+      const decoder = new TextDecoder('windows-1252');
+      const fileContent = decoder.decode(arrayBuf);
 
       return res.status(200).json({
-        status: listStatus,
-        downloadPageUrl,
-        submittedUrl: targetListUrl,
+        status: feedStatus,
+        contentType,
+        targetFeedUrl,
         uf,
-        formAction: 'download-lista-imoveis.asp',
-        formMethod: 'POST/GET',
-        ufFieldName: 'hdnEstado',
-        contentLength: listContent.length,
-        fileContent: listContent,
+        contentLength: fileContent.length,
+        fileContent,
       });
     }
 
@@ -61,7 +67,7 @@ export default async function handler(req, res) {
     }
 
     // 3. Ficha Individual
-    const cleanId = id ? String(id).replace(/\D/g, '') : '1444411844663';
+    const cleanId = id ? String(id).replace(/\D/g, '') : '1444408501866';
     const targetUrl = `https://venda-imoveis.caixa.gov.br/sistema/detalhe-imovel.asp?hdnOrigem=index&hdnimovel=${cleanId}`;
 
     const fetchRes = await fetch(targetUrl, {
@@ -82,7 +88,7 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     return res.status(500).json({
-      error: 'Não foi possível consultar a fonte oficial da CAIXA.',
+      error: 'FEED_HTTP_ERROR',
       details: err.message,
     });
   }

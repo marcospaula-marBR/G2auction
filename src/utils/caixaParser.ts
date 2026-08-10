@@ -1,6 +1,21 @@
+export type CaixaErrorCode =
+  | 'FEED_HTTP_ERROR'
+  | 'FEED_INVALID_CONTENT'
+  | 'FEED_ENCODING_ERROR'
+  | 'FEED_HEADER_NOT_FOUND'
+  | 'FEED_EMPTY'
+  | 'CSV_PARSE_ERROR'
+  | 'SOURCE_ID_URL_MISMATCH'
+  | 'PROPERTY_DETAIL_HTTP_ERROR'
+  | 'PROPERTY_NOT_AVAILABLE'
+  | 'PROPERTY_ID_MISMATCH'
+  | 'PHOTO_NOT_FOUND'
+  | 'PARTIAL_ENRICHMENT'
+  | 'SUCCESS';
+
 export interface CaixaPropertyDebugJSON {
   success: boolean;
-  error?: string;
+  error?: CaixaErrorCode | string;
   caixa_id: string;
   source_url: string;
   property: {
@@ -67,9 +82,6 @@ export interface CaixaPropertyDebugJSON {
   };
 }
 
-/**
- * Converte valor monetário brasileiro (ex: "R$ 145.104,71") para número (ex: 145104.71).
- */
 export function parseBrazilianMoney(text: string | null | undefined): number | null {
   if (!text) return null;
   const match = text.match(/R\$\s*([\d.]+,\d{2})/i) || text.match(/([\d.]+,\d{2})/);
@@ -79,9 +91,6 @@ export function parseBrazilianMoney(text: string | null | undefined): number | n
   return isNaN(parsed) ? null : parsed;
 }
 
-/**
- * Converte número com vírgula ou área brasileira (ex: "102,89m2" ou "102,89") para número (ex: 102.89).
- */
 export function parseBrazilianNumber(text: string | null | undefined): number | null {
   if (!text) return null;
   const match = text.match(/([\d.]+,\d{1,2})/);
@@ -91,13 +100,9 @@ export function parseBrazilianNumber(text: string | null | undefined): number | 
   return isNaN(parsed) ? null : parsed;
 }
 
-/**
- * Módulo de Extração de Fotos do HTML da Ficha CAIXA.
- */
 export function extractCaixaPhotos(html: string, caixaId: string): string[] {
   const foundUrls = new Set<string>();
 
-  // Inspeciona src, href, data-src, data-lazy-src, srcset
   const photoRegex = /(?:src|href|data-src|data-lazy-src)="([^"]*\/fotos\/[A-Za-z0-9_.-]+\.(?:jpg|png|jpeg))"/gi;
   let match: RegExpExecArray | null;
   while ((match = photoRegex.exec(html)) !== null) {
@@ -110,7 +115,6 @@ export function extractCaixaPhotos(html: string, caixaId: string): string[] {
     foundUrls.add(url);
   }
 
-  // Fallback padrão se nenhuma foto explícita for encontrada na página estática ASP
   if (foundUrls.size === 0 && caixaId) {
     const cleanId = String(caixaId).replace(/\D/g, '');
     foundUrls.add(`https://venda-imoveis.caixa.gov.br/fotos/F${cleanId}21.jpg`);
@@ -119,9 +123,6 @@ export function extractCaixaPhotos(html: string, caixaId: string): string[] {
   return Array.from(foundUrls);
 }
 
-/**
- * Módulo de Extração de Documentos do HTML da Ficha CAIXA.
- */
 export function extractCaixaDocuments(html: string): { type: string; title: string; url: string }[] {
   const docs: { type: string; title: string; url: string }[] = [];
 
@@ -145,9 +146,6 @@ export function extractCaixaDocuments(html: string): { type: string; title: stri
   return docs;
 }
 
-/**
- * Parser Determinístico de HTML de Ficha de Imóvel da CAIXA.
- */
 export function parseCaixaHTML(
   html: string,
   caixaId: string,
@@ -157,7 +155,7 @@ export function parseCaixaHTML(
   if (!html || html.trim().length === 0) {
     return {
       success: false,
-      error: 'PROPERTY_NOT_FOUND',
+      error: 'PROPERTY_NOT_AVAILABLE',
       caixa_id: caixaId,
       source_url: sourceUrl,
       property: emptyPropertyState(),
@@ -176,11 +174,10 @@ export function parseCaixaHTML(
     };
   }
 
-  // Verificação de Erro ao tentar recuperar os dados do imóvel
   if (html.includes('erro ao tentar recuperar os dados do imóvel') || html.includes('Imóvel não encontrado')) {
     return {
       success: false,
-      error: 'PROPERTY_NOT_FOUND',
+      error: 'PROPERTY_NOT_AVAILABLE',
       caixa_id: caixaId,
       source_url: sourceUrl,
       property: emptyPropertyState(),
@@ -199,36 +196,23 @@ export function parseCaixaHTML(
     };
   }
 
-  // Verificação de Autenticação Inesperada ou Verificação Humana (CAPTCHA)
-  if (html.includes('login.asp') || html.includes('autenticacao')) {
-    return {
-      success: false,
-      error: 'AUTH_REQUIRED',
-      caixa_id: caixaId,
-      source_url: sourceUrl,
-      property: emptyPropertyState(),
-      documents: { auction_notice_url: null, registration_url: null, list: [] },
-      main_photo_url: null,
-      photos: [],
-    };
-  }
-
-  const isCaptcha =
-    html.includes('captcha') ||
-    html.includes('g-recaptcha') ||
-    html.includes('Validação de Segurança') ||
-    html.includes('Access Denied');
-  if (isCaptcha) {
-    return {
-      success: false,
-      error: 'HUMAN_VERIFICATION_REQUIRED',
-      caixa_id: caixaId,
-      source_url: sourceUrl,
-      property: emptyPropertyState(),
-      documents: { auction_notice_url: null, registration_url: null, list: [] },
-      main_photo_url: null,
-      photos: [],
-    };
+  // Validação de correspondência de ID na ficha HTML (Seção 21)
+  const idMatchInHtml = html.match(/Imóvel\s*nº\s*(\d{10,15})/i) || html.match(/hdnimovel=["']?(\d{10,15})/i);
+  if (idMatchInHtml) {
+    const htmlCleanId = idMatchInHtml[1].replace(/\D/g, '');
+    const cleanId = String(caixaId).replace(/\D/g, '');
+    if (htmlCleanId !== cleanId) {
+      return {
+        success: false,
+        error: 'PROPERTY_ID_MISMATCH',
+        caixa_id: caixaId,
+        source_url: sourceUrl,
+        property: emptyPropertyState(),
+        documents: { auction_notice_url: null, registration_url: null, list: [] },
+        main_photo_url: null,
+        photos: [],
+      };
+    }
   }
 
   // 1. Extração de Tipo de Imóvel
@@ -285,7 +269,6 @@ export function parseCaixaHTML(
   const secondAuctionMatch = html.match(/2º Leilão:\s*R\$\s*([\d.]+,\d{2})/i);
   if (secondAuctionMatch) second_auction_value = parseBrazilianMoney(secondAuctionMatch[1]);
 
-  // Cálculo de Desconto Determinístico
   let discount_percentage: number | null = null;
   if (appraisal_value !== null && sale_value !== null && appraisal_value > 0) {
     discount_percentage = Number((((appraisal_value - sale_value) / appraisal_value) * 100).toFixed(2));
@@ -390,7 +373,6 @@ export function parseCaixaHTML(
   const auctioneerMatch = html.match(/Leiloeiro:\s*([^<,\n]+)/i);
   if (auctioneerMatch) auctioneer = auctioneerMatch[1].trim();
 
-  // 11. Extração de Fotos e Documentos
   const candidatePhotos = extractCaixaPhotos(html, caixaId);
   const main_photo_url = candidatePhotos.length > 0 ? candidatePhotos[0] : null;
   const photos = candidatePhotos.length > 1 ? candidatePhotos.slice(1) : [];

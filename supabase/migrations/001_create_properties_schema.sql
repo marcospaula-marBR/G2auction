@@ -1,10 +1,10 @@
 -- Migration: 001_create_properties_schema.sql
--- Descrição: Criação das tabelas unificadas public.properties, public.property_photos e public.property_documents para armazenamento multibanco com chave única (source, source_property_id)
+-- Descrição: Criação das tabelas unificadas public.properties, public.property_photos e public.property_documents com campos de metadados da base da CAIXA (source_generated_at, source_fetched_at, source_file_url, source_file_hash)
 
 -- 1. TABELA PRINCIPAL DE IMÓVEIS
 CREATE TABLE IF NOT EXISTS public.properties (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    source TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'CAIXA',
     source_property_id TEXT NOT NULL,
     title TEXT,
     property_type TEXT,
@@ -45,7 +45,11 @@ CREATE TABLE IF NOT EXISTS public.properties (
     main_photo_url TEXT,
     status TEXT DEFAULT 'ACTIVE',
     source_hash TEXT,
-    enrichment_status TEXT DEFAULT 'COMPLETE',
+    source_generated_at DATE,
+    source_fetched_at TIMESTAMPTZ,
+    source_file_url TEXT,
+    source_file_hash TEXT,
+    enrichment_status TEXT DEFAULT 'PENDING',
     first_seen_at TIMESTAMPTZ DEFAULT NOW(),
     last_seen_at TIMESTAMPTZ DEFAULT NOW(),
     enriched_at TIMESTAMPTZ,

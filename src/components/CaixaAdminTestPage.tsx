@@ -166,13 +166,13 @@ export const CaixaAdminTestPage: React.FC = () => {
     try {
       addLog(`Iniciando UPSERT no Supabase em public.properties para o ID ${canonicalProperty.source_property_id}...`);
 
-      const photoPayload = canonicalProperty.photos.map((p) => ({
+      const photoPayload = canonicalProperty.photos.map((p: any) => ({
         source_url: p.url,
         position: p.position,
         is_main: p.is_main,
       }));
 
-      const docPayload = canonicalProperty.documents.map((d) => ({
+      const docPayload = canonicalProperty.documents.map((d: any) => ({
         document_type: d.type,
         title: d.title,
         source_url: d.url,
@@ -591,7 +591,7 @@ export const CaixaAdminTestPage: React.FC = () => {
               </h3>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
-                {canonicalProperty.photos.map((photo, idx) => (
+                {canonicalProperty.photos.map((photo: any, idx: number) => (
                   <div key={idx} className="h-28 rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
                     <img
                       src={photo.url}
@@ -615,7 +615,7 @@ export const CaixaAdminTestPage: React.FC = () => {
               </h3>
 
               <div className="flex flex-wrap gap-3">
-                {canonicalProperty.documents.map((doc, idx) => (
+                {canonicalProperty.documents.map((doc: any, idx: number) => (
                   <a
                     key={idx}
                     href={doc.url}
