@@ -541,7 +541,11 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
           {properties.map((prop) => {
             const hasPrivArea = prop.private_area !== null && prop.private_area > 0;
             const hasTotalArea = prop.total_area !== null && prop.total_area > 0;
-            const areaDisplay = hasPrivArea ? `${prop.private_area} m² privativos` : hasTotalArea ? `${prop.total_area} m² totais` : null;
+            const areaDisplay = hasPrivArea 
+              ? `${(prop.private_area > 10000 && Number.isInteger(prop.private_area) ? prop.private_area / 100 : prop.private_area).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} m² privativos` 
+              : hasTotalArea 
+                ? `${(prop.total_area > 10000 && Number.isInteger(prop.total_area) ? prop.total_area / 100 : prop.total_area).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} m² totais` 
+                : null;
 
             const isOccupied = prop.occupancy_status === 'OCCUPIED';
             const isVacant = prop.occupancy_status === 'VACANT';
@@ -571,7 +575,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                     {prop.discount_percentage !== null && prop.discount_percentage > 0 && (
                       <div className="absolute top-3 left-3 bg-red-600 text-white font-black text-xs px-3 py-1 rounded-full shadow-md flex items-center gap-1">
                         <BadgePercent className="w-3.5 h-3.5" />
-                        <span>{prop.discount_percentage}% abaixo da avaliação</span>
+                        <span>{(prop.discount_percentage > 100 ? prop.discount_percentage / 100 : prop.discount_percentage).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}% abaixo da avaliação</span>
                       </div>
                     )}
 
@@ -741,7 +745,9 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                 <div>
                   <span className="text-slate-400 font-bold block text-[10px]">DESCONTO:</span>
                   <span className="text-sm font-extrabold text-orange-600">
-                    {selectedDetailProperty.discount_percentage !== null ? `${selectedDetailProperty.discount_percentage}%` : 'N/I'}
+                    {selectedDetailProperty.discount_percentage !== null 
+                      ? `${(selectedDetailProperty.discount_percentage > 100 ? selectedDetailProperty.discount_percentage / 100 : selectedDetailProperty.discount_percentage).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%` 
+                      : 'N/I'}
                   </span>
                 </div>
               </div>
@@ -760,14 +766,18 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                 <div className="bg-slate-100 p-3 rounded-xl border border-slate-200">
                   <span className="text-slate-500 font-bold block text-[10px]">ÁREA PRIVATIVA:</span>
                   <span className="font-extrabold text-slate-900">
-                    {selectedDetailProperty.private_area !== null ? `${selectedDetailProperty.private_area} m²` : 'N/I'}
+                    {selectedDetailProperty.private_area !== null 
+                      ? `${(selectedDetailProperty.private_area > 10000 && Number.isInteger(selectedDetailProperty.private_area) ? selectedDetailProperty.private_area / 100 : selectedDetailProperty.private_area).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} m²` 
+                      : 'N/I'}
                   </span>
                 </div>
 
                 <div className="bg-slate-100 p-3 rounded-xl border border-slate-200">
                   <span className="text-slate-500 font-bold block text-[10px]">ÁREA TOTAL:</span>
                   <span className="font-extrabold text-slate-900">
-                    {selectedDetailProperty.total_area !== null ? `${selectedDetailProperty.total_area} m²` : 'N/I'}
+                    {selectedDetailProperty.total_area !== null 
+                      ? `${(selectedDetailProperty.total_area > 10000 && Number.isInteger(selectedDetailProperty.total_area) ? selectedDetailProperty.total_area / 100 : selectedDetailProperty.total_area).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} m²` 
+                      : 'N/I'}
                   </span>
                 </div>
 

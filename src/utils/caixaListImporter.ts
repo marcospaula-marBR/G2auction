@@ -50,7 +50,6 @@ export interface CaixaCsvParseResult {
 
 /**
  * Constrói a URL oficial de acesso ao CSV por UF da CAIXA.
- * Exemplo: https://venda-imoveis.caixa.gov.br/listaweb/Lista_imoveis_SP.csv
  */
 export function buildCaixaFeedUrl(uf: string): string {
   const cleanUf = (uf || 'SP').trim().toUpperCase();
@@ -79,21 +78,55 @@ export function normalizeCaixaId(idStr: string | null | undefined): string {
 }
 
 /**
- * Parser de valores monetários brasileiros (ex: "R$ 300.600,00" ou "300.600,00" -> 300600.00)
+ * Parser Robustíssimo de Números Brasileiros / Decimais / Monetários e Porcentagens.
+ * Trata corretamente: "300.600,00", "501.000", "40,00", "40.00", "171.43", "171,43", "40%".
+ */
+export function parseBrazilianNumber(text: string | null | undefined): number | null {
+  if (!text) return null;
+  let clean = String(text).replace(/R\$\s*/gi, '').replace(/%/g, '').trim();
+  if (!clean) return null;
+
+  // 1. Se contém tanto ponto quanto vírgula (ex: "300.600,00" ou "1.714,43")
+  if (clean.includes('.') && clean.includes(',')) {
+    clean = clean.replace(/\./g, '').replace(',', '.');
+  } 
+  // 2. Se contém apenas vírgula (ex: "40,00" ou "171,43") -> substitui vírgula por ponto
+  else if (clean.includes(',')) {
+    clean = clean.replace(',', '.');
+  } 
+  // 3. Se contém apenas ponto (ex: "40.00", "171.43", "300.600")
+  else if (clean.includes('.')) {
+    const parts = clean.split('.');
+    if (parts.length > 2) {
+      // Múltiplos pontos (ex: "1.000.000") -> milhares
+      clean = parts.join('');
+    } else {
+      // Um único ponto
+      const intPart = parts[0];
+      const decPart = parts[1];
+
+      if (decPart.length === 3 && intPart.length <= 3 && !decPart.endsWith('00')) {
+        // Formato milhar sem centavos (ex: "300.600" -> 300600)
+        clean = parts.join('');
+      } else if (decPart.length > 2 && decPart.endsWith('00')) {
+        // Formato com zeros extras (ex: "40.0000" -> 40.00)
+        clean = `${intPart}.${decPart.substring(0, 2)}`;
+      } else {
+        // Decimal padrão (ex: "171.43" -> 171.43, "40.00" -> 40.00)
+        // Preserva o ponto decimal original
+      }
+    }
+  }
+
+  const val = parseFloat(clean);
+  return isNaN(val) ? null : Number(val.toFixed(2));
+}
+
+/**
+ * Alias de compatibilidade para valores monetários
  */
 export function parseBrazilianMoney(text: string | null | undefined): number | null {
-  if (!text) return null;
-  const clean = text.replace(/R\$\s*/gi, '').trim();
-  const match = clean.match(/([\d.]+,\d{2})/);
-  if (!match) {
-    const numOnly = clean.replace(/[^\d]/g, '');
-    if (!numOnly) return null;
-    const directVal = parseFloat(numOnly);
-    return isNaN(directVal) ? null : directVal;
-  }
-  const numStr = match[1].replace(/\./g, '').replace(',', '.');
-  const parsed = parseFloat(numStr);
-  return isNaN(parsed) ? null : parsed;
+  return parseBrazilianNumber(text);
 }
 
 /**
@@ -137,7 +170,8 @@ export function parseCsvLine(line: string, delimiter: string = ';'): string[] {
 }
 
 /**
- * Parser Determinístico do Texto da Descrição do Imóvel (Seções 8, 9, 10, 11).
+ * Parser Determinístico do Texto da Descrição do Imóvel.
+ * Extrai tipo, áreas (privativa, total, terreno), quartos e vagas sem remover decimais.
  */
 export function parseCaixaDescription(description: string): {
   property_type: string | null;
@@ -158,7 +192,7 @@ export function parseCaixaDescription(description: string): {
     };
   }
 
-  // 1. Tipo do Imóvel (Seção 8)
+  // 1. Tipo do Imóvel
   let property_type: string | null = null;
   const typeMatch = description.match(/^(Apartamento|Casa|Terreno|Sobrado|Galpão|Prédio|Loja|Sala|Comercial|Chácara|Sítio|Fazenda)/i);
   if (typeMatch) {
@@ -173,30 +207,24 @@ export function parseCaixaDescription(description: string): {
     else property_type = 'Comercial';
   }
 
-  // 2. Áreas em m² (Seção 9)
-  let total_area: number | null = null;
-  let private_area: number | null = null;
-  let land_area: number | null = null;
-
-  const parseAreaMatch = (match: RegExpMatchArray | null) => {
+  // 2. Áreas em m² (utilizando parseBrazilianNumber)
+  const parseAreaMatch = (match: RegExpMatchArray | null): number | null => {
     if (!match) return null;
-    const cleanStr = match[1].replace(/\./g, '').replace(',', '.');
-    const val = parseFloat(cleanStr);
-    return isNaN(val) ? null : val;
+    return parseBrazilianNumber(match[1]);
   };
 
-  total_area = parseAreaMatch(description.match(/([\d.,]+)\s*de\s*área\s*total/i));
-  private_area = parseAreaMatch(description.match(/([\d.,]+)\s*de\s*área\s*privativa/i));
-  land_area = parseAreaMatch(description.match(/([\d.,]+)\s*de\s*área\s*(?:do\s*)?terreno/i));
+  const total_area = parseAreaMatch(description.match(/([\d.,]+)\s*de\s*área\s*total/i));
+  const private_area = parseAreaMatch(description.match(/([\d.,]+)\s*de\s*área\s*privativa/i));
+  const land_area = parseAreaMatch(description.match(/([\d.,]+)\s*de\s*área\s*(?:do\s*)?terreno/i));
 
-  // 3. Quartos (Seção 10)
+  // 3. Quartos
   let bedrooms: number | null = null;
   const bedMatch = description.match(/(\d+)\s*qto\(s\)/i) || description.match(/(\d+)\s*quarto\(s\)/i) || description.match(/(\d+)\s*dorms?/i);
   if (bedMatch) {
     bedrooms = parseInt(bedMatch[1], 10);
   }
 
-  // 4. Vagas de Garagem (Seção 11 - Somente se a quantidade for explícita)
+  // 4. Vagas de Garagem (Somente se quantidade for explícita)
   let parking_spaces: number | null = null;
   const parkMatch = description.match(/(\d+)\s*vaga\(s\)/i) || description.match(/(\d+)\s*vagas?/i);
   if (parkMatch) {
@@ -206,9 +234,6 @@ export function parseCaixaDescription(description: string): {
   return { property_type, total_area, private_area, land_area, bedrooms, parking_spaces };
 }
 
-/**
- * Alias de compatibilidade
- */
 export const parseDescriptionFields = parseCaixaDescription;
 
 /**
@@ -244,7 +269,6 @@ export function parseCaixaCsv(
     };
   }
 
-  // 1. Detecção da Data de Geração da Base no Cabeçalho
   let sourceGeneratedAt: string | null = null;
   const genDateMatch = fileContent.match(/Data\s*de\s*geração:\s*(\d{2})\/(\d{2})\/(\d{4})/i);
   if (genDateMatch) {
@@ -252,7 +276,6 @@ export function parseCaixaCsv(
     sourceGeneratedAt = `${year}-${month}-${day}`;
   }
 
-  // 2. Divisão de Linhas e Identificação Dinâmica do Cabeçalho
   const rawLines = fileContent.split(/\r?\n/);
   let delimiter = ';';
   let headerIndex = -1;
@@ -338,7 +361,6 @@ export function parseCaixaCsv(
       ? rawLink.trim()
       : `https://venda-imoveis.caixa.gov.br/sistema/detalhe-imovel.asp?hdnOrigem=index&hdnimovel=${source_property_id}`;
 
-    // Validação ID x Link
     const hdnImovelInLink = extractHdnImovelFromUrl(source_url);
     if (hdnImovelInLink) {
       if (normalizeCaixaId(source_property_id) !== normalizeCaixaId(hdnImovelInLink)) {
@@ -353,14 +375,15 @@ export function parseCaixaCsv(
     const neighborhood = idxNeigh !== -1 && cols[idxNeigh] ? cols[idxNeigh].trim() : null;
     const address = idxAddr !== -1 && cols[idxAddr] ? cols[idxAddr].trim() : null;
 
-    const sale_value = idxPrice !== -1 ? parseBrazilianMoney(cols[idxPrice]) : null;
-    const appraisal_value = idxAppraisal !== -1 ? parseBrazilianMoney(cols[idxAppraisal]) : null;
-    let discount_percentage = idxDiscount !== -1 ? parseBrazilianMoney(cols[idxDiscount]) : null;
+    const sale_value = idxPrice !== -1 ? parseBrazilianNumber(cols[idxPrice]) : null;
+    const appraisal_value = idxAppraisal !== -1 ? parseBrazilianNumber(cols[idxAppraisal]) : null;
+    let discount_percentage = idxDiscount !== -1 ? parseBrazilianNumber(cols[idxDiscount]) : null;
 
     let calculated_discount_percentage: number | null = null;
     if (appraisal_value !== null && sale_value !== null && appraisal_value > 0) {
       calculated_discount_percentage = Number((((appraisal_value - sale_value) / appraisal_value) * 100).toFixed(2));
-      if (discount_percentage === null) {
+      // Se desconto for nulo, for > 100 (ex: erro de formato 4000) ou for < 0, usar o calculado real
+      if (discount_percentage === null || discount_percentage > 100 || discount_percentage < 0) {
         discount_percentage = calculated_discount_percentage;
       }
     }
@@ -438,7 +461,6 @@ export function parseCaixaCsv(
   };
 }
 
-// Alias de compatibilidade
 export const parseCaixaCsvFeed = parseCaixaCsv;
 
 export function parseCaixaList(fileContent: string, uf: string = 'SP') {

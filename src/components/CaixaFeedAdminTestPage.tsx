@@ -490,12 +490,20 @@ export const CaixaFeedAdminTestPage: React.FC<CaixaFeedAdminTestPageProps> = ({ 
 
                 <div className="bg-white p-3 rounded-xl border border-slate-200">
                   <span className="text-slate-400 block text-[9px] uppercase font-bold">DESCONTO:</span>
-                  <span className="text-orange-600 font-black">{row.discount_percentage !== null ? `${row.discount_percentage}%` : 'N/I'}</span>
+                  <span className="text-orange-600 font-black">
+                    {row.discount_percentage !== null 
+                      ? `${(row.discount_percentage > 100 ? row.discount_percentage / 100 : row.discount_percentage).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%` 
+                      : 'N/I'}
+                  </span>
                 </div>
 
                 <div className="bg-white p-3 rounded-xl border border-slate-200">
                   <span className="text-slate-400 block text-[9px] uppercase font-bold">ÁREA PRIVATIVA:</span>
-                  <span className="text-slate-800 font-bold">{row.private_area !== null ? `${row.private_area} m²` : 'N/I'}</span>
+                  <span className="text-slate-800 font-bold">
+                    {row.private_area !== null 
+                      ? `${row.private_area.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} m²` 
+                      : 'N/I'}
+                  </span>
                 </div>
               </div>
             </div>
