@@ -23,11 +23,11 @@ import {
 } from '../utils/caixaListImporter';
 
 import {
+  isSupabaseConfigured,
   batchUpsertPropertiesToSupabase,
   reconcileMissingPropertiesByState,
   recordCaixaImportLog,
   fetchCatalogSummaryStatsFromSupabase,
-  isSupabaseConfigured,
   ALL_BRAZILIAN_UFS,
   type PropertyUpsertPayload,
 } from '../lib/supabaseClient';
@@ -272,6 +272,27 @@ export const CaixaFeedAdminTestPage: React.FC<CaixaFeedAdminTestPageProps> = ({ 
           <p className="text-xs text-slate-300 font-medium max-w-3xl mt-1">
             Importação e armazenamento direto na tabela <code>properties</code> do Supabase Postgres por estado. Os filtros do catálogo serão atualizados instantaneamente.
           </p>
+        </div>
+      </div>
+
+      {/* INDICADOR DE SINCRONIZAÇÃO EM NUVEM E PERSISTÊNCIA */}
+      <div className={`p-5 rounded-3xl border text-xs font-bold shadow-xs ${
+        isSupabaseConfigured 
+          ? 'bg-emerald-50 border-emerald-200 text-emerald-950' 
+          : 'bg-amber-50 border-amber-200 text-amber-950'
+      }`}>
+        <div className="flex items-start space-x-3">
+          <div className={`w-3.5 h-3.5 rounded-full mt-0.5 flex-shrink-0 animate-pulse ${isSupabaseConfigured ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+          <div className="space-y-1">
+            <span className="font-black uppercase text-[11px] tracking-wider block">
+              {isSupabaseConfigured ? '🟢 BANCO NUVEM SUPABASE ON-LINE (MULTI-USUÁRIOS ATIVO)' : '🟡 PERSISTÊNCIA LOCAL + MODULO NUVEM SUPABASE'}
+            </span>
+            <p className="text-slate-700 text-xs font-medium leading-relaxed">
+              {isSupabaseConfigured
+                ? 'Todos os imóveis salvos ao importar o CSV são gravados diretamente no banco de dados Supabase na nuvem e ficam visíveis instantaneamente para TODOS os usuários acessando a aplicação via web (Vercel).'
+                : 'Seus dados importados agora estão salvos permanentemente no seu navegador (com suporte a atualizações de CSV e recarregamento de página sem perder nada). Para disponibilizar no ar para OUTROS usuários na web, configure as variáveis VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no painel de Environment Variables do Vercel.'}
+            </p>
+          </div>
         </div>
       </div>
 

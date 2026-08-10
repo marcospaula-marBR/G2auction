@@ -9,12 +9,42 @@ export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
 
+const CACHE_KEY_PROPERTIES = 'g2_caixa_properties_store_v1';
+
 const memoryStore = {
   properties: new Map<string, any>(),
   photos: new Map<string, any[]>(),
   documents: new Map<string, any[]>(),
   imports: new Array<any>(),
 };
+
+export function saveMemoryStoreToLocalStorage() {
+  try {
+    const arrayData = Array.from(memoryStore.properties.entries());
+    localStorage.setItem(CACHE_KEY_PROPERTIES, JSON.stringify(arrayData));
+  } catch (e: any) {
+    console.warn('[LocalStorage Save Error]', e);
+  }
+}
+
+export function loadMemoryStoreFromLocalStorage() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY_PROPERTIES);
+    if (raw) {
+      const entries = JSON.parse(raw);
+      if (Array.isArray(entries)) {
+        entries.forEach(([k, v]: [string, any]) => {
+          memoryStore.properties.set(k, v);
+        });
+      }
+    }
+  } catch (e: any) {
+    console.warn('[LocalStorage Load Error]', e);
+  }
+}
+
+// Carregar do armazenamento persistente local ao iniciar
+loadMemoryStoreFromLocalStorage();
 
 export const ALL_BRAZILIAN_UFS = [
   'SP', 'RJ', 'MG', 'DF', 'BA', 'CE', 'PR', 'RS', 'SC', 'GO',
@@ -183,6 +213,9 @@ export async function batchUpsertPropertiesToSupabase(
     totalProcessed++;
   });
 
+  // Salvar a memória no armazenamento do navegador
+  saveMemoryStoreToLocalStorage();
+
   // 2. Gravação no Supabase Postgres (se configurado)
   if (supabase) {
     for (let i = 0; i < propertiesPayload.length; i += batchSize) {
@@ -236,6 +269,8 @@ export async function reconcileMissingPropertiesByState(
       }
     }
   });
+
+  saveMemoryStoreToLocalStorage();
 
   if (supabase) {
     try {
