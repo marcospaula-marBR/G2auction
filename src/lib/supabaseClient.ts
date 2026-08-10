@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { parseCaixaCsv } from '../utils/caixaListImporter';
 
 const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY || '';
@@ -17,6 +18,43 @@ const memoryStore = {
   documents: new Map<string, any[]>(),
   imports: new Array<any>(),
 };
+
+let seedPromise: Promise<void> | null = null;
+
+export async function autoSeedDefaultCsvFromPublic(): Promise<void> {
+  if (memoryStore.properties.size > 0) return;
+  if (seedPromise) return seedPromise;
+
+  seedPromise = (async () => {
+    try {
+      const res = await fetch('/Lista_imoveis_SP.csv');
+      if (res.ok) {
+        const csvText = await res.text();
+        const parseResult = parseCaixaCsv(csvText, 'SP', '/Lista_imoveis_SP.csv');
+        if (parseResult.rows && parseResult.rows.length > 0) {
+          parseResult.rows.forEach((p) => {
+            const compositeKey = `${p.source}_${p.source_property_id}`;
+            if (!memoryStore.properties.has(compositeKey)) {
+              memoryStore.properties.set(compositeKey, {
+                id: `sb-seed-${p.source_property_id}`,
+                ...p,
+                status: 'ACTIVE',
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              });
+            }
+          });
+          saveMemoryStoreToLocalStorage();
+          console.log(`[Auto-Seed SP] ${parseResult.rows.length} imóveis e cidades populados de /Lista_imoveis_SP.csv.`);
+        }
+      }
+    } catch (err: any) {
+      console.warn('[Auto-Seed SP Error]', err.message);
+    }
+  })();
+
+  return seedPromise;
+}
 
 export function saveMemoryStoreToLocalStorage() {
   try {
@@ -40,6 +78,10 @@ export function loadMemoryStoreFromLocalStorage() {
     }
   } catch (e: any) {
     console.warn('[LocalStorage Load Error]', e);
+  }
+
+  if (memoryStore.properties.size === 0) {
+    autoSeedDefaultCsvFromPublic();
   }
 }
 
@@ -422,6 +464,10 @@ export async function queryPropertiesFromSupabase(
   totalPages: number;
   isMemoryFallback: boolean;
 }> {
+  if (memoryStore.properties.size === 0) {
+    await autoSeedDefaultCsvFromPublic();
+  }
+
   const page = filters.page || 1;
   const pageSize = filters.pageSize || 24;
   const fromIndex = (page - 1) * pageSize;
@@ -584,6 +630,10 @@ export async function fetchDistinctStatesFromSupabase(): Promise<string[]> {
 export async function fetchDistinctCitiesByStateFromSupabase(uf: string): Promise<string[]> {
   const ufUpper = (uf || '').trim().toUpperCase();
   if (!ufUpper) return [];
+
+  if (memoryStore.properties.size === 0) {
+    await autoSeedDefaultCsvFromPublic();
+  }
 
   const citySet = new Set<string>();
 
