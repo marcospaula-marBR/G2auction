@@ -18,7 +18,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenWhatsApp,
   onReplayIntro,
   unreadNotifications,
-  version = 'v1.5.0',
+  version = 'v1.5.1',
 }) => {
   return (
     <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-xs">

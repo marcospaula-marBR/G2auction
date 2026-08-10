@@ -18,6 +18,7 @@ import {
   parseCaixaList,
   normalizeCaixaId,
   buildCanonicalProperty,
+  type CaixaListRowParsed,
   type CanonicalProperty,
 } from '../utils/caixaListImporter';
 
@@ -32,6 +33,7 @@ import {
 export const CaixaAdminTestPage: React.FC = () => {
   const [uf, setUf] = useState('SP');
   const [testLimit, setTestLimit] = useState(1);
+  const [_saveToSupabase, setSaveToSupabase] = useState(false);
 
   // Estados de Controle do Fluxo
   const [loading, setLoading] = useState(false);
@@ -48,6 +50,7 @@ export const CaixaAdminTestPage: React.FC = () => {
     headersCount: number;
   } | null>(null);
 
+  const [_selectedListRow, setSelectedListRow] = useState<CaixaListRowParsed | null>(null);
   const [canonicalProperty, setCanonicalProperty] = useState<CanonicalProperty | null>(null);
   const [savedVerification, setSavedVerification] = useState<any | null>(null);
 

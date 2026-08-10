@@ -21,7 +21,7 @@ import type { Property, LedgerEntry, UserProfile, LifecycleStep } from './types/
 import { Search, Wallet, Wrench, Users, PieChart, Layers, Bot, TestTube2 } from 'lucide-react';
 
 export function App() {
-  const APP_VERSION = 'v1.5.0';
+  const APP_VERSION = 'v1.5.1';
   const [properties] = useState<Property[]>(mockProperties);
   const [selectedProperty, setSelectedProperty] = useState<Property | undefined>(mockProperties[0]);
   const [currentLifecycleStep, setCurrentLifecycleStep] = useState<LifecycleStep>(2);
