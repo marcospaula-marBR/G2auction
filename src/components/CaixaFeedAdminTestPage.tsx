@@ -12,7 +12,6 @@ import {
   ChevronDown,
   ChevronUp,
   Building2,
-  Save,
 } from 'lucide-react';
 
 import {
@@ -23,7 +22,6 @@ import {
 
 import {
   batchUpsertPropertiesToSupabase,
-  upsertPropertyToSupabase,
   reconcileMissingPropertiesByState,
   recordCaixaImportLog,
   fetchCatalogSummaryStatsFromSupabase,
@@ -101,59 +99,7 @@ export const CaixaFeedAdminTestPage: React.FC<CaixaFeedAdminTestPageProps> = ({ 
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  /**
-   * BOTÃO EXPLÍCITO: [ SALVAR IMÓVEL INDIVIDUAL NO SUPABASE ]
-   */
-  const handleSaveSinglePropertyToDb = async (row: CaixaFeedRowParsed) => {
-    setIsProcessing(true);
-    setErrorMsg(null);
-    setSaveSuccessMsg(null);
 
-    try {
-      const payload: PropertyUpsertPayload = {
-        source: 'CAIXA',
-        source_property_id: row.source_property_id,
-        title: `${row.property_type || 'Imóvel'} - ${row.city}`,
-        property_type: row.property_type,
-        sale_modality: row.sale_modality,
-        state: row.state,
-        city: row.city,
-        neighborhood: row.neighborhood,
-        address: row.address,
-        sale_value: row.sale_value,
-        current_minimum_value: row.current_minimum_value,
-        appraisal_value: row.appraisal_value,
-        discount_percentage: row.discount_percentage,
-        calculated_discount_percentage: row.calculated_discount_percentage,
-        accepts_financing: row.accepts_financing,
-        occupancy_status: row.occupancy_status,
-        description: row.description,
-        total_area: row.total_area,
-        private_area: row.private_area,
-        land_area: row.land_area,
-        bedrooms: row.bedrooms,
-        parking_spaces: row.parking_spaces,
-        source_url: row.source_url,
-        source_hash: row.source_hash,
-        enrichment_status: 'PENDING',
-        status: 'ACTIVE',
-        raw_list_data: row.raw_list_data,
-      };
-
-      const res = await upsertPropertyToSupabase(payload);
-      if (res.success) {
-        setSaveSuccessMsg(`Imóvel CAIXA ID ${row.source_property_id} salvo com sucesso no Banco de Dados!`);
-        addLog(`[SALVAR MANUAL] Imóvel ${row.source_property_id} salvo no DB.`);
-        await loadStats();
-      } else {
-        throw new Error(res.error || 'Falha ao salvar no Supabase');
-      }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Erro ao salvar no Supabase');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
 
   /**
    * SELEÇÃO DE ARQUIVO E PIPELINE DE ATUALIZAÇÃO AUTOMÁTICA DA BASE
@@ -466,15 +412,10 @@ export const CaixaFeedAdminTestPage: React.FC<CaixaFeedAdminTestPageProps> = ({ 
                   <p className="text-xs text-slate-600 font-medium">{row.address || 'Endereço informado'}</p>
                 </div>
 
-                {/* BOTÃO EXPLÍCITO DE SALVAR NO DB */}
-                <button
-                  onClick={() => handleSaveSinglePropertyToDb(row)}
-                  disabled={isProcessing}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-5 py-3 rounded-2xl shadow-md flex items-center space-x-2 transition-transform active:scale-95"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>[ SALVAR ESTE IMÓVEL NO SUPABASE ]</span>
-                </button>
+                <div className="flex items-center space-x-2 bg-emerald-50 border border-emerald-200 px-4 py-3 rounded-2xl text-xs font-bold text-emerald-800">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                  <span>Todos os {previewMetadata?.total_records_found?.toLocaleString()} imóveis deste CSV já foram salvos no DB!</span>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">

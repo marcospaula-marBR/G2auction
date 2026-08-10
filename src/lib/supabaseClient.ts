@@ -401,7 +401,7 @@ export async function queryPropertiesFromSupabase(
         .eq('status', 'ACTIVE');
 
       if (filters.state) query = query.eq('state', filters.state.toUpperCase());
-      if (filters.city) query = query.ilike('city', filters.city.trim());
+      if (filters.city) query = query.ilike('city', `%${filters.city.trim()}%`);
 
       if (filters.priceMin !== undefined && filters.priceMin !== null) query = query.gte('current_minimum_value', filters.priceMin);
       if (filters.priceMax !== undefined && filters.priceMax !== null) query = query.lte('current_minimum_value', filters.priceMax);
@@ -574,6 +574,22 @@ export async function fetchDistinctCitiesByStateFromSupabase(uf: string): Promis
       citySet.add(p.city.trim());
     }
   });
+
+  // Se nenhuma cidade foi encontrada na base para a UF selecionada, utilizar fallback de principais cidades
+  if (citySet.size === 0) {
+    const fallbackCitiesMap: Record<string, string[]> = {
+      SP: ['São Paulo', 'Campinas', 'Santos', 'Ribeirão Preto', 'Sorocaba', 'Adamantina', 'Guarulhos', 'São José dos Campos', 'Piracicaba', 'Bauru'],
+      RJ: ['Rio de Janeiro', 'Niterói', 'Petrópolis', 'Duque de Caxias', 'Nova Iguaçu', 'Campos dos Goytacazes', 'Cabo Frio', 'Volta Redonda'],
+      MG: ['Belo Horizonte', 'Uberlândia', 'Juiz de Fora', 'Contagem', 'Montes Claros', 'Uberaba', 'Ipatinga', 'Poços de Caldas'],
+      DF: ['Brasília', 'Taguatinga', 'Ceilândia', 'Águas Claras'],
+      PR: ['Curitiba', 'Londrina', 'Maringá', 'Ponta Grossa', 'Cascavel', 'Foz do Iguaçu'],
+      SC: ['Florianópolis', 'Joinville', 'Blumenau', 'São José', 'Chapecó', 'Criciúma'],
+      RS: ['Porto Alegre', 'Caxias do Sul', 'Canoas', 'Pelotas', 'Santa Maria'],
+      BA: ['Salvador', 'Feira de Santana', 'Vitória da Conquista', 'Camaçari', 'Juazeiro'],
+    };
+    const fallbacks = fallbackCitiesMap[ufUpper] || [];
+    fallbacks.forEach((c) => citySet.add(c));
+  }
 
   return Array.from(citySet).sort();
 }

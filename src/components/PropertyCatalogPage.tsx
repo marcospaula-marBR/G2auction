@@ -81,8 +81,8 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
   // Modal de Detalhes do Imóvel (Seção 38)
   const [selectedDetailProperty, setSelectedDetailProperty] = useState<any | null>(null);
 
-  // Painel de Filtros Expansível em Mobile
-  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState<boolean>(false);
+  // Painel de Filtros Expansível
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState<boolean>(true);
 
   // Carregar estatísticas e opções dos selects no primeiro render
   useEffect(() => {
