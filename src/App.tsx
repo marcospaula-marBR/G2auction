@@ -14,20 +14,21 @@ import { PortfolioDashboard } from './components/PortfolioDashboard';
 import { PropertyReportModal } from './components/PropertyReportModal';
 import { IntroSplash } from './components/IntroSplash';
 import { CaixaFeedAdminTestPage } from './components/CaixaFeedAdminTestPage';
+import { PropertyCatalogPage } from './components/PropertyCatalogPage';
 
 import { mockProperties } from './data/mockProperties';
 import { mockParceiros } from './data/mockParceiros';
 import type { Property, LedgerEntry, UserProfile, LifecycleStep } from './types/auction';
-import { Search, Wallet, Wrench, Users, PieChart, Layers, Bot, TestTube2 } from 'lucide-react';
+import { Search, Wallet, Wrench, Users, PieChart, Layers, Bot, Building2, RefreshCw } from 'lucide-react';
 
 export function App() {
-  const APP_VERSION = 'v1.8.0';
+  const APP_VERSION = 'v1.9.0';
   const [properties] = useState<Property[]>(mockProperties);
   const [selectedProperty, setSelectedProperty] = useState<Property | undefined>(mockProperties[0]);
   const [currentLifecycleStep, setCurrentLifecycleStep] = useState<LifecycleStep>(2);
 
   const [isIntroVisible, setIsIntroVisible] = useState(true);
-  const [activeMainTab, setActiveMainTab] = useState<'discovery' | 'detail' | 'ledger' | 'renovation' | 'partners' | 'portfolio' | 'caixa-test'>('caixa-test');
+  const [activeMainTab, setActiveMainTab] = useState<'imoveis' | 'discovery' | 'detail' | 'ledger' | 'renovation' | 'partners' | 'portfolio' | 'caixa-test'>('imoveis');
   const [viewMode, setViewMode] = useState<'grid' | 'map' | 'split'>('split');
   const [activeMapLayer, setActiveMapLayer] = useState<'default' | 'price' | 'flood' | 'safety' | 'noise'>('default');
 
@@ -139,6 +140,18 @@ export function App() {
           
           <div className="flex items-center space-x-1">
             <button
+              onClick={() => setActiveMainTab('imoveis')}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center space-x-2 ${
+                activeMainTab === 'imoveis'
+                  ? 'bg-gradient-to-r from-orange-500 to-red-600 text-white shadow-md'
+                  : 'text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              <Building2 className="w-4 h-4 text-orange-200" />
+              <span>Imóveis CAIXA (Catálogo)</span>
+            </button>
+
+            <button
               onClick={() => setActiveMainTab('discovery')}
               className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-2 ${
                 activeMainTab === 'discovery'
@@ -215,14 +228,14 @@ export function App() {
 
             <button
               onClick={() => setActiveMainTab('caixa-test')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center space-x-2 ${
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
                 activeMainTab === 'caixa-test'
-                  ? 'bg-gradient-to-r from-orange-500 to-red-600 text-white shadow-md'
+                  ? 'bg-slate-900 text-white shadow-md'
                   : 'bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200'
               }`}
             >
-              <TestTube2 className="w-4 h-4 text-orange-400" />
-              <span>🧪 Teste Imóvel CAIXA</span>
+              <RefreshCw className="w-4 h-4 text-orange-400" />
+              <span>Atualizar Base CAIXA</span>
             </button>
           </div>
 
@@ -261,6 +274,13 @@ export function App() {
 
       {/* Main Body View */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
+        
+        {/* VISTA DA BASE REAL: CATÁLOGO DE IMÓVEIS CAIXA (/imoveis) */}
+        {activeMainTab === 'imoveis' && (
+          <PropertyCatalogPage
+            onOpenAdmin={() => setActiveMainTab('caixa-test')}
+          />
+        )}
         
         {/* VISTA 1: DESCOBERTA & MAPA */}
         {activeMainTab === 'discovery' && (

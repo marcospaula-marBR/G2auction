@@ -21,10 +21,12 @@ export interface CaixaFeedRowParsed {
   neighborhood: string | null;
   address: string | null;
   sale_value: number | null;
+  current_minimum_value: number | null;
   appraisal_value: number | null;
   discount_percentage: number | null;
   calculated_discount_percentage: number | null;
   accepts_financing: boolean | null;
+  occupancy_status: 'OCCUPIED' | 'VACANT' | 'UNKNOWN';
   description: string | null;
   sale_modality: string | null;
   source_url: string;
@@ -34,6 +36,7 @@ export interface CaixaFeedRowParsed {
   private_area: number | null;
   land_area: number | null;
   bedrooms: number | null;
+  parking_spaces: number | null;
 
   source_hash: string;
   raw_list_data: Record<string, string>;
@@ -134,23 +137,43 @@ export function parseCsvLine(line: string, delimiter: string = ';'): string[] {
 }
 
 /**
- * Parser Determinístico do Texto da Descrição do Imóvel.
+ * Parser Determinístico do Texto da Descrição do Imóvel (Seções 8, 9, 10, 11).
  */
-export function parseDescriptionFields(description: string): {
+export function parseCaixaDescription(description: string): {
   property_type: string | null;
   total_area: number | null;
   private_area: number | null;
   land_area: number | null;
   bedrooms: number | null;
+  parking_spaces: number | null;
 } {
   if (!description) {
-    return { property_type: null, total_area: null, private_area: null, land_area: null, bedrooms: null };
+    return {
+      property_type: null,
+      total_area: null,
+      private_area: null,
+      land_area: null,
+      bedrooms: null,
+      parking_spaces: null,
+    };
   }
 
+  // 1. Tipo do Imóvel (Seção 8)
   let property_type: string | null = null;
-  const typeMatch = description.match(/^(Apartamento|Casa|Terreno|Sobrado|Galpão|Prédio|Loja|Comercial|Chácara|Sítio|Fazenda)/i);
-  if (typeMatch) property_type = typeMatch[1];
+  const typeMatch = description.match(/^(Apartamento|Casa|Terreno|Sobrado|Galpão|Prédio|Loja|Sala|Comercial|Chácara|Sítio|Fazenda)/i);
+  if (typeMatch) {
+    const rawType = typeMatch[1].toLowerCase();
+    if (rawType === 'apartamento') property_type = 'Apartamento';
+    else if (rawType === 'casa' || rawType === 'sobrado') property_type = 'Casa';
+    else if (rawType === 'terreno' || rawType === 'chácara' || rawType === 'sítio' || rawType === 'fazenda') property_type = 'Terreno';
+    else if (rawType === 'loja') property_type = 'Loja';
+    else if (rawType === 'sala') property_type = 'Sala';
+    else if (rawType === 'galpão') property_type = 'Galpão';
+    else if (rawType === 'prédio') property_type = 'Prédio';
+    else property_type = 'Comercial';
+  }
 
+  // 2. Áreas em m² (Seção 9)
   let total_area: number | null = null;
   let private_area: number | null = null;
   let land_area: number | null = null;
@@ -164,18 +187,32 @@ export function parseDescriptionFields(description: string): {
 
   total_area = parseAreaMatch(description.match(/([\d.,]+)\s*de\s*área\s*total/i));
   private_area = parseAreaMatch(description.match(/([\d.,]+)\s*de\s*área\s*privativa/i));
-  land_area = parseAreaMatch(description.match(/([\d.,]+)\s*de\s*área\s*do\s*terreno/i));
+  land_area = parseAreaMatch(description.match(/([\d.,]+)\s*de\s*área\s*(?:do\s*)?terreno/i));
 
+  // 3. Quartos (Seção 10)
   let bedrooms: number | null = null;
-  const bedMatch = description.match(/(\d+)\s*qto\(s\)/i) || description.match(/(\d+)\s*quarto\(s\)/i);
-  if (bedMatch) bedrooms = parseInt(bedMatch[1], 10);
+  const bedMatch = description.match(/(\d+)\s*qto\(s\)/i) || description.match(/(\d+)\s*quarto\(s\)/i) || description.match(/(\d+)\s*dorms?/i);
+  if (bedMatch) {
+    bedrooms = parseInt(bedMatch[1], 10);
+  }
 
-  return { property_type, total_area, private_area, land_area, bedrooms };
+  // 4. Vagas de Garagem (Seção 11 - Somente se a quantidade for explícita)
+  let parking_spaces: number | null = null;
+  const parkMatch = description.match(/(\d+)\s*vaga\(s\)/i) || description.match(/(\d+)\s*vagas?/i);
+  if (parkMatch) {
+    parking_spaces = parseInt(parkMatch[1], 10);
+  }
+
+  return { property_type, total_area, private_area, land_area, bedrooms, parking_spaces };
 }
 
 /**
+ * Alias de compatibilidade
+ */
+export const parseDescriptionFields = parseCaixaDescription;
+
+/**
  * FUNÇÃO CENTRAL ÚNICA: parseCaixaCsv()
- * Conforme Seção 7 da especificação master.
  */
 export function parseCaixaCsv(
   fileContent: string,
@@ -207,7 +244,7 @@ export function parseCaixaCsv(
     };
   }
 
-  // 1. Detecção da Data de Geração da Base no Cabeçalho ("Data de geração: DD/MM/YYYY")
+  // 1. Detecção da Data de Geração da Base no Cabeçalho
   let sourceGeneratedAt: string | null = null;
   const genDateMatch = fileContent.match(/Data\s*de\s*geração:\s*(\d{2})\/(\d{2})\/(\d{4})/i);
   if (genDateMatch) {
@@ -256,7 +293,6 @@ export function parseCaixaCsv(
     headers = parseCsvLine(rawLines[0], delimiter);
   }
 
-  // Mapeamento tolerante de colunas
   const findColIndex = (terms: string[]): number => {
     return headers.findIndex((h) => terms.some((t) => h.toLowerCase().includes(t.toLowerCase())));
   };
@@ -302,7 +338,7 @@ export function parseCaixaCsv(
       ? rawLink.trim()
       : `https://venda-imoveis.caixa.gov.br/sistema/detalhe-imovel.asp?hdnOrigem=index&hdnimovel=${source_property_id}`;
 
-    // Validação ID x Link (Seção 17)
+    // Validação ID x Link
     const hdnImovelInLink = extractHdnImovelFromUrl(source_url);
     if (hdnImovelInLink) {
       if (normalizeCaixaId(source_property_id) !== normalizeCaixaId(hdnImovelInLink)) {
@@ -321,7 +357,6 @@ export function parseCaixaCsv(
     const appraisal_value = idxAppraisal !== -1 ? parseBrazilianMoney(cols[idxAppraisal]) : null;
     let discount_percentage = idxDiscount !== -1 ? parseBrazilianMoney(cols[idxDiscount]) : null;
 
-    // Cálculo do desconto relativo (Seção 19)
     let calculated_discount_percentage: number | null = null;
     if (appraisal_value !== null && sale_value !== null && appraisal_value > 0) {
       calculated_discount_percentage = Number((((appraisal_value - sale_value) / appraisal_value) * 100).toFixed(2));
@@ -330,7 +365,6 @@ export function parseCaixaCsv(
       }
     }
 
-    // Financiamento boolean (Seção 20)
     let accepts_financing: boolean | null = null;
     if (idxFinancing !== -1 && cols[idxFinancing]) {
       const finStr = cols[idxFinancing].toLowerCase().trim();
@@ -341,7 +375,7 @@ export function parseCaixaCsv(
     const description = idxDesc !== -1 && cols[idxDesc] ? cols[idxDesc].trim() : null;
     const sale_modality = idxModality !== -1 && cols[idxModality] ? cols[idxModality].trim() : null;
 
-    const parsedDesc = parseDescriptionFields(description || '');
+    const parsedDesc = parseCaixaDescription(description || '');
 
     const raw_list_data: Record<string, string> = {};
     headers.forEach((h, colIdx) => {
@@ -362,10 +396,12 @@ export function parseCaixaCsv(
       neighborhood,
       address,
       sale_value,
+      current_minimum_value: sale_value,
       appraisal_value,
       discount_percentage,
       calculated_discount_percentage,
       accepts_financing,
+      occupancy_status: 'UNKNOWN',
       description,
       sale_modality,
       source_url,
@@ -374,6 +410,7 @@ export function parseCaixaCsv(
       private_area: parsedDesc.private_area,
       land_area: parsedDesc.land_area,
       bedrooms: parsedDesc.bedrooms,
+      parking_spaces: parsedDesc.parking_spaces,
       source_hash,
       raw_list_data,
     };
@@ -433,13 +470,15 @@ export function buildCanonicalProperty(listRow: any, detailParsed: any) {
     address: listRow.address,
     appraisal_value: listRow.appraisal_value,
     sale_value: listRow.sale_value,
+    current_minimum_value: listRow.sale_value,
     discount_percentage: listRow.discount_percentage,
     calculated_discount_percentage: listRow.calculated_discount_percentage,
     bedrooms: listRow.bedrooms,
-    parking_spaces: detailParsed?.property?.parking_spaces || null,
+    parking_spaces: detailParsed?.property?.parking_spaces || listRow.parking_spaces || null,
     total_area: listRow.total_area,
     private_area: listRow.private_area,
     land_area: listRow.land_area,
+    occupancy_status: listRow.occupancy_status || 'UNKNOWN',
     description: listRow.description,
     accepts_financing: listRow.accepts_financing,
     main_photo_url: detailParsed?.main_photo_url || null,
