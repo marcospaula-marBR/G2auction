@@ -12,6 +12,8 @@ import {
   RefreshCw,
   Check,
   Terminal,
+  Activity,
+  Search,
 } from 'lucide-react';
 
 import {
@@ -35,8 +37,42 @@ const ALL_UFS = [
   'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
 ];
 
+export interface DiagnosticTestResult {
+  classification: string;
+  recommended_ingestion_method: string;
+  official_search_available: boolean;
+  sample_property_ids: string[];
+  form_debug: {
+    action?: string;
+    method?: string;
+    selectUfName?: string;
+    hiddenInputs?: Record<string, string>;
+  } | null;
+  tests: {
+    root: TestItem;
+    download_page: TestItem;
+    direct_csv: TestItem;
+    public_search: TestItem;
+  };
+}
+
+export interface TestItem {
+  name: string;
+  url: string;
+  status: number;
+  finalUrl: string;
+  contentType: string;
+  contentLength: string | null;
+  bytesReceived: number;
+  location: string | null;
+  server: string | null;
+  snippet: string;
+  responseTimeMs: number;
+  contains_real_properties?: boolean;
+}
+
 export const CaixaFeedAdminTestPage: React.FC = () => {
-  // Parâmetros de Entrada de Teste (Seções 17, 43, 44, 45)
+  // Parâmetros de Entrada de Teste
   const [selectedUf, setSelectedUf] = useState('SP');
   const [testLimit, setTestLimit] = useState(1);
   const [enrich, setEnrich] = useState(false);
@@ -44,6 +80,7 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
 
   // Estados de Execução e Logs
   const [loading, setLoading] = useState(false);
+  const [diagnosing, setDiagnosing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<CaixaErrorCode | null>(null);
@@ -54,13 +91,50 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
   const [selectedRow, setSelectedRow] = useState<CaixaFeedRowParsed | null>(null);
   const [detailParsedResult, setDetailParsedResult] = useState<any | null>(null);
   const [savedVerification, setSavedVerification] = useState<any | null>(null);
+  const [diagnosticResult, setDiagnosticResult] = useState<DiagnosticTestResult | null>(null);
 
   // Sanity check visual de expansão de código
   const [isRawJsonOpen, setIsRawJsonOpen] = useState(true);
   const [isSavedRecordOpen, setIsSavedRecordOpen] = useState(true);
+  const [isDiagJsonOpen, setIsDiagJsonOpen] = useState(true);
 
   const addLog = (msg: string) => {
     setTechLogs((prev) => [...prev, `[${prev.length + 1}] ${msg}`]);
+  };
+
+  /**
+   * EXECUTAR DIAGNÓSTICO HTTP SERVER-SIDE DAS 4 REQUISIÇÕES INDEPENDENTES
+   */
+  const handleRunDiagnostic = async () => {
+    setDiagnosing(true);
+    setErrorMsg(null);
+    setDiagnosticResult(null);
+    setTechLogs([]);
+
+    try {
+      addLog(`Iniciando diagnóstico HTTP server-side para o domínio da CAIXA (UF ${selectedUf})...`);
+      addLog(`Enviando requisição server-side sem contorno anti-bot / com headers mínimos padrão...`);
+
+      const res = await fetch(`/api/caixa-proxy?action=diagnose&uf=${selectedUf}`);
+      if (!res.ok) {
+        throw new Error(`Erro na resposta do diagnóstico HTTP Status ${res.status}`);
+      }
+
+      const diagData: DiagnosticTestResult = await res.json();
+      setDiagnosticResult(diagData);
+
+      addLog(`Diagnóstico concluído com classificação: ${diagData.classification}`);
+      addLog(`Método de Ingestão Recomendado: ${diagData.recommended_ingestion_method}`);
+      addLog(`Teste A (Domínio): Status ${diagData.tests.root.status}`);
+      addLog(`Teste B (Página download): Status ${diagData.tests.download_page.status}`);
+      addLog(`Teste C (CSV direto SP): Status ${diagData.tests.direct_csv.status}`);
+      addLog(`Teste D (Busca pública SP): Status ${diagData.tests.public_search.status} (${diagData.official_search_available ? 'Imóveis Reais Detectados' : 'Sem imóveis detectados'})`);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Erro ao executar o diagnóstico de acesso');
+      addLog(`[ERRO DIAGNÓSTICO] ${err.message}`);
+    } finally {
+      setDiagnosing(false);
+    }
   };
 
   /**
@@ -82,7 +156,6 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
     const feedUrl = buildCaixaFeedUrl(selectedUf);
 
     try {
-      // 1. Download do Feed CSV Oficial por UF server-side
       addLog(`Consultando feed oficial da CAIXA: ${feedUrl}`);
 
       const resFeed = await fetch(`/api/caixa-proxy?action=download_feed&uf=${selectedUf}`);
@@ -95,7 +168,6 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
       addLog(`Status HTTP 200 OK | Content-Type: ${feedData.contentType || 'application/octet-stream'}`);
       addLog(`Tamanho retornado: ${feedData.contentLength || 0} bytes`);
 
-      // 2. Parsing e Decodificação do CSV (Windows-1252 / Latin-1)
       const parsedFeed = parseCaixaCsvFeed(feedData.fileContent || '', selectedUf, feedUrl);
       setFeedMetadata(parsedFeed.metadata);
 
@@ -108,13 +180,11 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
         throw new Error(`FEED_EMPTY: Nenhum imóvel válido foi encontrado no feed de ${selectedUf}`);
       }
 
-      // 3. Selecionar o PRIMEIRO registro real para o teste
       const firstRow = parsedFeed.rows[0];
       setSelectedRow(firstRow);
       addLog(`Imóvel real selecionado da base: ID TEXT "${firstRow.source_property_id}"`);
       addLog(`Link oficial do CSV: ${firstRow.source_url}`);
 
-      // 4. ETAPA DE ENRIQUECIMENTO (Fase 2 - se enrich === true)
       let enrichedDetail: any = null;
       if (isEnrichActive) {
         addLog(`[ENRIQUECIMENTO] Solicitando ficha individual oficial em: ${firstRow.source_url}`);
@@ -136,7 +206,6 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
         }
       }
 
-      // 5. ETAPA DE PERSISTÊNCIA NO SUPABASE (Fase 3 - se save === true)
       if (isSaveActive) {
         await executeSupabaseSave(firstRow, enrichedDetail, parsedFeed.metadata);
       } else {
@@ -240,7 +309,6 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
 
       addLog(`[UPSERT SUCESSO] UUID Interno: ${result.propertyId} ${result.isMemoryFallback ? '(Store Local de Verificação)' : '(Supabase Postgres)'}`);
 
-      // SELECT de verificação (Prova de Persistência)
       addLog(`Executando SELECT de verificação para o imóvel ${row.source_property_id}...`);
       const verifyRes = await verifySavedPropertyInSupabase('CAIXA', row.source_property_id);
 
@@ -259,7 +327,7 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
   };
 
   /**
-   * FALLBACK MANUAL DE UPLOAD DE CSV CAIXA (Seção 28)
+   * FALLBACK MANUAL DE UPLOAD DE CSV CAIXA
    */
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -315,7 +383,6 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
     reader.readAsText(file, 'iso-8859-1');
   };
 
-  // Montagem do JSON canônico unificado exigido na Seção 18
   const canonicalResponseJson = selectedRow
     ? {
         success: true,
@@ -361,7 +428,7 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
               /admin/caixa-feed-test
             </span>
             <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5" /> Fonte Oficial: Lista_imoveis_{selectedUf}.csv
+              <ShieldCheck className="w-3.5 h-3.5" /> Ingestão Autônoma CAIXA + Supabase
             </span>
           </div>
 
@@ -381,20 +448,196 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
 
         <div>
           <h1 className="text-2xl font-black text-white tracking-tight">
-            Ingestão Autônoma de Imóveis CAIXA via Feed CSV Público
+            Diagnóstico de Acesso HTTP & Ingestão CAIXA
           </h1>
           <p className="text-xs text-slate-300 font-medium max-w-3xl mt-1">
-            Consome diretamente a fonte pública de dados por estado (<code>/listaweb/Lista_imoveis_{selectedUf}.csv</code>). Nenhum imóvel é inventado ou gerado por IA.
+            Diagnostique o status HTTP 403 e a acessibilidade das 4 URLs oficiais da CAIXA server-side sem tentar contornar anti-bot ou simular humano.
           </p>
         </div>
       </div>
 
-      {/* PAINEL DE CONTROLE E PARÂMETROS DO TESTE (Seções 17, 43, 44, 45) */}
+      {/* PAINEL DE AÇÃO DIAGNÓSTICA ESPECIAL */}
+      <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-red-500/10 border border-orange-500/30 p-6 rounded-3xl space-y-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <span className="text-[10px] font-black uppercase text-orange-600 tracking-wider block">Diagnóstico de Conectividade</span>
+            <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+              <Activity className="w-5 h-5 text-orange-500" /> Diagnosticar Acesso HTTP da CAIXA
+            </h2>
+            <p className="text-xs text-slate-600">
+              Executa 4 requisições GET server-side independentes com headers padrão mínimos (sem cookies nem simulador anti-bot).
+            </p>
+          </div>
+
+          {/* BOTÃO PRINCIPAL SOLICITADO: [ DIAGNOSTICAR ACESSO CAIXA ] */}
+          <button
+            onClick={handleRunDiagnostic}
+            disabled={diagnosing || loading}
+            className="bg-slate-900 hover:bg-slate-800 text-white font-black text-xs px-6 py-4 rounded-2xl shadow-xl flex items-center justify-center space-x-2 transition-all transform active:scale-95 disabled:opacity-50 flex-shrink-0"
+          >
+            <Activity className={`w-4 h-4 text-orange-400 ${diagnosing ? 'animate-spin' : ''}`} />
+            <span>{diagnosing ? 'EXECUTANDO DIAGNÓSTICO...' : '[ DIAGNOSTICAR ACESSO CAIXA ]'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* RESULTADO DO DIAGNÓSTICO EM TABELA E CLASSIFICAÇÃO AUTOMÁTICA */}
+      {diagnosticResult && (
+        <div className="space-y-6">
+          
+          {/* Card de Classificação do Cenário */}
+          <div className="bg-slate-900 text-white p-6 rounded-3xl border border-slate-800 space-y-3 shadow-xl">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+              <div className="flex items-center space-x-2">
+                <span className="text-slate-400 text-xs font-bold uppercase">Classificação Automática:</span>
+                <span className="bg-orange-500 text-slate-950 font-black text-xs px-3 py-1 rounded-full uppercase font-mono">
+                  {diagnosticResult.classification}
+                </span>
+              </div>
+
+              <div className="flex items-center space-x-2 text-xs">
+                <span className="text-slate-400 font-bold">Ingestão Recomendada:</span>
+                <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-3 py-0.5 rounded-full font-extrabold font-mono">
+                  {diagnosticResult.recommended_ingestion_method}
+                </span>
+              </div>
+            </div>
+
+            {/* Descrição Didática do Cenário */}
+            <p className="text-xs text-slate-300 font-medium">
+              {diagnosticResult.classification.includes('CENARIO_1') && (
+                <strong className="text-amber-400">CENÁRIO 1 (CSV_DIRECT_BLOCKED): O caminho direto /listaweb está retornando 403, porém as páginas HTML oficiais continuam retornando 200 OK. Estratégia recomendada: Ingestão pelas páginas públicas oficiais (OFFICIAL_HTML_SEARCH).</strong>
+              )}
+              {diagnosticResult.classification.includes('CENARIO_2') && (
+                <strong className="text-red-400">CENÁRIO 2 (CAIXA_BLOCKS_SERVER_ORIGIN): O IP / runtime do servidor está bloqueado no domínio (403 em todas as URLs). Manter a opção de upload manual de CSV e preparar ingestão autorizada externa.</strong>
+              )}
+              {diagnosticResult.classification.includes('CENARIO_3') && (
+                <strong className="text-amber-400">CENÁRIO 3 (FORM_AVAILABLE_CSV_BLOCKED): A página de formulário oficial download-lista.asp respondeu 200 OK, mas a URL direta do CSV retornou 403.</strong>
+              )}
+              {diagnosticResult.classification.includes('CENARIO_4') && (
+                <strong className="text-emerald-400">CENÁRIO 4 (DIRECT_CSV_AVAILABLE): A URL do CSV direto respondeu HTTP 200 OK! O feed CSV oficial por UF pode continuar sendo consumido.</strong>
+              )}
+              {diagnosticResult.classification.includes('CENARIO_5') && (
+                <strong className="text-emerald-400">CENÁRIO 5 (SEARCH_PAGE_AVAILABLE): A busca pública oficial respondeu 200 OK e contém imóveis reais listados.</strong>
+              )}
+            </p>
+          </div>
+
+          {/* TABELA DE DIAGNÓSTICO EXIGIDA NO ESPECIFICADO */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">Resultados das Requisições HTTP Server-Side</span>
+            
+            <div className="overflow-x-auto rounded-2xl border border-slate-200">
+              <table className="w-full text-left text-xs font-mono">
+                <thead className="bg-slate-100 font-black text-slate-700 uppercase tracking-wider text-[10px] border-b border-slate-200">
+                  <tr>
+                    <th className="p-3">RECURSO</th>
+                    <th className="p-3">STATUS</th>
+                    <th className="p-3">CONTENT-TYPE</th>
+                    <th className="p-3">BYTES</th>
+                    <th className="p-3 text-right">TEMPO</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
+                  {Object.values(diagnosticResult.tests).map((test) => (
+                    <tr key={test.name} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-3">
+                        <span className="font-bold text-slate-900 block">{test.name}</span>
+                        <span className="text-[10px] text-slate-400 truncate max-w-xs block font-mono">{test.url}</span>
+                      </td>
+
+                      <td className="p-3">
+                        <span className={`px-2.5 py-1 rounded-full text-[11px] font-black ${
+                          test.status === 200 ? 'bg-emerald-100 text-emerald-800' : test.status === 403 ? 'bg-red-100 text-red-800' : 'bg-slate-100 text-slate-800'
+                        }`}>
+                          {test.status} {test.status === 200 ? 'OK' : test.status === 403 ? 'FORBIDDEN' : ''}
+                        </span>
+                      </td>
+
+                      <td className="p-3 text-slate-600 truncate max-w-[200px]">
+                        {test.contentType || 'N/I'}
+                      </td>
+
+                      <td className="p-3 font-bold text-slate-900">
+                        {test.bytesReceived.toLocaleString()} B
+                      </td>
+
+                      <td className="p-3 text-right font-extrabold text-slate-600">
+                        {test.responseTimeMs} ms
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* DADOS DO FORMULÁRIO (CENÁRIO 3 / FORM DEBUG) */}
+          {diagnosticResult.form_debug && (
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-3 text-xs font-mono">
+              <span className="text-[10px] font-black uppercase text-orange-600 tracking-wider block">Campos do Formulário HTML (download-lista.asp)</span>
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
+                <div><strong>Form Action:</strong> {diagnosticResult.form_debug.action || 'N/I'}</div>
+                <div><strong>Form Method:</strong> {diagnosticResult.form_debug.method || 'POST'}</div>
+                <div><strong>UF Select Name:</strong> {diagnosticResult.form_debug.selectUfName || 'hdnEstado'}</div>
+                {diagnosticResult.form_debug.hiddenInputs && (
+                  <div>
+                    <strong>Inputs Hidden:</strong>
+                    <pre className="mt-1 text-[10px] bg-slate-100 p-2 rounded-xl">
+                      {JSON.stringify(diagnosticResult.form_debug.hiddenInputs, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* DADOS DA BUSCA PÚBLICA (CENÁRIO 5 / IDs REAIS DETECTADOS) */}
+          {diagnosticResult.sample_property_ids && diagnosticResult.sample_property_ids.length > 0 && (
+            <div className="bg-emerald-950/20 border border-emerald-500/30 p-6 rounded-3xl space-y-3 text-xs font-mono">
+              <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider block flex items-center gap-1">
+                <Search className="w-3.5 h-3.5" /> Amostra de IDs Reais Encontrados na Busca Pública Oficial
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {diagnosticResult.sample_property_ids.map((idStr) => (
+                  <span key={idStr} className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-3 py-1 rounded-xl font-black">
+                    ID CAIXA: {idStr}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* JSON COMPLETO DO RESULTADO DO DIAGNÓSTICO */}
+          <div className="bg-slate-900 text-slate-100 rounded-3xl border border-slate-800 overflow-hidden shadow-xl">
+            <button
+              onClick={() => setIsDiagJsonOpen(!isDiagJsonOpen)}
+              className="w-full p-5 bg-slate-900 hover:bg-slate-800/80 transition-colors flex items-center justify-between text-xs font-black text-slate-200"
+            >
+              <div className="flex items-center space-x-2">
+                <Code2 className="w-4 h-4 text-orange-400" />
+                <span>JSON BRUTO DO RESULTADO DO DIAGNÓSTICO</span>
+              </div>
+              <span className="text-emerald-400 font-mono text-[10px]">
+                {isDiagJsonOpen ? 'Ocultar JSON' : 'Ver JSON'}
+              </span>
+            </button>
+
+            {isDiagJsonOpen && (
+              <pre className="overflow-x-auto p-6 bg-slate-950 border-t border-slate-800 text-[11px] leading-relaxed text-emerald-400 font-mono max-h-96">
+                {JSON.stringify(diagnosticResult, null, 2)}
+              </pre>
+            )}
+          </div>
+
+        </div>
+      )}
+
+      {/* PAINEL DE CONTROLE DA INGESTÃO */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-6">
         
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end border-b border-slate-100 pb-6">
           
-          {/* Seleção de UF */}
           <div className="md:col-span-3 space-y-1.5">
             <label className="text-xs font-black uppercase text-slate-700 tracking-wider">
               Estado (UF):
@@ -412,7 +655,6 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
             </select>
           </div>
 
-          {/* Limite de Teste */}
           <div className="md:col-span-3 space-y-1.5">
             <label className="text-xs font-black uppercase text-slate-700 tracking-wider">
               Limite de Imóveis:
@@ -428,7 +670,6 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
             </select>
           </div>
 
-          {/* Opções de Enriquecimento e Salvamento */}
           <div className="md:col-span-6 flex flex-wrap items-center gap-6 bg-slate-50 p-3 rounded-2xl border border-slate-200">
             <label className="flex items-center space-x-2 cursor-pointer text-xs font-bold text-slate-800 select-none">
               <input
@@ -453,30 +694,26 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
 
         </div>
 
-        {/* BOTÕES PRINCIPAIS DE AÇÃO */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           
-          {/* BOTÃO PRINCIPAL: BAIXAR LISTA REAL DE SP (Seção 19 e 43) */}
           <button
             onClick={() => handleRunFeedTest()}
-            disabled={loading || saving}
+            disabled={loading || saving || diagnosing}
             className="bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white font-black text-xs px-6 py-4 rounded-2xl shadow-lg shadow-orange-500/25 flex items-center justify-center space-x-2 transition-all transform active:scale-95 disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             <span>{loading ? 'CONSULTANDO FEED CAIXA...' : `BAIXAR LISTA REAL DE ${selectedUf}`}</span>
           </button>
 
-          {/* ATALHO TESTE 3: EXECUTA FEED + ENRICHEMENT + SAVE */}
           <button
             onClick={() => handleRunFeedTest(true, true)}
-            disabled={loading || saving}
+            disabled={loading || saving || diagnosing}
             className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-6 py-4 rounded-2xl shadow-lg shadow-emerald-600/20 flex items-center justify-center space-x-2 transition-all transform active:scale-95 disabled:opacity-50"
           >
             <Database className={`w-4 h-4 ${saving ? 'animate-spin' : ''}`} />
             <span>TESTAR E SALVAR NO SUPABASE</span>
           </button>
 
-          {/* FALLBACK: IMPORTAR ARQUIVO MANUAL (Seção 28) */}
           <label className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-6 py-4 rounded-2xl shadow-md flex items-center justify-center space-x-2 cursor-pointer transition-colors">
             <Upload className="w-4 h-4 text-orange-400" />
             <span>IMPORTAR CSV CAIXA</span>
@@ -521,7 +758,7 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
         </div>
       )}
 
-      {/* METADADOS OFICIAIS DO FEED CSV (Seção 7, 19, 31) */}
+      {/* METADADOS OFICIAIS DO FEED CSV */}
       {feedMetadata && (
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4 text-xs">
           <span className="text-[10px] font-black uppercase text-orange-600 tracking-wider block">Metadados Oficiais Extraídos do CSV</span>
@@ -554,7 +791,7 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
         </div>
       )}
 
-      {/* CARD DO PRIMEIRA IMÓVEL REAL OBTIDO DO CSV (Seção 19, 43, 44) */}
+      {/* CARD DO PRIMEIRA IMÓVEL REAL OBTIDO DO CSV */}
       {selectedRow && (
         <div className="space-y-8">
           
@@ -570,7 +807,6 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
 
             <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
               
-              {/* Foto Principal (Se enriquecido) */}
               <div className="lg:col-span-5 space-y-3">
                 <div className="relative h-64 sm:h-72 w-full rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shadow-sm">
                   {detailParsedResult?.main_photo_url ? (
@@ -596,7 +832,6 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Ficha e Atributos Extraídos do CSV Oficial */}
               <div className="lg:col-span-7 space-y-4">
                 <div>
                   <div className="flex items-center space-x-2 text-xs font-extrabold text-orange-600 uppercase tracking-wider mb-1">
@@ -616,7 +851,6 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
                   )}
                 </div>
 
-                {/* Valoração Financeira */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs">
                   <div>
                     <span className="text-slate-400 font-bold block text-[10px]">PREÇO CAIXA:</span>
@@ -640,7 +874,6 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Atributos Extraídos da Descrição do CSV */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                   <div className="bg-slate-100 p-2.5 rounded-xl border border-slate-200">
                     <span className="text-slate-500 font-bold block text-[10px]">ÁREA PRIVATIVA:</span>
@@ -671,7 +904,6 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Descrição Original do CSV */}
                 {selectedRow.description && (
                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
                     <span className="text-slate-400 font-bold block text-[10px] uppercase">Descrição Oficial do CSV:</span>
@@ -679,7 +911,6 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
                   </div>
                 )}
 
-                {/* Botão Ver Link Oficial fornecido pelo CSV */}
                 <div className="pt-2">
                   <a
                     href={selectedRow.source_url}
@@ -697,7 +928,6 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
             </div>
           </div>
 
-          {/* DOCUMENTOS DO IMÓVEL (Se Enriquecido) */}
           {detailParsedResult?.documents?.list && detailParsedResult.documents.list.length > 0 && (
             <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-3 shadow-sm text-xs">
               <h3 className="text-xs font-black uppercase text-slate-900 flex items-center gap-2">
@@ -722,7 +952,6 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
             </div>
           )}
 
-          {/* EXIBIÇÃO DO JSON CANÔNICO (Seção 18) */}
           {canonicalResponseJson && (
             <div className="bg-slate-900 text-slate-100 rounded-3xl border border-slate-800 overflow-hidden shadow-xl">
               <button
@@ -731,7 +960,7 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
               >
                 <div className="flex items-center space-x-2">
                   <Code2 className="w-4 h-4 text-orange-400" />
-                  <span>RESPONSA JSON CANÔNICA DO FEED (SEÇÃO 18)</span>
+                  <span>RESPOSTA JSON CANÔNICA DO FEED</span>
                 </div>
                 <span className="text-emerald-400 font-mono text-[10px]">
                   {isRawJsonOpen ? 'Ocultar JSON' : 'Ver JSON'}
@@ -749,7 +978,6 @@ export const CaixaFeedAdminTestPage: React.FC = () => {
         </div>
       )}
 
-      {/* REGISTRO RECUPERADO DO SUPABASE APÓS UPSERT + SELECT (Seção 45) */}
       {savedVerification && (
         <div className="bg-emerald-950/40 text-white p-6 rounded-3xl border border-emerald-500/40 shadow-2xl space-y-4 font-mono text-xs">
           <div className="flex items-center justify-between border-b border-emerald-500/30 pb-3">
