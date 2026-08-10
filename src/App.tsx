@@ -13,7 +13,7 @@ import { PartnerNetwork } from './components/PartnerNetwork';
 import { PortfolioDashboard } from './components/PortfolioDashboard';
 import { PropertyReportModal } from './components/PropertyReportModal';
 import { IntroSplash } from './components/IntroSplash';
-import { CaixaScraperTest } from './components/CaixaScraperTest';
+import { CaixaAdminTestPage } from './components/CaixaAdminTestPage';
 
 import { mockProperties } from './data/mockProperties';
 import { mockParceiros } from './data/mockParceiros';
@@ -21,7 +21,7 @@ import type { Property, LedgerEntry, UserProfile, LifecycleStep } from './types/
 import { Search, Wallet, Wrench, Users, PieChart, Layers, Bot, TestTube2 } from 'lucide-react';
 
 export function App() {
-  const APP_VERSION = 'v1.4.0';
+  const APP_VERSION = 'v1.5.0';
   const [properties] = useState<Property[]>(mockProperties);
   const [selectedProperty, setSelectedProperty] = useState<Property | undefined>(mockProperties[0]);
   const [currentLifecycleStep, setCurrentLifecycleStep] = useState<LifecycleStep>(2);
@@ -350,7 +350,7 @@ export function App() {
 
         {/* Teste Isolado de Imóvel CAIXA (Etapas 1 a 8) */}
         {activeMainTab === 'caixa-test' && (
-          <CaixaScraperTest />
+          <CaixaAdminTestPage />
         )}
 
       </main>

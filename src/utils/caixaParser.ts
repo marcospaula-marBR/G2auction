@@ -13,6 +13,8 @@ export interface CaixaPropertyDebugJSON {
 
     appraisal_value: number | null;
     sale_value: number | null;
+    first_auction_value: number | null;
+    second_auction_value: number | null;
     discount_percentage: number | null;
 
     sale_modality: string | null;
@@ -22,6 +24,7 @@ export interface CaixaPropertyDebugJSON {
 
     total_area: number | null;
     private_area: number | null;
+    useful_area: number | null;
     land_area: number | null;
 
     registration_number: string | null;
@@ -35,6 +38,9 @@ export interface CaixaPropertyDebugJSON {
     accepts_fgts: boolean | null;
     occupied: string | null;
 
+    condominium_notes: string | null;
+    tax_notes: string | null;
+
     first_auction_date: string | null;
     second_auction_date: string | null;
 
@@ -46,6 +52,7 @@ export interface CaixaPropertyDebugJSON {
   documents: {
     auction_notice_url: string | null;
     registration_url: string | null;
+    list: { type: string; title: string; url: string }[];
   };
   main_photo_url: string | null;
   photos: string[];
@@ -60,8 +67,10 @@ export interface CaixaPropertyDebugJSON {
   };
 }
 
-// Utilitário para conversão de valores numéricos em Reais (BRL)
-function parseBRLNumber(text: string | null): number | null {
+/**
+ * Converte valor monetário brasileiro (ex: "R$ 145.104,71") para número (ex: 145104.71).
+ */
+export function parseBrazilianMoney(text: string | null | undefined): number | null {
   if (!text) return null;
   const match = text.match(/R\$\s*([\d.]+,\d{2})/i) || text.match(/([\d.]+,\d{2})/);
   if (!match) return null;
@@ -70,8 +79,10 @@ function parseBRLNumber(text: string | null): number | null {
   return isNaN(parsed) ? null : parsed;
 }
 
-// Utilitário para conversão de áreas (m²)
-function parseAreaNumber(text: string | null): number | null {
+/**
+ * Converte número com vírgula ou área brasileira (ex: "102,89m2" ou "102,89") para número (ex: 102.89).
+ */
+export function parseBrazilianNumber(text: string | null | undefined): number | null {
   if (!text) return null;
   const match = text.match(/([\d.]+,\d{1,2})/);
   if (!match) return null;
@@ -80,47 +91,77 @@ function parseAreaNumber(text: string | null): number | null {
   return isNaN(parsed) ? null : parsed;
 }
 
-export function parseCaixaHTML(html: string, caixaId: string, sourceUrl: string, httpStatus: number): CaixaPropertyDebugJSON {
+/**
+ * Módulo de Extração de Fotos do HTML da Ficha CAIXA.
+ */
+export function extractCaixaPhotos(html: string, caixaId: string): string[] {
+  const foundUrls = new Set<string>();
+
+  // Inspeciona src, href, data-src, data-lazy-src, srcset
+  const photoRegex = /(?:src|href|data-src|data-lazy-src)="([^"]*\/fotos\/[A-Za-z0-9_.-]+\.(?:jpg|png|jpeg))"/gi;
+  let match: RegExpExecArray | null;
+  while ((match = photoRegex.exec(html)) !== null) {
+    let url = match[1];
+    if (url.startsWith('/')) {
+      url = `https://venda-imoveis.caixa.gov.br${url}`;
+    } else if (!url.startsWith('http')) {
+      url = `https://venda-imoveis.caixa.gov.br/fotos/${url}`;
+    }
+    foundUrls.add(url);
+  }
+
+  // Fallback padrão se nenhuma foto explícita for encontrada na página estática ASP
+  if (foundUrls.size === 0 && caixaId) {
+    const cleanId = String(caixaId).replace(/\D/g, '');
+    foundUrls.add(`https://venda-imoveis.caixa.gov.br/fotos/F${cleanId}21.jpg`);
+  }
+
+  return Array.from(foundUrls);
+}
+
+/**
+ * Módulo de Extração de Documentos do HTML da Ficha CAIXA.
+ */
+export function extractCaixaDocuments(html: string): { type: string; title: string; url: string }[] {
+  const docs: { type: string; title: string; url: string }[] = [];
+
+  const docRegex = /<a[^>]*href=["']([^"']+\.(?:pdf|doc|docx))["'][^>]*>(.*?)<\/a>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = docRegex.exec(html)) !== null) {
+    let url = match[1];
+    const linkText = match[2].replace(/<[^>]+>/g, '').trim() || 'Documento Oficial';
+
+    if (url.startsWith('/')) {
+      url = `https://venda-imoveis.caixa.gov.br${url}`;
+    }
+
+    let type = 'OTHER';
+    if (/edital/i.test(linkText) || /edital/i.test(url)) type = 'AUCTION_NOTICE';
+    else if (/matricula|matrícula/i.test(linkText) || /matricula/i.test(url)) type = 'REGISTRATION';
+
+    docs.push({ type, title: linkText, url });
+  }
+
+  return docs;
+}
+
+/**
+ * Parser Determinístico de HTML de Ficha de Imóvel da CAIXA.
+ */
+export function parseCaixaHTML(
+  html: string,
+  caixaId: string,
+  sourceUrl: string,
+  httpStatus: number
+): CaixaPropertyDebugJSON {
   if (!html || html.trim().length === 0) {
     return {
       success: false,
-      error: 'Não foi possível consultar automaticamente este imóvel (HTML vazio).',
+      error: 'PROPERTY_NOT_FOUND',
       caixa_id: caixaId,
       source_url: sourceUrl,
-      property: {
-        property_type: null,
-        address: null,
-        neighborhood: null,
-        city: null,
-        state: null,
-        zipcode: null,
-        appraisal_value: null,
-        sale_value: null,
-        discount_percentage: null,
-        sale_modality: null,
-        bedrooms: null,
-        parking_spaces: null,
-        total_area: null,
-        private_area: null,
-        land_area: null,
-        registration_number: null,
-        district: null,
-        registry_office: null,
-        municipal_registration: null,
-        description: null,
-        accepts_financing: null,
-        accepts_fgts: null,
-        occupied: null,
-        first_auction_date: null,
-        second_auction_date: null,
-        auction_notice_number: null,
-        auction_notice_item: null,
-        auctioneer: null,
-      },
-      documents: {
-        auction_notice_url: null,
-        registration_url: null,
-      },
+      property: emptyPropertyState(),
+      documents: { auction_notice_url: null, registration_url: null, list: [] },
       main_photo_url: null,
       photos: [],
       debug: {
@@ -129,54 +170,21 @@ export function parseCaixaHTML(html: string, caixaId: string, sourceUrl: string,
         foundPhotosCount: 0,
         validPhotosCount: 0,
         foundFieldsCount: 0,
-        missingFieldsCount: 24,
+        missingFieldsCount: 26,
         rawHtmlSnippet: '',
       },
     };
   }
 
-  // Verificação de CAPTCHA ou bloqueio anti-bot
-  const isCaptcha = html.includes('captcha') || html.includes('g-recaptcha') || html.includes('Validação de Segurança') || html.includes('Access Denied');
-  if (isCaptcha) {
+  // Verificação de Erro ao tentar recuperar os dados do imóvel
+  if (html.includes('erro ao tentar recuperar os dados do imóvel') || html.includes('Imóvel não encontrado')) {
     return {
       success: false,
-      error: 'Não foi possível consultar automaticamente este imóvel.',
+      error: 'PROPERTY_NOT_FOUND',
       caixa_id: caixaId,
       source_url: sourceUrl,
-      property: {
-        property_type: null,
-        address: null,
-        neighborhood: null,
-        city: null,
-        state: null,
-        zipcode: null,
-        appraisal_value: null,
-        sale_value: null,
-        discount_percentage: null,
-        sale_modality: null,
-        bedrooms: null,
-        parking_spaces: null,
-        total_area: null,
-        private_area: null,
-        land_area: null,
-        registration_number: null,
-        district: null,
-        registry_office: null,
-        municipal_registration: null,
-        description: null,
-        accepts_financing: null,
-        accepts_fgts: null,
-        occupied: null,
-        first_auction_date: null,
-        second_auction_date: null,
-        auction_notice_number: null,
-        auction_notice_item: null,
-        auctioneer: null,
-      },
-      documents: {
-        auction_notice_url: null,
-        registration_url: null,
-      },
+      property: emptyPropertyState(),
+      documents: { auction_notice_url: null, registration_url: null, list: [] },
       main_photo_url: null,
       photos: [],
       debug: {
@@ -185,15 +193,49 @@ export function parseCaixaHTML(html: string, caixaId: string, sourceUrl: string,
         foundPhotosCount: 0,
         validPhotosCount: 0,
         foundFieldsCount: 0,
-        missingFieldsCount: 24,
+        missingFieldsCount: 26,
         rawHtmlSnippet: html.substring(0, 500),
       },
     };
   }
 
+  // Verificação de Autenticação Inesperada ou Verificação Humana (CAPTCHA)
+  if (html.includes('login.asp') || html.includes('autenticacao')) {
+    return {
+      success: false,
+      error: 'AUTH_REQUIRED',
+      caixa_id: caixaId,
+      source_url: sourceUrl,
+      property: emptyPropertyState(),
+      documents: { auction_notice_url: null, registration_url: null, list: [] },
+      main_photo_url: null,
+      photos: [],
+    };
+  }
+
+  const isCaptcha =
+    html.includes('captcha') ||
+    html.includes('g-recaptcha') ||
+    html.includes('Validação de Segurança') ||
+    html.includes('Access Denied');
+  if (isCaptcha) {
+    return {
+      success: false,
+      error: 'HUMAN_VERIFICATION_REQUIRED',
+      caixa_id: caixaId,
+      source_url: sourceUrl,
+      property: emptyPropertyState(),
+      documents: { auction_notice_url: null, registration_url: null, list: [] },
+      main_photo_url: null,
+      photos: [],
+    };
+  }
+
   // 1. Extração de Tipo de Imóvel
   let property_type: string | null = null;
-  const typeMatch = html.match(/Tipo de imóvel:\s*<\/strong>\s*([^<]+)/i) || html.match(/(Apartamento|Casa|Terreno|Comercial|Sobrado|Galpão)/i);
+  const typeMatch =
+    html.match(/Tipo de imóvel:\s*<\/strong>\s*([^<]+)/i) ||
+    html.match(/(Apartamento|Casa|Terreno|Comercial|Sobrado|Galpão)/i);
   if (typeMatch) property_type = typeMatch[1].trim();
 
   // 2. Endereço, Bairro, Cidade, Estado, CEP
@@ -203,10 +245,10 @@ export function parseCaixaHTML(html: string, caixaId: string, sourceUrl: string,
   let state: string | null = null;
   let zipcode: string | null = null;
 
-  const addrMatch = html.match(/Endereço:\s*<\/strong>\s*([^<]+)/i) || html.match(/class="related-box"[\s\S]*?<p>([^<]+)<\/p>/i);
-  if (addrMatch) {
-    address = addrMatch[1].trim();
-  }
+  const addrMatch =
+    html.match(/Endereço:\s*<\/strong>\s*([^<]+)/i) ||
+    html.match(/class="related-box"[\s\S]*?<p>([^<]+)<\/p>/i);
+  if (addrMatch) address = addrMatch[1].trim();
 
   const cityStateMatch = html.match(/([A-Za-zÀ-ÖØ-öø-ÿ\s]+)\s*-\s*([A-Z]{2})/);
   if (cityStateMatch) {
@@ -220,17 +262,30 @@ export function parseCaixaHTML(html: string, caixaId: string, sourceUrl: string,
   const neighMatch = html.match(/Bairro:\s*<\/strong>\s*([^<]+)/i);
   if (neighMatch) neighborhood = neighMatch[1].trim();
 
-  // 3. Avaliação e Valor de Venda
+  // 3. Avaliação, Preço Mínimo de Venda, Leilões
   let appraisal_value: number | null = null;
   let sale_value: number | null = null;
+  let first_auction_value: number | null = null;
+  let second_auction_value: number | null = null;
 
-  const appraisalMatch = html.match(/Valor de avaliação:\s*R\$\s*([\d.]+,\d{2})/i) || html.match(/Avaliação:\s*R\$\s*([\d.]+,\d{2})/i);
-  if (appraisalMatch) appraisal_value = parseBRLNumber(appraisalMatch[1]);
+  const appraisalMatch =
+    html.match(/Valor de avaliação:\s*R\$\s*([\d.]+,\d{2})/i) ||
+    html.match(/Avaliação:\s*R\$\s*([\d.]+,\d{2})/i);
+  if (appraisalMatch) appraisal_value = parseBrazilianMoney(appraisalMatch[1]);
 
-  const saleMatch = html.match(/Valor mínimo de venda:\s*R\$\s*([\d.]+,\d{2})/i) || html.match(/Valor mínimo de venda 2º Leilão:\s*R\$\s*([\d.]+,\d{2})/i) || html.match(/Valor de venda:\s*R\$\s*([\d.]+,\d{2})/i);
-  if (saleMatch) sale_value = parseBRLNumber(saleMatch[1]);
+  const saleMatch =
+    html.match(/Valor mínimo de venda:\s*R\$\s*([\d.]+,\d{2})/i) ||
+    html.match(/Valor mínimo de venda 2º Leilão:\s*R\$\s*([\d.]+,\d{2})/i) ||
+    html.match(/Valor de venda:\s*R\$\s*([\d.]+,\d{2})/i);
+  if (saleMatch) sale_value = parseBrazilianMoney(saleMatch[1]);
 
-  // ETAPA 5 — CALCULAR DESCONTO DETERMINÍSTICO
+  const firstAuctionMatch = html.match(/1º Leilão:\s*R\$\s*([\d.]+,\d{2})/i);
+  if (firstAuctionMatch) first_auction_value = parseBrazilianMoney(firstAuctionMatch[1]);
+
+  const secondAuctionMatch = html.match(/2º Leilão:\s*R\$\s*([\d.]+,\d{2})/i);
+  if (secondAuctionMatch) second_auction_value = parseBrazilianMoney(secondAuctionMatch[1]);
+
+  // Cálculo de Desconto Determinístico
   let discount_percentage: number | null = null;
   if (appraisal_value !== null && sale_value !== null && appraisal_value > 0) {
     discount_percentage = Number((((appraisal_value - sale_value) / appraisal_value) * 100).toFixed(2));
@@ -238,7 +293,9 @@ export function parseCaixaHTML(html: string, caixaId: string, sourceUrl: string,
 
   // 4. Modalidade de Venda
   let sale_modality: string | null = null;
-  const modMatch = html.match(/Modalidade de venda:\s*<\/strong>\s*([^<]+)/i) || html.match(/(Venda Direta Extrajudicial|1º Leilão SFI|2º Leilão SFI|Licitação Aberta|Venda Direta Online)/i);
+  const modMatch =
+    html.match(/Modalidade de venda:\s*<\/strong>\s*([^<]+)/i) ||
+    html.match(/(Venda Direta Extrajudicial|1º Leilão SFI|2º Leilão SFI|Licitação Aberta|Venda Direta Online)/i);
   if (modMatch) sale_modality = modMatch[1].trim();
 
   // 5. Quartos e Vagas
@@ -254,16 +311,21 @@ export function parseCaixaHTML(html: string, caixaId: string, sourceUrl: string,
   // 6. Áreas
   let total_area: number | null = null;
   let private_area: number | null = null;
+  let useful_area: number | null = null;
   let land_area: number | null = null;
 
-  const privAreaMatch = html.match(/Área privativa\s*=\s*([\d.]+,\d{1,2})\s*m2/i) || html.match(/Área privativa:\s*([\d.]+,\d{1,2})\s*m²/i);
-  if (privAreaMatch) private_area = parseAreaNumber(privAreaMatch[1]);
+  const privAreaMatch =
+    html.match(/Área privativa\s*=\s*([\d.]+,\d{1,2})\s*m2/i) ||
+    html.match(/Área privativa:\s*([\d.]+,\d{1,2})\s*m²/i);
+  if (privAreaMatch) private_area = parseBrazilianNumber(privAreaMatch[1]);
 
-  const totAreaMatch = html.match(/Área total\s*=\s*([\d.]+,\d{1,2})\s*m2/i) || html.match(/Área total:\s*([\d.]+,\d{1,2})\s*m²/i);
-  if (totAreaMatch) total_area = parseAreaNumber(totAreaMatch[1]);
+  const totAreaMatch =
+    html.match(/Área total\s*=\s*([\d.]+,\d{1,2})\s*m2/i) ||
+    html.match(/Área total:\s*([\d.]+,\d{1,2})\s*m²/i);
+  if (totAreaMatch) total_area = parseBrazilianNumber(totAreaMatch[1]);
 
   const landAreaMatch = html.match(/Área do terreno\s*=\s*([\d.]+,\d{1,2})\s*m2/i);
-  if (landAreaMatch) land_area = parseAreaNumber(landAreaMatch[1]);
+  if (landAreaMatch) land_area = parseBrazilianNumber(landAreaMatch[1]);
 
   // 7. Matrícula, Comarca, Cartório, Inscrição Municipal
   let registration_number: string | null = null;
@@ -285,7 +347,9 @@ export function parseCaixaHTML(html: string, caixaId: string, sourceUrl: string,
 
   // 8. Descrição
   let description: string | null = null;
-  const descMatch = html.match(/Descrição:\s*<\/strong>\s*([^<]+)/i) || html.match(/<div class="desc">([\s\S]*?)<\/div>/i);
+  const descMatch =
+    html.match(/Descrição:\s*<\/strong>\s*([^<]+)/i) ||
+    html.match(/<div class="desc">([\s\S]*?)<\/div>/i);
   if (descMatch) description = descMatch[1].trim();
 
   // 9. Aceita Financiamento, FGTS, Ocupação
@@ -293,8 +357,10 @@ export function parseCaixaHTML(html: string, caixaId: string, sourceUrl: string,
   let accepts_fgts: boolean | null = null;
   let occupied: string | null = null;
 
-  if (html.match(/aceita financiamento/i) || html.match(/permitido financiamento/i)) accepts_financing = true;
-  else if (html.match(/não aceita financiamento/i) || html.match(/somente à vista/i)) accepts_financing = false;
+  if (html.match(/aceita financiamento/i) || html.match(/permitido financiamento/i))
+    accepts_financing = true;
+  else if (html.match(/não aceita financiamento/i) || html.match(/somente à vista/i))
+    accepts_financing = false;
 
   if (html.match(/aceita fgts/i) || html.match(/permitido o uso do fgts/i)) accepts_fgts = true;
   else if (html.match(/não aceita fgts/i)) accepts_fgts = false;
@@ -324,46 +390,22 @@ export function parseCaixaHTML(html: string, caixaId: string, sourceUrl: string,
   const auctioneerMatch = html.match(/Leiloeiro:\s*([^<,\n]+)/i);
   if (auctioneerMatch) auctioneer = auctioneerMatch[1].trim();
 
-  // 11. Documentos (URLs)
-  let auction_notice_url: string | null = null;
-  let registration_url: string | null = null;
-
-  const noticeUrlMatch = html.match(/href="([^"]*edital[^"]*)"/i);
-  if (noticeUrlMatch) {
-    let url = noticeUrlMatch[1];
-    if (url.startsWith('/')) url = `https://venda-imoveis.caixa.gov.br${url}`;
-    auction_notice_url = url;
-  }
-
-  const regUrlMatch = html.match(/href="([^"]*matricula[^"]*)"/i);
-  if (regUrlMatch) {
-    let url = regUrlMatch[1];
-    if (url.startsWith('/')) url = `https://venda-imoveis.caixa.gov.br${url}`;
-    registration_url = url;
-  }
-
-  // ETAPA 3 — EXTRAIR FOTOS DO HTML
-  const foundPhotoUrls = new Set<string>();
-  const photoRegex = /(?:src|href)="([^"]*\/fotos\/[A-Za-z0-9_.-]+)"/gi;
-  let match: RegExpExecArray | null;
-  while ((match = photoRegex.exec(html)) !== null) {
-    let url = match[1];
-    if (url.startsWith('/')) {
-      url = `https://venda-imoveis.caixa.gov.br${url}`;
-    }
-    foundPhotoUrls.add(url);
-  }
-
-  // Fallback padrão se nenhuma foto for listada no HTML estático do ASP
-  if (foundPhotoUrls.size === 0) {
-    foundPhotoUrls.add(`https://venda-imoveis.caixa.gov.br/fotos/F${caixaId}21.jpg`);
-  }
-
-  const candidatePhotos = Array.from(foundPhotoUrls);
+  // 11. Extração de Fotos e Documentos
+  const candidatePhotos = extractCaixaPhotos(html, caixaId);
   const main_photo_url = candidatePhotos.length > 0 ? candidatePhotos[0] : null;
   const photos = candidatePhotos.length > 1 ? candidatePhotos.slice(1) : [];
 
-  // Contagem de campos encontrados / não encontrados para a seção de debug
+  const documentList = extractCaixaDocuments(html);
+
+  let auction_notice_url: string | null = null;
+  let registration_url: string | null = null;
+
+  const noticeDoc = documentList.find((d) => d.type === 'AUCTION_NOTICE');
+  if (noticeDoc) auction_notice_url = noticeDoc.url;
+
+  const regDoc = documentList.find((d) => d.type === 'REGISTRATION');
+  if (regDoc) registration_url = regDoc.url;
+
   const allFieldValues = [
     property_type, address, neighborhood, city, state, zipcode,
     appraisal_value, sale_value, discount_percentage, sale_modality,
@@ -371,7 +413,7 @@ export function parseCaixaHTML(html: string, caixaId: string, sourceUrl: string,
     registration_number, district, registry_office, municipal_registration,
     description, accepts_financing, accepts_fgts, occupied, auctioneer
   ];
-  const foundFieldsCount = allFieldValues.filter(v => v !== null).length;
+  const foundFieldsCount = allFieldValues.filter((v) => v !== null).length;
   const missingFieldsCount = allFieldValues.length - foundFieldsCount;
 
   return {
@@ -387,12 +429,15 @@ export function parseCaixaHTML(html: string, caixaId: string, sourceUrl: string,
       zipcode,
       appraisal_value,
       sale_value,
+      first_auction_value,
+      second_auction_value,
       discount_percentage,
       sale_modality,
       bedrooms,
       parking_spaces,
       total_area,
       private_area,
+      useful_area,
       land_area,
       registration_number,
       district,
@@ -402,6 +447,8 @@ export function parseCaixaHTML(html: string, caixaId: string, sourceUrl: string,
       accepts_financing,
       accepts_fgts,
       occupied,
+      condominium_notes: null,
+      tax_notes: null,
       first_auction_date,
       second_auction_date,
       auction_notice_number,
@@ -411,6 +458,7 @@ export function parseCaixaHTML(html: string, caixaId: string, sourceUrl: string,
     documents: {
       auction_notice_url,
       registration_url,
+      list: documentList,
     },
     main_photo_url,
     photos,
@@ -423,5 +471,43 @@ export function parseCaixaHTML(html: string, caixaId: string, sourceUrl: string,
       missingFieldsCount,
       rawHtmlSnippet: html.substring(0, 1500),
     },
+  };
+}
+
+function emptyPropertyState() {
+  return {
+    property_type: null,
+    address: null,
+    neighborhood: null,
+    city: null,
+    state: null,
+    zipcode: null,
+    appraisal_value: null,
+    sale_value: null,
+    first_auction_value: null,
+    second_auction_value: null,
+    discount_percentage: null,
+    sale_modality: null,
+    bedrooms: null,
+    parking_spaces: null,
+    total_area: null,
+    private_area: null,
+    useful_area: null,
+    land_area: null,
+    registration_number: null,
+    district: null,
+    registry_office: null,
+    municipal_registration: null,
+    description: null,
+    accepts_financing: null,
+    accepts_fgts: null,
+    occupied: null,
+    condominium_notes: null,
+    tax_notes: null,
+    first_auction_date: null,
+    second_auction_date: null,
+    auction_notice_number: null,
+    auction_notice_item: null,
+    auctioneer: null,
   };
 }
