@@ -647,22 +647,35 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                 </div>
 
                 {/* BOTÕES DO CARD (Seção 34) */}
-                <div className="p-5 pt-0 grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => setSelectedDetailProperty(prop)}
-                    className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black text-xs py-3 rounded-2xl transition-colors flex items-center justify-center space-x-1"
-                  >
-                    <span>[ VER OPORTUNIDADE ]</span>
-                  </button>
+                <div className="p-5 pt-0 space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setSelectedDetailProperty(prop)}
+                      className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black text-xs py-3 rounded-2xl transition-colors flex items-center justify-center space-x-1"
+                    >
+                      <span>[ VER OPORTUNIDADE ]</span>
+                    </button>
 
+                    <a
+                      href={prop.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold text-xs py-3 rounded-2xl transition-colors flex items-center justify-center space-x-1 text-center"
+                    >
+                      <span>[ VER NA CAIXA ]</span>
+                      <ExternalLink className="w-3 h-3 text-slate-500" />
+                    </a>
+                  </div>
+
+                  {/* BOTÃO GOOGLE MAPS 360° */}
                   <a
-                    href={prop.source_url}
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${prop.address || ''}, ${prop.city} - ${prop.state}, Brasil`)}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold text-xs py-3 rounded-2xl transition-colors flex items-center justify-center space-x-1 text-center"
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-2.5 rounded-2xl shadow-xs transition-colors flex items-center justify-center space-x-1 text-center"
                   >
-                    <span>[ VER NA CAIXA ]</span>
-                    <ExternalLink className="w-3 h-3 text-slate-500" />
+                    <MapPin className="w-3.5 h-3.5 text-emerald-200" />
+                    <span>[ 📍 MAPA & STREET VIEW 360° ]</span>
                   </a>
                 </div>
               </div>
@@ -803,6 +816,35 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                   <p className="text-slate-700 font-medium leading-relaxed">{selectedDetailProperty.description}</p>
                 </div>
               )}
+
+              {/* Botões de Localização no Google Maps */}
+              <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl space-y-3">
+                <div className="flex items-center space-x-2 text-emerald-900 font-bold text-xs">
+                  <MapPin className="w-4 h-4 text-emerald-600" />
+                  <span>LOCALIZAÇÃO E VISÃO GOOGLE MAPS 360°</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${selectedDetailProperty.address || ''}, ${selectedDetailProperty.city} - ${selectedDetailProperty.state}, Brasil`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-4 py-3 rounded-xl transition-colors flex items-center justify-center space-x-2 text-center shadow-xs"
+                  >
+                    <MapPin className="w-4 h-4" />
+                    <span>[ 🗺️ VER NO GOOGLE MAPS ]</span>
+                  </a>
+
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${selectedDetailProperty.address || ''}, ${selectedDetailProperty.city} - ${selectedDetailProperty.state}`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-slate-900 hover:bg-slate-800 text-white font-black text-xs px-4 py-3 rounded-xl transition-colors flex items-center justify-center space-x-2 text-center shadow-xs"
+                  >
+                    <ExternalLink className="w-4 h-4 text-orange-400" />
+                    <span>[ 📷 STREET VIEW 360° ]</span>
+                  </a>
+                </div>
+              </div>
 
               {/* Informações da Fonte */}
               <div className="p-3 bg-slate-100 rounded-xl text-[11px] font-mono text-slate-600 space-y-1">

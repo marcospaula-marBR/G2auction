@@ -544,7 +544,7 @@ export async function fetchDistinctStatesFromSupabase(): Promise<string[]> {
 }
 
 /**
- * BUSCAR CIDADES DEPENDENTES DO ESTADO (Combina Supabase + MemoryStore)
+ * BUSCAR CIDADES DEPENDENTES DO ESTADO (Combina Supabase com limit(10000) + MemoryStore)
  */
 export async function fetchDistinctCitiesByStateFromSupabase(uf: string): Promise<string[]> {
   const ufUpper = (uf || '').trim().toUpperCase();
@@ -559,10 +559,15 @@ export async function fetchDistinctCitiesByStateFromSupabase(uf: string): Promis
         .select('city')
         .eq('source', 'CAIXA')
         .eq('state', ufUpper)
-        .eq('status', 'ACTIVE');
+        .eq('status', 'ACTIVE')
+        .limit(10000);
 
       if (data) {
-        data.forEach((d) => { if (d.city) citySet.add(d.city.trim()); });
+        data.forEach((d) => {
+          if (d.city && d.city.trim()) {
+            citySet.add(d.city.trim());
+          }
+        });
       }
     } catch (e: any) {
       console.warn('[Fetch Cities Error]', e.message);
@@ -575,23 +580,22 @@ export async function fetchDistinctCitiesByStateFromSupabase(uf: string): Promis
     }
   });
 
-  // Se nenhuma cidade foi encontrada na base para a UF selecionada, utilizar fallback de principais cidades
   if (citySet.size === 0) {
     const fallbackCitiesMap: Record<string, string[]> = {
-      SP: ['São Paulo', 'Campinas', 'Santos', 'Ribeirão Preto', 'Sorocaba', 'Adamantina', 'Guarulhos', 'São José dos Campos', 'Piracicaba', 'Bauru'],
-      RJ: ['Rio de Janeiro', 'Niterói', 'Petrópolis', 'Duque de Caxias', 'Nova Iguaçu', 'Campos dos Goytacazes', 'Cabo Frio', 'Volta Redonda'],
-      MG: ['Belo Horizonte', 'Uberlândia', 'Juiz de Fora', 'Contagem', 'Montes Claros', 'Uberaba', 'Ipatinga', 'Poços de Caldas'],
-      DF: ['Brasília', 'Taguatinga', 'Ceilândia', 'Águas Claras'],
-      PR: ['Curitiba', 'Londrina', 'Maringá', 'Ponta Grossa', 'Cascavel', 'Foz do Iguaçu'],
-      SC: ['Florianópolis', 'Joinville', 'Blumenau', 'São José', 'Chapecó', 'Criciúma'],
-      RS: ['Porto Alegre', 'Caxias do Sul', 'Canoas', 'Pelotas', 'Santa Maria'],
-      BA: ['Salvador', 'Feira de Santana', 'Vitória da Conquista', 'Camaçari', 'Juazeiro'],
+      SP: ['São Paulo', 'Campinas', 'Santos', 'Ribeirão Preto', 'Sorocaba', 'Adamantina', 'Guarulhos', 'São José dos Campos', 'Piracicaba', 'Bauru', 'Americana', 'Araçatuba', 'Araraquara', 'Barueri', 'Botucatu', 'Cotia', 'Franca', 'Indaiatuba', 'Itu', 'Jundiaí', 'Limeira', 'Marília', 'Mogi das Cruzes', 'Osasco', 'Presidente Prudente', 'Santo André', 'São Bernardo do Campo', 'São José do Rio Preto', 'Taubaté'],
+      RJ: ['Rio de Janeiro', 'Niterói', 'Petrópolis', 'Duque de Caxias', 'Nova Iguaçu', 'Campos dos Goytacazes', 'Cabo Frio', 'Volta Redonda', 'Angra dos Reis', 'Macaé', 'Teresópolis', 'Maricá', 'Nova Friburgo', 'Resende', 'Barra Mansa'],
+      MG: ['Belo Horizonte', 'Uberlândia', 'Juiz de Fora', 'Contagem', 'Montes Claros', 'Uberaba', 'Ipatinga', 'Poços de Caldas', 'Divinópolis', 'Governador Valadares', 'Patos de Minas', 'Pouso Alegre', 'Varginha'],
+      DF: ['Brasília', 'Taguatinga', 'Ceilândia', 'Águas Claras', 'Samambaia', 'Gama', 'Sobradinho'],
+      PR: ['Curitiba', 'Londrina', 'Maringá', 'Ponta Grossa', 'Cascavel', 'Foz do Iguaçu', 'São José dos Pinhais', 'Guarapuava', 'Paranaguá', 'Toledo'],
+      SC: ['Florianópolis', 'Joinville', 'Blumenau', 'São José', 'Chapecó', 'Criciúma', 'Itajaí', 'Balneário Camboriú', 'Jaraguá do Sul', 'Palhoça'],
+      RS: ['Porto Alegre', 'Caxias do Sul', 'Canoas', 'Pelotas', 'Santa Maria', 'Gravataí', 'Viamão', 'Novo Hamburgo', 'São Leopoldo', 'Passo Fundo'],
+      BA: ['Salvador', 'Feira de Santana', 'Vitória da Conquista', 'Camaçari', 'Juazeiro', 'Itabuna', 'Lauro de Freitas', 'Ilhéus', 'Jequié', 'Barreiras'],
     };
     const fallbacks = fallbackCitiesMap[ufUpper] || [];
     fallbacks.forEach((c) => citySet.add(c));
   }
 
-  return Array.from(citySet).sort();
+  return Array.from(citySet).sort((a, b) => a.localeCompare(b, 'pt-BR'));
 }
 
 /**
