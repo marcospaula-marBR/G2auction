@@ -11,9 +11,11 @@ import {
   Info,
   DollarSign,
   Building2,
+  AlertTriangle,
 } from 'lucide-react';
 import { formatCurrencyBRL } from '../utils/financial';
 import { getCaixaEditalUrl, getCaixaPropertyPageUrl, getCaixaEditaisCentralUrl } from '../utils/caixaEditalHelper';
+import { analyzePropertyWithG2AI } from '../utils/aiEditalEngine';
 
 interface EditalAnalysisModalProps {
   property: any;
@@ -37,11 +39,15 @@ export const EditalAnalysisModal: React.FC<EditalAnalysisModalProps> = ({
   const appraisalValue = property.appraisal_value || property.appraisalValue || saleValue * 1.8;
   const discountPct = property.discount_percentage || property.apparentDiscountPercentage || Math.round(((appraisalValue - saleValue) / appraisalValue) * 100);
 
+  const initialAnalysis = analyzePropertyWithG2AI(property, '');
+
   const [aiQuestion, setAiQuestion] = useState('');
   const [chatHistory, setChatHistory] = useState<Array<{ sender: 'user' | 'ai'; text: string }>>([
     {
       sender: 'ai',
-      text: `Olá! Sou a G2 AI. Analisei o Edital e Regulamento Oficial da Caixa para o imóvel ID #${cleanId} em ${city}/${state}. O edital é de Venda Direta Extrajudicial com isenção total de débitos anteriores de IPTU/Condomínio para o arrematante. Como posso ajudar com sua dúvida sobre este edital?`,
+      text: initialAnalysis.hasUnregisteredBuilding
+        ? `⚠️ Olá! Analisei o texto oficial cadastrado na Caixa para o imóvel ID #${cleanId} (${city}/${state}). ATENÇÃO: Identifiquei na descrição que existe CONSTRUÇÃO NÃO AVERBADA ("${initialAnalysis.unregisteredBuildingExcerpt}"). Digite sua dúvida abaixo!`
+        : `Olá! Sou a G2 AI. Li a descrição oficial e edital da Caixa para o imóvel ID #${cleanId} em ${city}/${state}. O imóvel está cadastrado sem pendências de averbação. Como posso ajudar?`,
     },
   ]);
   const [isAsking, setIsAsking] = useState(false);
@@ -56,22 +62,10 @@ export const EditalAnalysisModal: React.FC<EditalAnalysisModalProps> = ({
     setIsAsking(true);
 
     setTimeout(() => {
-      let response = '';
-      const lower = userText.toLowerCase();
-
-      if (lower.includes('iptu') || lower.includes('condomínio') || lower.includes('débito') || lower.includes('divida')) {
-        response = `Conforme a Cláusula 7ª do Edital Oficial Caixa (ID #${cleanId}), todos os débitos fiscais de IPTU e taxas condominiais anteriores à assinatura do contrato de compra e venda são de responsabilidade integral e sub-rogados pela Caixa Econômica Federal. O arrematante recebe a certidão negativa de débitos de propriedade limpa.`;
-      } else if (lower.includes('financiamento') || lower.includes('fgts') || lower.includes('banco')) {
-        response = `De acordo com o edital verificado, este imóvel permite financiamento habitacional de até 95% do valor de arrematação pela Caixa Econômica Federal, além da utilização do saldo do FGTS para entrada, sujeitos à aprovação de crédito individual.`;
-      } else if (lower.includes('ocupado') || lower.includes('desocupação') || lower.includes('morador')) {
-        response = `O edital especifica que a desocupação é de responsabilidade legal do comprador/arrematante, contudo o contrato com a Caixa concede a Imissão na Posse com rito célere de tutela de urgência sob a Lei nº 9.514/97. A nossa assessoria jurídica parceira realiza todo o trâmite sem custo adicional.`;
-      } else {
-        response = `Com base na análise do edital #${cleanId}: O imóvel possui avaliação de ${formatCurrencyBRL(appraisalValue)} e preço de venda de ${formatCurrencyBRL(saleValue)} (${discountPct}% de deságio). A documentação encontra-se 100% regularizada pela Caixa com matrícula individualizada e sem restrições de alienação.`;
-      }
-
-      setChatHistory((prev) => [...prev, { sender: 'ai', text: response }]);
+      const analysis = analyzePropertyWithG2AI(property, userText);
+      setChatHistory((prev) => [...prev, { sender: 'ai', text: analysis.responseText }]);
       setIsAsking(false);
-    }, 800);
+    }, 600);
   };
 
   return (
@@ -148,6 +142,27 @@ export const EditalAnalysisModal: React.FC<EditalAnalysisModalProps> = ({
               </a>
             </div>
           </div>
+
+          {/* Alerta de Construção Não Averbada se Detectado na Descrição Real */}
+          {initialAnalysis.hasUnregisteredBuilding && (
+            <div className="bg-amber-50 border-2 border-amber-300 p-5 rounded-3xl space-y-2 shadow-xs">
+              <div className="flex items-center space-x-2 text-amber-900 font-extrabold text-xs">
+                <AlertTriangle className="w-5 h-5 text-amber-600 animate-pulse" />
+                <span>OBSERVAÇÃO CRÍTICA ENCONTRADA NA DESCRIÇÃO DO IMÓVEL (G2 AI)</span>
+              </div>
+              <h4 className="font-black text-amber-950 text-sm">
+                Construção / Ampliação Não Averbada Identificada
+              </h4>
+              {initialAnalysis.unregisteredBuildingExcerpt && (
+                <div className="p-3 bg-white/80 rounded-xl border border-amber-200 text-xs font-mono text-amber-900">
+                  "{initialAnalysis.unregisteredBuildingExcerpt}"
+                </div>
+              )}
+              <p className="text-xs text-amber-900 leading-relaxed font-medium">
+                Regulamento: Custos de habite-se e regularização cartorária correm por conta do comprador. Consulte nossa equipe jurídica para orçamento prévio de averbação.
+              </p>
+            </div>
+          )}
 
           {/* Cards de Métricas do Edital */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
