@@ -14,6 +14,7 @@ import {
   ArrowUpDown,
   X,
   Sparkles,
+  FileText,
 } from 'lucide-react';
 
 import {
@@ -28,6 +29,7 @@ import {
 
 import { formatCurrencyBRL } from '../utils/financial';
 import { cleanCaixaAddressForMaps } from '../utils/addressSanitizer';
+import { EditalAnalysisModal } from './EditalAnalysisModal';
 
 interface PropertyCatalogPageProps {
   onOpenAdmin?: () => void;
@@ -81,6 +83,9 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
 
   // Modal de Detalhes do Imóvel (Seção 38)
   const [selectedDetailProperty, setSelectedDetailProperty] = useState<any | null>(null);
+
+  // Modal de Análise de Edital via G2 AI
+  const [selectedEditalProperty, setSelectedEditalProperty] = useState<any | null>(null);
 
   // Painel de Filtros Expansível
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState<boolean>(true);
@@ -683,6 +688,27 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                       </a>
                     );
                   })()}
+
+                  {/* BOTÕES DE EDITAL CAIXA E ANÁLISE G2 AI */}
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <a
+                      href={prop.editalUrl || prop.edital_url || prop.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-300 font-extrabold text-[11px] py-2.5 rounded-2xl transition-colors flex items-center justify-center space-x-1 text-center"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-orange-600" />
+                      <span>[ 📄 EDITAL CAIXA ]</span>
+                    </a>
+
+                    <button
+                      onClick={() => setSelectedEditalProperty(prop)}
+                      className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black text-[11px] py-2.5 rounded-2xl shadow-xs transition-colors flex items-center justify-center space-x-1"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-orange-100" />
+                      <span>[ 🤖 G2 AI EDITAL ]</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -871,7 +897,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
             </div>
 
             {/* Rodapé do Modal */}
-            <div className="p-6 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+            <div className="p-6 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
               <button
                 onClick={() => setSelectedDetailProperty(null)}
                 className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs px-6 py-3 rounded-2xl"
@@ -879,19 +905,37 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                 Fechar
               </button>
 
-              <a
-                href={selectedDetailProperty.source_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="bg-slate-900 hover:bg-slate-800 text-white font-black text-xs px-6 py-3 rounded-2xl transition-colors flex items-center space-x-2 shadow-md"
-              >
-                <span>[ VER NA CAIXA ]</span>
-                <ExternalLink className="w-4 h-4" />
-              </a>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => setSelectedEditalProperty(selectedDetailProperty)}
+                  className="bg-orange-500 hover:bg-orange-600 text-white font-black text-xs px-5 py-3 rounded-2xl transition-colors flex items-center space-x-1.5 shadow-md"
+                >
+                  <Sparkles className="w-4 h-4 text-orange-100" />
+                  <span>[ 🤖 ANALISAR EDITAL (G2 AI) ]</span>
+                </button>
+
+                <a
+                  href={selectedDetailProperty.editalUrl || selectedDetailProperty.edital_url || selectedDetailProperty.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-slate-900 hover:bg-slate-800 text-white font-black text-xs px-5 py-3 rounded-2xl transition-colors flex items-center space-x-1.5 shadow-md"
+                >
+                  <FileText className="w-4 h-4 text-orange-400" />
+                  <span>[ 📄 EDITAL OFICIAL CAIXA ]</span>
+                </a>
+              </div>
             </div>
 
           </div>
         </div>
+      )}
+
+      {/* Modal de Análise de Edital via G2 AI */}
+      {selectedEditalProperty && (
+        <EditalAnalysisModal
+          property={selectedEditalProperty}
+          onClose={() => setSelectedEditalProperty(null)}
+        />
       )}
 
     </div>

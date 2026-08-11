@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import type { Property } from '../types/auction';
-import { Search, ShieldCheck, MapPin, Sparkles, ChevronRight, Calculator } from 'lucide-react';
+import { Search, ShieldCheck, MapPin, Sparkles, ChevronRight, Calculator, FileText } from 'lucide-react';
 import { formatCurrencyBRL } from '../utils/financial';
+import { EditalAnalysisModal } from './EditalAnalysisModal';
 
 interface PropertyDiscoveryProps {
   properties: Property[];
@@ -22,6 +23,7 @@ export const PropertyDiscovery: React.FC<PropertyDiscoveryProps> = ({
   const [selectedOccupancy, setSelectedOccupancy] = useState<string>('Todos');
   const [onlyFinancable, setOnlyFinancable] = useState(false);
   const [minDiscount, setMinDiscount] = useState<number>(0);
+  const [selectedEditalProperty, setSelectedEditalProperty] = useState<Property | null>(null);
 
   const filteredProperties = properties.filter((p) => {
     const matchesSearch =
@@ -265,28 +267,57 @@ export const PropertyDiscovery: React.FC<PropertyDiscoveryProps> = ({
               </div>
 
               {/* Botões de Ação */}
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
-                <button
-                  onClick={() => onOpenMaxBid(p)}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs py-2.5 rounded-xl transition-colors flex items-center justify-center space-x-1"
-                >
-                  <Calculator className="w-3.5 h-3.5 text-orange-600" />
-                  <span>Lance Máximo</span>
-                </button>
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => onOpenMaxBid(p)}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs py-2.5 rounded-xl transition-colors flex items-center justify-center space-x-1"
+                  >
+                    <Calculator className="w-3.5 h-3.5 text-orange-600" />
+                    <span>Lance Máximo</span>
+                  </button>
 
-                <button
-                  onClick={() => onSelectProperty(p)}
-                  className="bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs py-2.5 rounded-xl shadow-xs transition-colors flex items-center justify-center space-x-1"
-                >
-                  <span>Ficha 360°</span>
-                  <ChevronRight className="w-3 h-3" />
-                </button>
+                  <button
+                    onClick={() => onSelectProperty(p)}
+                    className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-2.5 rounded-xl shadow-xs transition-colors flex items-center justify-center space-x-1"
+                  >
+                    <span>Ficha 360°</span>
+                    <ChevronRight className="w-3 h-3" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <a
+                    href={p.editalUrl || p.auctioneerSite || 'https://venda-imoveis.caixa.gov.br'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-900 font-extrabold text-[11px] py-2 rounded-xl transition-colors flex items-center justify-center space-x-1 text-center border border-slate-300"
+                  >
+                    <FileText className="w-3 h-3 text-orange-600" />
+                    <span>[ 📄 EDITAL ]</span>
+                  </a>
+
+                  <button
+                    onClick={() => setSelectedEditalProperty(p)}
+                    className="bg-orange-500 hover:bg-orange-600 text-white font-black text-[11px] py-2 rounded-xl shadow-xs transition-colors flex items-center justify-center space-x-1"
+                  >
+                    <Sparkles className="w-3 h-3 text-orange-100" />
+                    <span>[ 🤖 G2 AI ]</span>
+                  </button>
+                </div>
               </div>
 
             </div>
           </div>
         ))}
       </div>
+
+      {selectedEditalProperty && (
+        <EditalAnalysisModal
+          property={selectedEditalProperty}
+          onClose={() => setSelectedEditalProperty(null)}
+        />
+      )}
 
     </div>
   );
