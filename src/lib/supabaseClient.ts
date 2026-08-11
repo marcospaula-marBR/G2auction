@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { parseCaixaCsv } from '../utils/caixaListImporter';
+import { savePropertiesToIndexedDB, loadPropertiesFromIndexedDB } from '../utils/indexedDbStore';
+import { stripAccents, formatCityDisplayName } from '../utils/textUtils';
 
 const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY || '';
@@ -57,15 +59,30 @@ export async function autoSeedDefaultCsvFromPublic(): Promise<void> {
 }
 
 export function saveMemoryStoreToLocalStorage() {
+  // Salva no IndexedDB (sem limite de 5MB)
+  savePropertiesToIndexedDB(memoryStore.properties);
+
+  // Fallback rápido no localStorage para listas pequenas
   try {
-    const arrayData = Array.from(memoryStore.properties.entries());
-    localStorage.setItem(CACHE_KEY_PROPERTIES, JSON.stringify(arrayData));
+    if (memoryStore.properties.size <= 500) {
+      const arrayData = Array.from(memoryStore.properties.entries());
+      localStorage.setItem(CACHE_KEY_PROPERTIES, JSON.stringify(arrayData));
+    }
   } catch (e: any) {
     console.warn('[LocalStorage Save Error]', e);
   }
 }
 
-export function loadMemoryStoreFromLocalStorage() {
+export async function loadMemoryStoreFromLocalStorage() {
+  // 1. Tenta carregar do IndexedDB primeiro
+  const idbMap = await loadPropertiesFromIndexedDB();
+  if (idbMap.size > 0) {
+    idbMap.forEach((v, k) => memoryStore.properties.set(k, v));
+    console.log(`[IndexedDB Load] ${idbMap.size} imóveis carregados com sucesso.`);
+    return;
+  }
+
+  // 2. Fallback para localStorage
   try {
     const raw = localStorage.getItem(CACHE_KEY_PROPERTIES);
     if (raw) {
@@ -81,7 +98,7 @@ export function loadMemoryStoreFromLocalStorage() {
   }
 
   if (memoryStore.properties.size === 0) {
-    autoSeedDefaultCsvFromPublic();
+    await autoSeedDefaultCsvFromPublic();
   }
 }
 
@@ -548,7 +565,10 @@ export async function queryPropertiesFromSupabase(
   let filtered = Array.from(memoryStore.properties.values()).filter((p) => p.source === 'CAIXA' && p.status === 'ACTIVE');
 
   if (filters.state) filtered = filtered.filter((p) => (p.state || '').toUpperCase() === filters.state?.toUpperCase());
-  if (filters.city) filtered = filtered.filter((p) => (p.city || '').toLowerCase().includes(filters.city!.toLowerCase()));
+  if (filters.city) {
+    const targetNormCity = stripAccents(filters.city);
+    filtered = filtered.filter((p) => stripAccents(p.city).includes(targetNormCity));
+  }
 
   if (filters.priceMin !== undefined && filters.priceMin !== null) filtered = filtered.filter((p) => (p.current_minimum_value || p.sale_value || 0) >= filters.priceMin!);
   if (filters.priceMax !== undefined && filters.priceMax !== null) filtered = filtered.filter((p) => (p.current_minimum_value || p.sale_value || 0) <= filters.priceMax!);
@@ -635,7 +655,7 @@ export async function fetchDistinctCitiesByStateFromSupabase(uf: string): Promis
     await autoSeedDefaultCsvFromPublic();
   }
 
-  const citySet = new Set<string>();
+  const cityMap = new Map<string, string>(); // normKey -> displayString
 
   if (supabase) {
     try {
@@ -650,7 +670,11 @@ export async function fetchDistinctCitiesByStateFromSupabase(uf: string): Promis
       if (data) {
         data.forEach((d) => {
           if (d.city && d.city.trim()) {
-            citySet.add(d.city.trim());
+            const clean = d.city.trim();
+            const norm = stripAccents(clean);
+            if (!cityMap.has(norm)) {
+              cityMap.set(norm, formatCityDisplayName(clean));
+            }
           }
         });
       }
@@ -661,26 +685,15 @@ export async function fetchDistinctCitiesByStateFromSupabase(uf: string): Promis
 
   memoryStore.properties.forEach((p) => {
     if ((p.state || '').toUpperCase() === ufUpper && p.city && p.status === 'ACTIVE') {
-      citySet.add(p.city.trim());
+      const clean = p.city.trim();
+      const norm = stripAccents(clean);
+      if (!cityMap.has(norm)) {
+        cityMap.set(norm, formatCityDisplayName(clean));
+      }
     }
   });
 
-  if (citySet.size === 0) {
-    const fallbackCitiesMap: Record<string, string[]> = {
-      SP: ['São Paulo', 'Campinas', 'Santos', 'Ribeirão Preto', 'Sorocaba', 'Adamantina', 'Guarulhos', 'São José dos Campos', 'Piracicaba', 'Bauru', 'Americana', 'Araçatuba', 'Araraquara', 'Barueri', 'Botucatu', 'Cotia', 'Franca', 'Indaiatuba', 'Itu', 'Jundiaí', 'Limeira', 'Marília', 'Mogi das Cruzes', 'Osasco', 'Presidente Prudente', 'Santo André', 'São Bernardo do Campo', 'São José do Rio Preto', 'Taubaté'],
-      RJ: ['Rio de Janeiro', 'Niterói', 'Petrópolis', 'Duque de Caxias', 'Nova Iguaçu', 'Campos dos Goytacazes', 'Cabo Frio', 'Volta Redonda', 'Angra dos Reis', 'Macaé', 'Teresópolis', 'Maricá', 'Nova Friburgo', 'Resende', 'Barra Mansa'],
-      MG: ['Belo Horizonte', 'Uberlândia', 'Juiz de Fora', 'Contagem', 'Montes Claros', 'Uberaba', 'Ipatinga', 'Poços de Caldas', 'Divinópolis', 'Governador Valadares', 'Patos de Minas', 'Pouso Alegre', 'Varginha'],
-      DF: ['Brasília', 'Taguatinga', 'Ceilândia', 'Águas Claras', 'Samambaia', 'Gama', 'Sobradinho'],
-      PR: ['Curitiba', 'Londrina', 'Maringá', 'Ponta Grossa', 'Cascavel', 'Foz do Iguaçu', 'São José dos Pinhais', 'Guarapuava', 'Paranaguá', 'Toledo'],
-      SC: ['Florianópolis', 'Joinville', 'Blumenau', 'São José', 'Chapecó', 'Criciúma', 'Itajaí', 'Balneário Camboriú', 'Jaraguá do Sul', 'Palhoça'],
-      RS: ['Porto Alegre', 'Caxias do Sul', 'Canoas', 'Pelotas', 'Santa Maria', 'Gravataí', 'Viamão', 'Novo Hamburgo', 'São Leopoldo', 'Passo Fundo'],
-      BA: ['Salvador', 'Feira de Santana', 'Vitória da Conquista', 'Camaçari', 'Juazeiro', 'Itabuna', 'Lauro de Freitas', 'Ilhéus', 'Jequié', 'Barreiras'],
-    };
-    const fallbacks = fallbackCitiesMap[ufUpper] || [];
-    fallbacks.forEach((c) => citySet.add(c));
-  }
-
-  return Array.from(citySet).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  return Array.from(cityMap.values()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
 }
 
 /**
