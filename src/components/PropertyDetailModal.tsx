@@ -333,6 +333,45 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
           {activeTab === 'geo' && (
             <div className="space-y-6">
               
+              {/* Botões de Ação Externa para o Endereço do Imóvel */}
+              <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-2xs space-y-3">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-orange-600">Localização Exata do Imóvel</span>
+                    <h3 className="text-base font-black text-slate-900">
+                      {property.address?.street ? `${property.address.street}, ${property.address.number || 'S/N'}` : property.title}
+                    </h3>
+                    <p className="text-xs text-slate-500 font-bold">
+                      {property.address?.neighborhood} — {property.address?.city} / {property.address?.state} {property.address?.zip ? `(CEP ${property.address.zip})` : ''}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                        `${property.address?.street || ''} ${property.address?.number || ''}, ${property.address?.neighborhood || ''}, ${property.address?.city || ''} ${property.address?.state || ''}, Brasil`
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs px-4 py-2.5 rounded-2xl shadow-xs flex items-center space-x-1.5 transition-colors"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Abrir no Google Maps</span>
+                    </a>
+
+                    <a
+                      href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${property.address?.lat || -23.5505},${property.address?.lng || -46.6333}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-orange-50 hover:bg-orange-100 text-orange-950 border border-orange-200 font-extrabold text-xs px-4 py-2.5 rounded-2xl flex items-center space-x-1.5 transition-colors"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5 text-orange-600" />
+                      <span>Abrir Street View</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 
                 {/* Segurança */}
