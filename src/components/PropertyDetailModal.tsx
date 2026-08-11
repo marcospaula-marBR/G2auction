@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { Property } from '../types/auction';
 import { generateScenarios, formatCurrencyBRL } from '../utils/financial';
+import { cleanCaixaAddressForMaps } from '../utils/addressSanitizer';
 import { X, ShieldCheck, Printer, Calculator, Info, ExternalLink, Droplets, Volume2 } from 'lucide-react';
 
 interface PropertyDetailModalProps {
@@ -347,27 +348,38 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                    <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                        `${property.address?.street || ''} ${property.address?.number || ''}, ${property.address?.neighborhood || ''}, ${property.address?.city || ''} ${property.address?.state || ''}, Brasil`
-                      )}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs px-4 py-2.5 rounded-2xl shadow-xs flex items-center space-x-1.5 transition-colors"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      <span>Abrir no Google Maps</span>
-                    </a>
+                    {(() => {
+                      const mapsInfo = cleanCaixaAddressForMaps(
+                        `${property.address?.street || ''} ${property.address?.number || ''}`,
+                        property.address?.city,
+                        property.address?.state,
+                        property.address?.zip,
+                        { lat: property.address?.lat, lng: property.address?.lng }
+                      );
+                      return (
+                        <>
+                          <a
+                            href={mapsInfo.googleMapsUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs px-4 py-2.5 rounded-2xl shadow-xs flex items-center space-x-1.5 transition-colors"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>Abrir no Google Maps</span>
+                          </a>
 
-                    <a
-                      href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${property.address?.lat || -23.5505},${property.address?.lng || -46.6333}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="bg-orange-50 hover:bg-orange-100 text-orange-950 border border-orange-200 font-extrabold text-xs px-4 py-2.5 rounded-2xl flex items-center space-x-1.5 transition-colors"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5 text-orange-600" />
-                      <span>Abrir Street View</span>
-                    </a>
+                          <a
+                            href={mapsInfo.wazeUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="bg-sky-500 hover:bg-sky-600 text-white font-extrabold text-xs px-4 py-2.5 rounded-2xl flex items-center space-x-1.5 transition-colors shadow-xs"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>Navegar via Waze</span>
+                          </a>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>

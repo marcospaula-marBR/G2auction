@@ -27,6 +27,7 @@ import {
 } from '../lib/supabaseClient';
 
 import { formatCurrencyBRL } from '../utils/financial';
+import { cleanCaixaAddressForMaps } from '../utils/addressSanitizer';
 
 interface PropertyCatalogPageProps {
   onOpenAdmin?: () => void;
@@ -668,15 +669,20 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                   </div>
 
                   {/* BOTÃO GOOGLE MAPS 360° */}
-                  <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${prop.address || ''}, ${prop.city} - ${prop.state}, Brasil`)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-2.5 rounded-2xl shadow-xs transition-colors flex items-center justify-center space-x-1 text-center"
-                  >
-                    <MapPin className="w-3.5 h-3.5 text-emerald-200" />
-                    <span>[ 📍 MAPA & STREET VIEW 360° ]</span>
-                  </a>
+                  {(() => {
+                    const mapsInfo = cleanCaixaAddressForMaps(prop.address, prop.city, prop.state);
+                    return (
+                      <a
+                        href={mapsInfo.googleMapsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-2.5 rounded-2xl shadow-xs transition-colors flex items-center justify-center space-x-1 text-center"
+                      >
+                        <MapPin className="w-3.5 h-3.5 text-emerald-200" />
+                        <span>[ 📍 MAPA & STREET VIEW 360° ]</span>
+                      </a>
+                    );
+                  })()}
                 </div>
               </div>
             );
@@ -817,34 +823,43 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                 </div>
               )}
 
-              {/* Botões de Localização no Google Maps */}
-              <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl space-y-3">
-                <div className="flex items-center space-x-2 text-emerald-900 font-bold text-xs">
-                  <MapPin className="w-4 h-4 text-emerald-600" />
-                  <span>LOCALIZAÇÃO E VISÃO GOOGLE MAPS 360°</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${selectedDetailProperty.address || ''}, ${selectedDetailProperty.city} - ${selectedDetailProperty.state}, Brasil`)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-4 py-3 rounded-xl transition-colors flex items-center justify-center space-x-2 text-center shadow-xs"
-                  >
-                    <MapPin className="w-4 h-4" />
-                    <span>[ 🗺️ VER NO GOOGLE MAPS ]</span>
-                  </a>
+              {/* Botões de Localização no Google Maps & Waze */}
+              {(() => {
+                const mapsInfo = cleanCaixaAddressForMaps(
+                  selectedDetailProperty.address,
+                  selectedDetailProperty.city,
+                  selectedDetailProperty.state
+                );
+                return (
+                  <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl space-y-3">
+                    <div className="flex items-center space-x-2 text-emerald-900 font-bold text-xs">
+                      <MapPin className="w-4 h-4 text-emerald-600" />
+                      <span>LOCALIZAÇÃO E NAVEGAÇÃO 360° (GOOGLE MAPS & WAZE)</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <a
+                        href={mapsInfo.googleMapsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-4 py-3 rounded-xl transition-colors flex items-center justify-center space-x-2 text-center shadow-xs"
+                      >
+                        <MapPin className="w-4 h-4" />
+                        <span>[ 🗺️ VER NO GOOGLE MAPS ]</span>
+                      </a>
 
-                  <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${selectedDetailProperty.address || ''}, ${selectedDetailProperty.city} - ${selectedDetailProperty.state}`)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="bg-slate-900 hover:bg-slate-800 text-white font-black text-xs px-4 py-3 rounded-xl transition-colors flex items-center justify-center space-x-2 text-center shadow-xs"
-                  >
-                    <ExternalLink className="w-4 h-4 text-orange-400" />
-                    <span>[ 📷 STREET VIEW 360° ]</span>
-                  </a>
-                </div>
-              </div>
+                      <a
+                        href={mapsInfo.wazeUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-sky-500 hover:bg-sky-600 text-white font-black text-xs px-4 py-3 rounded-xl transition-colors flex items-center justify-center space-x-2 text-center shadow-xs"
+                      >
+                        <ExternalLink className="w-4 h-4 text-white" />
+                        <span>[ 🚙 NAVEGAR VIA WAZE ]</span>
+                      </a>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Informações da Fonte */}
               <div className="p-3 bg-slate-100 rounded-xl text-[11px] font-mono text-slate-600 space-y-1">
