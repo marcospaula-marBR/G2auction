@@ -29,6 +29,7 @@ import {
 
 import { formatCurrencyBRL } from '../utils/financial';
 import { cleanCaixaAddressForMaps } from '../utils/addressSanitizer';
+import { getCaixaEditalUrl, getCaixaPropertyPageUrl } from '../utils/caixaEditalHelper';
 import { EditalAnalysisModal } from './EditalAnalysisModal';
 
 interface PropertyCatalogPageProps {
@@ -663,12 +664,12 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                     </button>
 
                     <a
-                      href={prop.source_url}
+                      href={getCaixaPropertyPageUrl(prop)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold text-xs py-3 rounded-2xl transition-colors flex items-center justify-center space-x-1 text-center"
                     >
-                      <span>[ VER NA CAIXA ]</span>
+                      <span>[ 🔗 PÁGINA CAIXA ]</span>
                       <ExternalLink className="w-3 h-3 text-slate-500" />
                     </a>
                   </div>
@@ -692,13 +693,13 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                   {/* BOTÕES DE EDITAL CAIXA E ANÁLISE G2 AI */}
                   <div className="grid grid-cols-2 gap-2 pt-1">
                     <a
-                      href={prop.editalUrl || prop.edital_url || prop.source_url}
+                      href={getCaixaEditalUrl(prop)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-full bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-300 font-extrabold text-[11px] py-2.5 rounded-2xl transition-colors flex items-center justify-center space-x-1 text-center"
                     >
                       <FileText className="w-3.5 h-3.5 text-orange-600" />
-                      <span>[ 📄 EDITAL CAIXA ]</span>
+                      <span>[ 📄 EDITAL PDF ]</span>
                     </a>
 
                     <button
@@ -915,13 +916,13 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                 </button>
 
                 <a
-                  href={selectedDetailProperty.editalUrl || selectedDetailProperty.edital_url || selectedDetailProperty.source_url}
+                  href={getCaixaEditalUrl(selectedDetailProperty)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="bg-slate-900 hover:bg-slate-800 text-white font-black text-xs px-5 py-3 rounded-2xl transition-colors flex items-center space-x-1.5 shadow-md"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-5 py-3 rounded-2xl transition-colors flex items-center space-x-1.5 shadow-md"
                 >
-                  <FileText className="w-4 h-4 text-orange-400" />
-                  <span>[ 📄 EDITAL OFICIAL CAIXA ]</span>
+                  <FileText className="w-4 h-4 text-emerald-100" />
+                  <span>[ 📄 EDITAL REGULAMENTO PDF ]</span>
                 </a>
               </div>
             </div>

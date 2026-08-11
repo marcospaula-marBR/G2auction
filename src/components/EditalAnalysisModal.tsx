@@ -13,6 +13,7 @@ import {
   Building2,
 } from 'lucide-react';
 import { formatCurrencyBRL } from '../utils/financial';
+import { getCaixaEditalUrl, getCaixaPropertyPageUrl, getCaixaEditaisCentralUrl } from '../utils/caixaEditalHelper';
 
 interface EditalAnalysisModalProps {
   property: any;
@@ -25,7 +26,9 @@ export const EditalAnalysisModal: React.FC<EditalAnalysisModalProps> = ({
 }) => {
   const propertyId = property.source_property_id || property.code || property.id || '1444411844663';
   const cleanId = String(propertyId).replace(/\D/g, '');
-  const editalUrl = property.editalUrl || property.edital_url || property.source_url || `https://venda-imoveis.caixa.gov.br/sistema/detalhe-imovel.asp?hdnOrigem=index&hdnimovel=${cleanId}`;
+  const editalUrl = getCaixaEditalUrl(property);
+  const propertyPageUrl = getCaixaPropertyPageUrl(property);
+  const centralEditaisUrl = getCaixaEditaisCentralUrl();
   
   const title = property.title || property.address || `Imóvel CAIXA #${cleanId}`;
   const city = property.city || property.address?.city || 'São Paulo';
@@ -122,16 +125,26 @@ export const EditalAnalysisModal: React.FC<EditalAnalysisModalProps> = ({
               </p>
             </div>
 
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-wrap items-center gap-2">
               <a
                 href={editalUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="bg-slate-900 hover:bg-slate-800 text-white font-black text-xs px-4 py-3 rounded-2xl shadow-md flex items-center space-x-2 transition-all transform active:scale-95 whitespace-nowrap"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-4 py-3 rounded-2xl shadow-md flex items-center space-x-2 transition-all transform active:scale-95 whitespace-nowrap"
               >
-                <FileText className="w-4 h-4 text-orange-400" />
-                <span>[ 📄 ABRIR EDITAL EM PDF / CAIXA ]</span>
-                <ExternalLink className="w-3 h-3 text-slate-400" />
+                <FileText className="w-4 h-4 text-emerald-100" />
+                <span>[ 📄 EDITAL / REGULAMENTO PDF ]</span>
+                <ExternalLink className="w-3 h-3 text-emerald-200" />
+              </a>
+
+              <a
+                href={propertyPageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs px-4 py-3 rounded-2xl shadow-xs flex items-center space-x-1.5 transition-colors whitespace-nowrap"
+              >
+                <ExternalLink className="w-3.5 h-3.5 text-orange-400" />
+                <span>[ 🔗 PÁGINA DO IMÓVEL NA CAIXA ]</span>
               </a>
             </div>
           </div>
@@ -258,19 +271,31 @@ export const EditalAnalysisModal: React.FC<EditalAnalysisModalProps> = ({
 
         {/* Footer com Ações Globais */}
         <div className="p-4 bg-white border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
-          <a
-            href={editalUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-4 py-3 rounded-2xl shadow-xs flex items-center space-x-1.5 transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            <span>[ 📥 BAIXAR EDITAL OFICIAL CAIXA (PDF) ]</span>
-          </a>
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href={editalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-4 py-3 rounded-2xl shadow-xs flex items-center space-x-1.5 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              <span>[ 📥 BAIXAR EDITAL (PDF) ]</span>
+            </a>
+
+            <a
+              href={centralEditaisUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs px-4 py-3 rounded-2xl border border-slate-300 transition-colors flex items-center space-x-1"
+            >
+              <span>[ 📚 CENTRAL DE EDITAIS CAIXA ]</span>
+              <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+            </a>
+          </div>
 
           <button
             onClick={onClose}
-            className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs px-5 py-3 rounded-2xl transition-colors"
+            className="bg-slate-200 hover:bg-slate-300 text-slate-900 font-bold text-xs px-5 py-3 rounded-2xl transition-colors"
           >
             Fechar Análise
           </button>

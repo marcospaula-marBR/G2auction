@@ -3,6 +3,7 @@ import type { Property } from '../types/auction';
 import { Search, ShieldCheck, MapPin, Sparkles, ChevronRight, Calculator, FileText } from 'lucide-react';
 import { formatCurrencyBRL } from '../utils/financial';
 import { EditalAnalysisModal } from './EditalAnalysisModal';
+import { getCaixaEditalUrl } from '../utils/caixaEditalHelper';
 
 interface PropertyDiscoveryProps {
   properties: Property[];
@@ -288,13 +289,13 @@ export const PropertyDiscovery: React.FC<PropertyDiscoveryProps> = ({
 
                 <div className="grid grid-cols-2 gap-2">
                   <a
-                    href={p.editalUrl || p.auctioneerSite || 'https://venda-imoveis.caixa.gov.br'}
+                    href={getCaixaEditalUrl(p)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="bg-slate-100 hover:bg-slate-200 text-slate-900 font-extrabold text-[11px] py-2 rounded-xl transition-colors flex items-center justify-center space-x-1 text-center border border-slate-300"
                   >
                     <FileText className="w-3 h-3 text-orange-600" />
-                    <span>[ 📄 EDITAL ]</span>
+                    <span>[ 📄 EDITAL PDF ]</span>
                   </a>
 
                   <button
