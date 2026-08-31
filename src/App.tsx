@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { AICopilot } from './components/AICopilot';
 import { PropertyDiscovery } from './components/PropertyDiscovery';
@@ -19,15 +19,36 @@ import { JourneyPage } from './components/JourneyPage';
 import { mockProperties } from './data/mockProperties';
 import { mockParceiros } from './data/mockParceiros';
 import type { Property, LedgerEntry, UserProfile } from './types/auction';
+import { queryPropertiesFromSupabase, autoSeedDefaultCsvFromPublic } from './lib/supabaseClient';
+import { adaptCatalogItemToProperty } from './utils/propertyAdapter';
 import {
   Search, Wallet, Wrench, Users, PieChart, Layers, Bot,
   Building2, Route, Landmark,
 } from 'lucide-react';
 
 export function App() {
-  const APP_VERSION = 'v3.0.0';
-  const [properties] = useState<Property[]>(mockProperties);
+  const APP_VERSION = 'v3.1.0';
+  const [properties, setProperties] = useState<Property[]>(mockProperties);
   const [selectedProperty, setSelectedProperty] = useState<Property | undefined>(mockProperties[0]);
+
+  // Carrega a base real de imóveis do Supabase / IndexedDB / CSV para o Mapa e Descoberta
+  useEffect(() => {
+    async function loadRealPropertiesForMap() {
+      try {
+        await autoSeedDefaultCsvFromPublic();
+        const res = await queryPropertiesFromSupabase({ pageSize: 1000, state: 'SP' });
+        if (res && res.data && res.data.length > 0) {
+          const adapted = res.data.map((p: any, idx: number) => adaptCatalogItemToProperty(p, idx));
+          setProperties(adapted);
+          setSelectedProperty(adapted[0]);
+          console.log(`[G2 Map & Discovery] ${adapted.length} imóveis reais carregados para o Mapa e Descoberta.`);
+        }
+      } catch (err: any) {
+        console.warn('[G2 Map Load]', err.message);
+      }
+    }
+    loadRealPropertiesForMap();
+  }, []);
 
   const [isIntroVisible, setIsIntroVisible] = useState(true);
   const [activeMainTab, setActiveMainTab] = useState<

@@ -375,35 +375,34 @@ export const JourneyTimeline: React.FC<JourneyTimelineProps> = ({ stepStatuses, 
           </div>
         </div>
 
-        {/* Phase pills row */}
-        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1">
+        {/* Phase pills row — Grid Responsivo de 7 Fases para NUNCA cortar */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-1.5 py-1">
           {JOURNEY_PHASES.map((phase, idx) => {
             const phaseStatus = getPhaseStatus(phase);
             const isExpanded = expandedPhase === phase.number;
 
             return (
-              <React.Fragment key={phase.number}>
-                <button
-                  onClick={() => setExpandedPhase(isExpanded ? null : phase.number)}
-                  className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${
-                    phaseStatus === 'completed'
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                      : isExpanded
-                      ? `${phase.bgColor} ${phase.borderColor} ${phase.color}`
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
+              <button
+                key={phase.number}
+                onClick={() => setExpandedPhase(isExpanded ? null : phase.number)}
+                className={`w-full flex items-center justify-between gap-1 px-2.5 py-2 rounded-xl border text-[11px] font-black transition-all text-left ${
+                  phaseStatus === 'completed'
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800 shadow-2xs'
+                    : isExpanded
+                    ? `${phase.bgColor} ${phase.borderColor} ${phase.color} shadow-xs ring-2 ring-orange-400/40`
+                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300'
+                }`}
+                title={`Fase ${phase.number}: ${phase.label} (${phase.steps.length} etapas)`}
+              >
+                <div className="flex items-center gap-1.5 truncate">
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_DOT[phaseStatus]}`} />
-                  <span className="whitespace-nowrap">{idx + 1}. {phase.label}</span>
+                  <span className="truncate">{idx + 1}. {phase.label}</span>
+                </div>
+                <div className="flex items-center gap-0.5 flex-shrink-0">
                   <span className="text-[9px] opacity-60">({phase.steps.length})</span>
-                  {isExpanded ? <ChevronUp className="w-3 h-3 opacity-60" /> : <ChevronDown className="w-3 h-3 opacity-60" />}
-                </button>
-
-                {/* Connector line */}
-                {idx < JOURNEY_PHASES.length - 1 && (
-                  <div className="flex-shrink-0 w-4 h-px bg-slate-200" />
-                )}
-              </React.Fragment>
+                  {isExpanded ? <ChevronUp className="w-3 h-3 opacity-70" /> : <ChevronDown className="w-3 h-3 opacity-70" />}
+                </div>
+              </button>
             );
           })}
         </div>
