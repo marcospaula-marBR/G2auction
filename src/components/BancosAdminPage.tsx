@@ -183,7 +183,7 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
 
       {/* Seletor e Ações */}
       <div className="flex items-center justify-between flex-wrap gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center flex-wrap gap-2">
           <label className="text-xs font-bold text-slate-600">Estado (UF):</label>
           <select
             value={uf}
@@ -200,6 +200,17 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
             {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
             Buscar Imóveis Santander em {uf}
           </button>
+
+          <a
+            href={`https://www.santanderimoveis.com.br/?uf=${uf}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-300 text-slate-700 hover:text-red-700 hover:border-red-300 font-bold text-xs rounded-xl shadow-2xs transition-all"
+            title="Abrir busca oficial no portal do Santander"
+          >
+            <span>Abrir Portal Oficial ({uf})</span>
+            <ExternalLink className="w-3.5 h-3.5 text-red-600" />
+          </a>
         </div>
 
         {properties.length > 0 && (
@@ -421,7 +432,7 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
 
       {/* Seletor e Ações */}
       <div className="flex items-center justify-between flex-wrap gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center flex-wrap gap-2">
           <label className="text-xs font-bold text-slate-600">Estado (UF):</label>
           <select
             value={uf}
@@ -438,6 +449,17 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
             {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
             Buscar Imóveis Bradesco em {uf}
           </button>
+
+          <a
+            href={`https://vitrinebradesco.com.br/auctions?type=realstate&ufs=${uf}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-300 text-slate-700 hover:text-red-900 hover:border-red-300 font-bold text-xs rounded-xl shadow-2xs transition-all"
+            title="Abrir busca oficial na Vitrine Bradesco"
+          >
+            <span>Abrir Portal Oficial ({uf})</span>
+            <ExternalLink className="w-3.5 h-3.5 text-red-800" />
+          </a>
         </div>
 
         {properties.length > 0 && (
