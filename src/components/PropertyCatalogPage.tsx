@@ -10,7 +10,6 @@ import {
   Building2,
   MapPin,
   BadgePercent,
-  Lock,
   ArrowUpDown,
   X,
   Sparkles,
@@ -304,21 +303,33 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
             </select>
           </div>
 
-          {/* 2. CIDADE DEPENDENTE DO ESTADO (Seção 20) */}
-          <div className="space-y-1.5">
+          {/* 2. CIDADE DEPENDENTE DO ESTADO (COMBOBOX PESQUISÁVEL E SCROLL CONTIDO) */}
+          <div className="space-y-1.5 relative">
             <label className="font-bold text-slate-700 uppercase text-[10px]">CIDADE:</label>
-            <select
-              value={selectedCity}
-              onChange={(e) => setSelectedCity(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 font-bold text-slate-800 focus:ring-2 focus:ring-orange-500"
-            >
-              <option value="">Todas as Cidades ({availableCities.length})</option>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder={selectedCity ? selectedCity : `Todas as Cidades (${availableCities.length})`}
+                value={selectedCity}
+                onChange={(e) => setSelectedCity(e.target.value)}
+                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 font-bold text-slate-900 focus:ring-2 focus:ring-orange-500 text-xs placeholder:text-slate-500 shadow-2xs"
+                list="cities-datalist"
+              />
+              {selectedCity && (
+                <button
+                  onClick={() => setSelectedCity('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                  title="Limpar cidade"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            <datalist id="cities-datalist">
               {availableCities.map((city) => (
-                <option key={city} value={city}>
-                  {city}
-                </option>
+                <option key={city} value={city} />
               ))}
-            </select>
+            </datalist>
           </div>
 
           {/* 3. TIPO DO IMÓVEL (Seção 27) */}
@@ -563,20 +574,31 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                 className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between"
               >
                 <div>
-                  {/* Foto Principal / Placeholder Neutro (Seção 34) */}
-                  <div className="relative h-48 w-full bg-slate-100 overflow-hidden border-b border-slate-100 flex flex-col items-center justify-center text-slate-400 p-4 text-center">
-                    {prop.main_photo_url ? (
-                      <img
-                        src={prop.main_photo_url}
-                        alt="Imóvel CAIXA"
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <>
-                        <Lock className="w-8 h-8 stroke-1 text-slate-400 mb-1" />
-                        <span className="text-xs font-bold text-slate-600">Foto ainda não disponível</span>
-                      </>
-                    )}
+                  {/* Foto Principal com Fallback Inteligente */}
+                  <div className="relative h-48 w-full bg-slate-900 overflow-hidden border-b border-slate-100 flex flex-col items-center justify-center">
+                    {(() => {
+                      const hdn = prop.source_property_id || '';
+                      const officialPhotoUrl = prop.main_photo_url || (hdn ? `https://venda-imoveis.caixa.gov.br/fotos/F${hdn}0.jpg` : '');
+                      const type = (prop.property_type || '').toLowerCase();
+                      const defaultPlaceholder = type.includes('casa')
+                        ? 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=800&q=80'
+                        : type.includes('terreno')
+                        ? 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=800&q=80'
+                        : type.includes('comercial') || type.includes('sala') || type.includes('loja')
+                        ? 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=800&q=80'
+                        : 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80';
+
+                      return (
+                        <img
+                          src={officialPhotoUrl || defaultPlaceholder}
+                          alt={prop.title || 'Imóvel CAIXA'}
+                          className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).src = defaultPlaceholder;
+                          }}
+                        />
+                      );
+                    })()}
 
                     {/* Destaque do Desconto (Seção 35) */}
                     {prop.discount_percentage !== null && prop.discount_percentage > 0 && (

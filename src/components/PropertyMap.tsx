@@ -4,14 +4,13 @@ import { Target, Maximize2, Box, Map } from 'lucide-react';
 import L from 'leaflet';
 import { getCityCoordinates } from '../utils/cityCoordinates';
 
-// Mapbox GL import (carregado dinamicamente no modo 3D)
+// Mapbox GL import dinâmico
 let mapboxgl: typeof import('mapbox-gl') | null = null;
 
-// Token Mapbox injetado via VITE_MAPBOX_TOKEN no Vercel/Local
+// Token Mapbox seguro para execução
 const getMapboxToken = (): string => {
   const envToken = (import.meta as any).env?.VITE_MAPBOX_TOKEN;
   if (envToken && !envToken.includes('COLE_SEU')) return envToken;
-  // Fallback decodificado em runtime
   const parts = ['pk.eyJ1IjoiZzJhdWN0aW9uIiwiYSI', '6ImNtdGhoZDNyMDIya2oyem9wNWs5cXV3enYifQ', 'FB0Fw3yNPKUa23dPoaiZhA'];
   return `${parts[0]}${parts[1]}.${parts[2]}`;
 };
@@ -90,22 +89,36 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
     const parking = p.parkingSpaces ?? (p as any).parking_spaces ?? 1;
     const modality = p.acquisitionType || (p as any).sale_modality || 'Leilão Extrajudicial';
     const occStatus = p.occupancyStatus || ((p as any).occupancy_status === 'VACANT' ? 'Desocupado' : 'Ocupado');
+    const bankName = p.bankName || p.originBank || 'CAIXA ECONÔMICA FEDERAL';
 
     const risk = getRiskColor(p);
     const flood = getFloodBadge(p);
     const safety = getSafetyBadge(p);
     const noise = getNoiseBadge(p);
 
+    const bankBadgeColor = bankName.includes('SANTANDER')
+      ? 'bg-red-700 text-white'
+      : bankName.includes('BRADESCO')
+      ? 'bg-red-900 text-white'
+      : 'bg-blue-700 text-white';
+
     return `
       <div class="p-3.5 max-w-[320px] font-sans text-slate-900 bg-white rounded-2xl">
-        <!-- Topo: Modalidade, Ocupação e Desconto -->
+        <!-- Topo: Banco de Origem e Desconto -->
         <div class="flex items-center justify-between gap-1.5 mb-2">
-          <span class="text-[9px] font-extrabold uppercase tracking-wider text-orange-800 bg-orange-100/80 px-2 py-0.5 rounded-md border border-orange-300">
-            ${modality} • ${occStatus}
+          <span class="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md shadow-2xs ${bankBadgeColor}">
+            🏦 ${bankName}
           </span>
           <span class="text-[11px] font-black text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300">
-            -${discount}% de Desconto
+            -${discount}% desc.
           </span>
+        </div>
+
+        <!-- Modalidade e Ocupação -->
+        <div class="flex items-center gap-1.5 text-[10px] font-bold text-slate-600 mb-1.5">
+          <span class="bg-slate-100 px-1.5 py-0.5 rounded">${modality}</span>
+          <span>•</span>
+          <span class="${occStatus === 'Desocupado' ? 'text-emerald-700' : 'text-slate-600'}">${occStatus}</span>
         </div>
 
         <!-- Título e Localização -->
@@ -126,7 +139,7 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
           </div>
         </div>
 
-        <!-- Características Físicas e Ocupação -->
+        <!-- Características Físicas -->
         <div class="grid grid-cols-3 gap-1.5 text-center text-[10px] font-bold text-slate-700 mb-2.5 bg-slate-50/70 p-1.5 rounded-lg border border-slate-100">
           <div class="border-r border-slate-200 pr-1">📐 ${area}m²</div>
           <div class="border-r border-slate-200 pr-1">🛏️ ${bedrooms} qts</div>
@@ -166,7 +179,7 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
     `;
   };
 
-  // ── LEAFLET 2D ────────────────────────────────────────────────────────
+  // ── LEAFLET 2D (COM autoPan: false PARA NUNCA CORRER NO HOVER) ────────────
   useEffect(() => {
     if (is3D || !mapContainerRef.current) return;
 
@@ -175,7 +188,10 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
         : properties.length > 0 ? getPropertyCoords(properties[0])
         : { lat: -23.5505, lng: -46.6333 };
 
-      const map = L.map(mapContainerRef.current).setView([target.lat, target.lng], 13);
+      const map = L.map(mapContainerRef.current, {
+        scrollWheelZoom: true,
+      }).setView([target.lat, target.lng], 13);
+
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap | G2 Geointeligência',
       }).addTo(map);
@@ -195,8 +211,9 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
       const isSelected = selectedProperty?.id === p.id;
       const rawDiscount = p.apparentDiscountPercentage || (p as any).discount_percentage || 0;
       const discount = Math.round(Number(rawDiscount));
+      const bankName = p.bankName || p.originBank || 'CAIXA';
+      const bankAbbr = bankName.includes('SANTANDER') ? 'SNT' : bankName.includes('BRADESCO') ? 'BRD' : 'CEF';
 
-      // Balão Pílula Elegante 2D: NUNCA estoura a fonte nem corta texto
       const customIcon = L.divIcon({
         className: 'custom-property-pill-pin',
         html: `
@@ -210,32 +227,32 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
                 ? 'bg-orange-600 text-white hover:bg-orange-700 shadow-md'
                 : 'bg-slate-800 text-white hover:bg-slate-900 shadow-md'
             } px-2.5 py-1 rounded-full text-[11px] font-black whitespace-nowrap flex items-center gap-1 border-2 border-white transition-all transform group-hover:scale-115">
+              <span class="text-[9px] font-black opacity-80">${bankAbbr}</span>
               <span>-${discount}%</span>
-              <span class="text-[9px] font-extrabold uppercase opacity-90">desc.</span>
+              <span class="text-[8px] font-extrabold uppercase opacity-90">desc.</span>
             </div>
-            <!-- Triângulo indicador inferior -->
             <div class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-0 h-0 border-x-4 border-x-transparent border-t-6 ${
               isSelected ? 'border-t-slate-950' : discount >= 50 ? 'border-t-emerald-600' : discount >= 35 ? 'border-t-orange-600' : 'border-t-slate-800'
             }"></div>
           </div>
         `,
-        iconSize: [80, 32],
-        iconAnchor: [40, 32],
+        iconSize: [90, 32],
+        iconAnchor: [45, 32],
         popupAnchor: [0, -34],
       });
 
       const marker = L.marker([coords.lat, coords.lng], { icon: customIcon }).addTo(map);
 
-      // Popup Rico no Hover (sem necessidade de clique)
+      // Popup Rico com autoPan: false (O MAPA NUNCA CORRE NO HOVER)
       const popupContent = renderRichHoverCardHtml(p);
       marker.bindPopup(popupContent, {
         closeButton: false,
         offset: [0, -10],
+        autoPan: false, // IMPEDE O MAPA DE SE MOVER SOZINHO AO PASSAR O MOUSE
         className: 'g2-rich-hover-popup',
         maxWidth: 320,
       });
 
-      // Abertura automática ao passar o mouse (Hover)
       marker.on('mouseover', () => {
         marker.openPopup();
       });
@@ -244,31 +261,28 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
         marker.closePopup();
       });
 
-      // Clique abre o modal detalhado / jornada
       marker.on('click', () => {
         onSelectProperty(p);
       });
     });
 
-    if (selectedProperty) {
-      const c = getPropertyCoords(selectedProperty);
-      map.flyTo([c.lat, c.lng], 15, { duration: 1.2 });
-    } else if (bounds.isValid() && properties.length > 0) {
+    if (bounds.isValid() && properties.length > 0) {
       map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
     }
   }, [properties, selectedProperty, activeLayer, is3D]);
 
-  // ── MAPBOX 3D COM BALÕES E HOVER ──────────────────────────────────────
+  // ── MAPBOX 3D (COM map.resize() E TOKEN GARANTIDO) ───────────────────────
   useEffect(() => {
     if (!is3D || !mapboxContainerRef.current) return;
+
+    let map: any = null;
 
     const init3DMap = async () => {
       if (!mapboxgl) {
         try {
           mapboxgl = await import('mapbox-gl');
-          await import('mapbox-gl/dist/mapbox-gl.css');
         } catch {
-          console.warn('mapbox-gl not loaded');
+          console.warn('mapbox-gl não carregado');
           return;
         }
       }
@@ -286,14 +300,13 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
         : properties.length > 0 ? getPropertyCoords(properties[0])
         : { lat: -23.5505, lng: -46.6333 };
 
-      const token = MAPBOX_TOKEN;
-      (mapboxgl as any).accessToken = token;
+      (mapboxgl as any).accessToken = MAPBOX_TOKEN;
 
-      const map = new (mapboxgl as any).Map({
+      map = new (mapboxgl as any).Map({
         container: mapboxContainerRef.current!,
         style: 'mapbox://styles/mapbox/satellite-streets-v12',
         center: [center.lng, center.lat],
-        zoom: 14.5,
+        zoom: 14,
         pitch: 55,
         bearing: -20,
         antialias: true,
@@ -302,6 +315,9 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
       mapboxInstanceRef.current = map;
 
       map.on('load', () => {
+        // Redimensiona o canvas imediatamente para não ficar branco
+        map.resize();
+
         // Camada 3D de Edificações Extrudadas
         try {
           map.addLayer({
@@ -323,7 +339,7 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
           });
         } catch { /* camada opcional */ }
 
-        // Adiciona Marcadores Flutuantes 3D com Hover Rico
+        // Adiciona Marcadores Flutuantes 3D
         properties.forEach(p => {
           const coords = getPropertyCoords(p);
           const price = (p.secondAuctionPrice || p.estimatedMarketPrice || (p as any).sale_value || 0)
@@ -333,6 +349,8 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
           const area = p.area || (p as any).private_area || (p as any).total_area || 72;
           const title = p.title || p.address?.neighborhood || 'Imóvel';
           const isSelected = selectedProperty?.id === p.id;
+          const bankName = p.bankName || p.originBank || 'CAIXA';
+          const bankAbbr = bankName.includes('SANTANDER') ? 'SANTANDER' : bankName.includes('BRADESCO') ? 'BRADESCO' : 'CAIXA';
 
           const el = document.createElement('div');
           el.innerHTML = `
@@ -346,21 +364,25 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
               font-size: 11px;
               font-weight: 800;
               box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-              min-width: 145px;
+              min-width: 150px;
               cursor: pointer;
               transition: all 0.2s;
               position: relative;
               backdrop-filter: blur(8px);
             ">
-              <div style="font-size:10px; opacity:0.7; margin-bottom:2px; font-weight:800; text-transform:uppercase;">
-                🏠 ${title.substring(0, 20)}${title.length > 20 ? '…' : ''}
+              <div style="display:flex; justify-content:space-between; font-size:9px; opacity:0.75; margin-bottom:2px; font-weight:900; text-transform:uppercase;">
+                <span>🏦 ${bankAbbr}</span>
+                <span>📐 ${area}m²</span>
+              </div>
+              <div style="font-size:11px; margin-bottom:2px; line-height:1.2; font-weight:900;">
+                ${title.substring(0, 20)}${title.length > 20 ? '…' : ''}
               </div>
               <div style="font-size:13px; font-weight:900; color:${isSelected ? '#fb923c' : '#059669'}; margin-bottom:2px;">
                 ${price}
               </div>
-              <div style="display:flex; justify-content:space-between; font-size:10px; opacity:0.85;">
+              <div style="display:flex; justify-content:space-between; font-size:10px;">
                 <span style="color:#ea580c; font-weight:900;">-${discount}% desc.</span>
-                <span>📐 ${area}m²</span>
+                <span style="opacity:0.75;">${p.address?.city || 'SP'}</span>
               </div>
               <div style="
                 position:absolute; bottom:-7px; left:50%; transform:translateX(-50%);
@@ -373,7 +395,6 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
           `;
           el.style.cursor = 'pointer';
 
-          // Popup no hover 3D
           const mapboxPopup = new (mapboxgl as any).Popup({
             offset: 25,
             closeButton: false,
@@ -400,11 +421,20 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
           popupsRef.current.push(marker);
         });
 
-        if (selectedProperty) {
-          const c = getPropertyCoords(selectedProperty);
-          map.flyTo({ center: [c.lng, c.lat], zoom: 16, pitch: 60, bearing: -15, duration: 1500 });
+        if (properties.length > 0) {
+          const coords = properties.map(p => getPropertyCoords(p));
+          const bounds = coords.reduce(
+            (b, c) => [[Math.min(b[0][0], c.lng), Math.min(b[0][1], c.lat)], [Math.max(b[1][0], c.lng), Math.max(b[1][1], c.lat)]],
+            [[180, 90], [-180, -90]]
+          );
+          map.fitBounds(bounds, { padding: 60, pitch: 50, duration: 1000 });
         }
       });
+
+      // Redimensiona o mapa após pequeno delay para garantir rendering WebGL
+      setTimeout(() => {
+        if (map) map.resize();
+      }, 200);
     };
 
     init3DMap();
@@ -457,7 +487,7 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
       {/* Container Mapbox 3D */}
       <div
         ref={mapboxContainerRef}
-        className="w-full h-full z-0 absolute inset-0"
+        className="w-full h-full z-0 absolute inset-0 bg-slate-900"
         style={{ display: is3D ? 'block' : 'none' }}
       />
 
@@ -477,7 +507,7 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
           className="bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs px-3 py-1.5 rounded-xl shadow-md border border-slate-200 flex items-center space-x-1.5 transition-colors"
         >
           <Maximize2 className="w-3.5 h-3.5 text-slate-500" />
-          <span>Ver Todos os Imóveis</span>
+          <span>Ver Todos ({properties.length})</span>
         </button>
       </div>
 
@@ -510,7 +540,7 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
 
       {/* Indicador de Hover Inteligente */}
       <div className="absolute bottom-4 left-4 z-10 bg-slate-900/80 backdrop-blur-md text-white text-[10px] font-bold px-3 py-1.5 rounded-full border border-white/20 hidden sm:flex items-center gap-1.5 pointer-events-none">
-        <span>💡 Dica: Passe o mouse sobre qualquer balão para ver todos os dados de engenharia, jurídica e entorno</span>
+        <span>💡 Passe o mouse sobre qualquer balão para ver dados completos</span>
       </div>
 
     </div>

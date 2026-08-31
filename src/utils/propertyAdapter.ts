@@ -1,52 +1,114 @@
 import type { Property, AcquisitionType, OccupancyStatus } from '../types/auction';
 import { getCityCoordinates } from './cityCoordinates';
+import { parseCaixaDescription, parseBrazilianNumber, extractHdnImovelFromUrl } from './caixaListImporter';
+
+const PROPERTY_TYPE_FALLBACK_IMAGES: Record<string, string[]> = {
+  Apartamento: [
+    'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=800&q=80',
+  ],
+  Casa: [
+    'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1518780664697-55e3ad937233?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&w=800&q=80',
+  ],
+  Comercial: [
+    'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=800&q=80',
+  ],
+  Terreno: [
+    'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=800&q=80',
+  ],
+};
 
 /**
- * Converte um registro bruto do Supabase / CSV (ex: Caixa, Santander, Bradesco)
- * para a interface Property completa que o Mapa 2D/3D, Descoberta e Jornada utilizam.
+ * Converte um registro bruto do Supabase / CSV / Banco de Dados
+ * para a interface Property completa que o Mapa 2D/3D e Descoberta utilizam.
  */
 export function adaptCatalogItemToProperty(raw: any, index: number = 0): Property {
-  const city = raw.city || 'São Paulo';
-  const state = raw.state || 'SP';
+  const city = (raw.city || 'São Paulo').trim();
+  const state = (raw.state || 'SP').trim().toUpperCase();
   const coords = getCityCoordinates(city, state);
 
-  // Adiciona um pequeno jitter/offset geográfico para imóveis da mesma cidade não ficarem 100% sobrepostos
-  const latOffset = (Math.sin(index * 997 + (raw.source_property_id?.length || 5)) * 0.02);
-  const lngOffset = (Math.cos(index * 997 + (raw.source_property_id?.length || 5)) * 0.02);
+  // Extrai dados detalhados da descrição se disponíveis
+  const descFields = raw.description ? parseCaixaDescription(raw.description) : null;
 
-  const saleValue = raw.sale_value || raw.current_minimum_value || raw.appraisal_value * 0.6 || 250000;
-  const appraisalValue = raw.appraisal_value || Math.round(saleValue * 1.4) || 350000;
-  const discount = raw.discount_percentage || raw.calculated_discount_percentage || (appraisalValue > 0 ? Math.round(((appraisalValue - saleValue) / appraisalValue) * 100) : 35);
+  // Offset geográfico para imóveis da mesma cidade não ficarem 100% sobrepostos
+  const seed = (raw.source_property_id ? parseInt(String(raw.source_property_id).replace(/\D/g, '').slice(-4), 10) : index) || index;
+  const latOffset = Math.sin(seed * 0.7 + index) * 0.015;
+  const lngOffset = Math.cos(seed * 0.7 + index) * 0.015;
 
+  // Valores financeiros
+  const saleValue = raw.sale_value 
+    || raw.current_minimum_value 
+    || parseBrazilianNumber(raw.raw_list_data?.['Preço'])
+    || (raw.appraisal_value ? Math.round(raw.appraisal_value * 0.6) : 250000);
+
+  const appraisalValue = raw.appraisal_value 
+    || parseBrazilianNumber(raw.raw_list_data?.['Valor de avaliação'])
+    || Math.round(saleValue * 1.45);
+
+  const discount = raw.discount_percentage 
+    || raw.calculated_discount_percentage 
+    || (appraisalValue > 0 ? Math.round(((appraisalValue - saleValue) / appraisalValue) * 100) : 35);
+
+  // Modalidade de Venda
   let acqType: AcquisitionType = 'Leilão Extrajudicial';
-  if (raw.sale_modality?.toLowerCase().includes('judicial')) {
+  const modalityText = (raw.sale_modality || raw.raw_list_data?.['Modalidade de venda'] || '').toLowerCase();
+  if (modalityText.includes('judicial')) {
     acqType = 'Leilão Judicial';
-  } else if (raw.sale_modality?.toLowerCase().includes('venda direta') || raw.sale_modality?.toLowerCase().includes('venda online')) {
+  } else if (modalityText.includes('venda direta') || modalityText.includes('venda online')) {
     acqType = 'Venda Direta Banco';
   }
 
+  // Status de Ocupação
   let occStatus: OccupancyStatus = 'Ocupado';
-  if (raw.occupancy_status === 'VACANT' || raw.occupancy_status === 'Desocupado') {
+  if (raw.occupancy_status === 'VACANT' || raw.occupancy_status === 'Desocupado' || raw.raw_list_data?.['Ocupação'] === 'Desocupado') {
     occStatus = 'Desocupado';
   }
 
-  const category = (raw.property_type?.includes('Casa') ? 'Casa'
-    : raw.property_type?.includes('Terreno') ? 'Terreno'
-    : raw.property_type?.includes('Comercial') ? 'Comercial'
+  // Tipo / Categoria
+  const rawType = raw.property_type || descFields?.property_type || raw.raw_list_data?.['Tipo'] || 'Apartamento';
+  const category = (rawType.includes('Casa') || rawType.includes('Sobrado') ? 'Casa'
+    : rawType.includes('Terreno') || rawType.includes('Lote') ? 'Terreno'
+    : rawType.includes('Comercial') || rawType.includes('Sala') || rawType.includes('Galpão') || rawType.includes('Loja') ? 'Comercial'
     : 'Apartamento') as any;
+
+  // Áreas
+  const area = raw.private_area 
+    || raw.total_area 
+    || descFields?.private_area 
+    || descFields?.total_area 
+    || (category === 'Casa' ? 120 : category === 'Terreno' ? 250 : category === 'Comercial' ? 45 : 68);
+
+  const bedrooms = raw.bedrooms ?? descFields?.bedrooms ?? (category === 'Apartamento' ? 2 : category === 'Casa' ? 3 : 0);
+  const parkingSpaces = raw.parking_spaces ?? descFields?.parking_spaces ?? 1;
+
+  // Identificação do Banco de Origem
+  const sourceBank = raw.source === 'SANTANDER' ? 'BANCO SANTANDER'
+    : raw.source === 'BRADESCO' ? 'BANCO BRADESCO'
+    : raw.source === 'CAIXA' ? 'CAIXA ECONÔMICA FEDERAL'
+    : (raw.originBank || 'CAIXA ECONÔMICA FEDERAL');
+
+  // Foto oficial ou fallback
+  const hdnImovel = extractHdnImovelFromUrl(raw.source_url || '') || raw.source_property_id;
+  const officialCaixaPhoto = hdnImovel ? `https://venda-imoveis.caixa.gov.br/fotos/F${hdnImovel}0.jpg` : '';
+  const fallbackList = PROPERTY_TYPE_FALLBACK_IMAGES[category] || PROPERTY_TYPE_FALLBACK_IMAGES.Apartamento;
+  const fallbackPhoto = fallbackList[index % fallbackList.length];
 
   return {
     id: raw.id || `prop-${raw.source_property_id || index}`,
     code: `G2-${raw.source_property_id || index}`,
     title: raw.title || `${category} em ${city}`,
-    description: raw.description || `Oportunidade em ${city}/${state}. Desconto de ${discount}%.`,
+    description: raw.description || `Oportunidade ${sourceBank} em ${city}/${state}. Desconto de ${discount}%.`,
     category,
     acquisitionType: acqType,
     occupancyStatus: occStatus,
     address: {
-      street: raw.address || `Região de ${city}`,
+      street: raw.address || `Bairro ${raw.neighborhood || 'Central'}`,
       number: '',
-      neighborhood: raw.neighborhood || 'Centro',
+      neighborhood: raw.neighborhood || 'Bairro Central',
       city: city,
       state: state,
       zip: '00000-000',
@@ -58,26 +120,26 @@ export function adaptCatalogItemToProperty(raw: any, index: number = 0): Propert
     firstAuctionDate: '2026-09-15',
     secondAuctionPrice: saleValue,
     secondAuctionDate: '2026-09-25',
-    area: raw.private_area || raw.total_area || 72,
-    bedrooms: raw.bedrooms || 2,
+    area: Math.round(Number(area)),
+    bedrooms: Number(bedrooms),
     bathrooms: 2,
-    parkingSpaces: raw.parking_spaces || 1,
-    auctioneerName: raw.auctioneer || (raw.source === 'CAIXA' ? 'Mega Leilões Oficial' : 'Leiloeiro Homologado'),
+    parkingSpaces: Number(parkingSpaces),
+    auctioneerName: raw.auctioneer || (raw.source === 'CAIXA' ? 'Mega Leilões / Leiloeiro Oficial CAIXA' : raw.source === 'SANTANDER' ? 'Zukerman / Mega Leilões Santander' : 'Sodré Santoro / Biasi Bradesco'),
     auctioneerSite: raw.source_url || 'https://venda-imoveis.caixa.gov.br',
     isAuctioneerVerified: true,
-    bankName: raw.source === 'CAIXA' ? 'Caixa Econômica Federal' : raw.source === 'SANTANDER' ? 'Santander' : 'Bradesco',
-    originBank: raw.source === 'CAIXA' ? 'Caixa Econômica Federal' : raw.source === 'SANTANDER' ? 'Santander' : 'Bradesco',
+    bankName: sourceBank,
+    originBank: sourceBank,
     debts: {
-      iptu: Math.round(saleValue * 0.015),
-      condominium: Math.round(saleValue * 0.01),
+      iptu: Math.round(saleValue * 0.012),
+      condominium: Math.round(saleValue * 0.008),
       legalDebts: 0,
       utilityDebts: 0,
       isBuyerResponsible: false,
     },
     estimatedMarketPrice: appraisalValue,
-    askingPricePerM2Range: [Math.round(saleValue / 72 * 0.9), Math.round(saleValue / 72 * 1.3)],
-    estimatedMarketPricePerM2: Math.round(appraisalValue / 72),
-    acquisitionPricePerM2: Math.round(saleValue / 72),
+    askingPricePerM2Range: [Math.round(saleValue / (area || 1) * 0.9), Math.round(saleValue / (area || 1) * 1.3)],
+    estimatedMarketPricePerM2: Math.round(appraisalValue / (area || 1)),
+    acquisitionPricePerM2: Math.round(saleValue / (area || 1)),
     apparentDiscountPercentage: discount,
     opportunityScore: Math.min(10, Math.max(7, Math.round(discount / 10) + 3)),
     riskScore: occStatus === 'Desocupado' ? 2 : 4,
@@ -89,7 +151,7 @@ export function adaptCatalogItemToProperty(raw: any, index: number = 0): Propert
       level: 'Baixo Risco',
       score: 8.5,
       recentIncidentsCount: 1,
-      summary: 'Região com infraestrutura consolidada',
+      summary: 'Região com infraestrutura urbana consolidada',
       provenance: 'DADO OFICIAL',
     },
     floodRisk: {
@@ -111,7 +173,7 @@ export function adaptCatalogItemToProperty(raw: any, index: number = 0): Propert
     },
     newsIntelligence: [],
     comparables: [],
-    images: ['https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80'],
+    images: officialCaixaPhoto ? [officialCaixaPhoto, fallbackPhoto] : [fallbackPhoto],
     editalUrl: raw.source_url || '',
     matriculaUrl: '',
     lifecycleStep: 2,

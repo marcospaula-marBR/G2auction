@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { AICopilot } from './components/AICopilot';
 import { PropertyDiscovery } from './components/PropertyDiscovery';
-import { PropertyMap } from './components/PropertyMap';
 import { PropertyDetailModal } from './components/PropertyDetailModal';
 import { MaxBidCalculator } from './components/MaxBidCalculator';
 import { InvestmentLedger } from './components/InvestmentLedger';
@@ -27,7 +26,7 @@ import {
 } from 'lucide-react';
 
 export function App() {
-  const APP_VERSION = 'v3.2.0';
+  const APP_VERSION = 'v3.3.0';
   const [properties, setProperties] = useState<Property[]>(mockProperties);
   const [selectedProperty, setSelectedProperty] = useState<Property | undefined>(mockProperties[0]);
 
@@ -244,26 +243,17 @@ export function App() {
           </div>
         )}
 
-        {/* Descoberta & Mapa */}
+        {/* Descoberta & Mapa com Filtros Unificados */}
         {activeMainTab === 'discovery' && (
-          <div className="space-y-6">
-            {(viewMode === 'split' || viewMode === 'map') && (
-              <PropertyMap
-                properties={properties}
-                selectedProperty={selectedProperty}
-                onSelectProperty={p => { setSelectedProperty(p); setIsDetailModalOpen(true); }}
-                activeLayer={activeMapLayer}
-                setActiveLayer={setActiveMapLayer}
-              />
-            )}
-            {(viewMode === 'split' || viewMode === 'grid') && (
-              <PropertyDiscovery
-                properties={properties}
-                onSelectProperty={p => { setSelectedProperty(p); setIsDetailModalOpen(true); }}
-                onOpenMaxBid={p => { setSelectedProperty(p); setIsMaxBidOpen(true); }}
-              />
-            )}
-          </div>
+          <PropertyDiscovery
+            properties={properties}
+            selectedProperty={selectedProperty}
+            onSelectProperty={p => { setSelectedProperty(p); setIsDetailModalOpen(true); }}
+            onOpenMaxBid={p => { setSelectedProperty(p); setIsMaxBidOpen(true); }}
+            viewMode={viewMode}
+            activeMapLayer={activeMapLayer}
+            setActiveMapLayer={setActiveMapLayer}
+          />
         )}
 
         {/* Ficha 360° */}
