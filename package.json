@@ -1,7 +1,7 @@
 {
   "name": "g2auction",
   "private": true,
-  "version": "2.5.0",
+  "version": "3.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,8 +11,10 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.2",
+    "@types/mapbox-gl": "^3.4.1",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.30.0",
+    "mapbox-gl": "^3.29.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "recharts": "^3.10.1"

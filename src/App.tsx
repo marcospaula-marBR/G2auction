@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Header } from './components/Header';
-import { LifecycleTimeline } from './components/LifecycleTimeline';
 import { AICopilot } from './components/AICopilot';
 import { PropertyDiscovery } from './components/PropertyDiscovery';
 import { PropertyMap } from './components/PropertyMap';
@@ -13,24 +12,29 @@ import { PartnerNetwork } from './components/PartnerNetwork';
 import { PortfolioDashboard } from './components/PortfolioDashboard';
 import { PropertyReportModal } from './components/PropertyReportModal';
 import { IntroSplash } from './components/IntroSplash';
-import { CaixaFeedAdminTestPage } from './components/CaixaFeedAdminTestPage';
 import { PropertyCatalogPage } from './components/PropertyCatalogPage';
+import { BancosAdminPage } from './components/BancosAdminPage';
+import { JourneyPage } from './components/JourneyPage';
 
 import { mockProperties } from './data/mockProperties';
 import { mockParceiros } from './data/mockParceiros';
-import type { Property, LedgerEntry, UserProfile, LifecycleStep } from './types/auction';
-import { Search, Wallet, Wrench, Users, PieChart, Layers, Bot, Building2, RefreshCw } from 'lucide-react';
+import type { Property, LedgerEntry, UserProfile } from './types/auction';
+import {
+  Search, Wallet, Wrench, Users, PieChart, Layers, Bot,
+  Building2, Route, Landmark,
+} from 'lucide-react';
 
 export function App() {
-  const APP_VERSION = 'v2.5.0';
+  const APP_VERSION = 'v3.0.0';
   const [properties] = useState<Property[]>(mockProperties);
   const [selectedProperty, setSelectedProperty] = useState<Property | undefined>(mockProperties[0]);
-  const [currentLifecycleStep, setCurrentLifecycleStep] = useState<LifecycleStep>(2);
 
   const [isIntroVisible, setIsIntroVisible] = useState(true);
-  const [activeMainTab, setActiveMainTab] = useState<'imoveis' | 'discovery' | 'detail' | 'ledger' | 'renovation' | 'partners' | 'portfolio' | 'caixa-test'>('imoveis');
+  const [activeMainTab, setActiveMainTab] = useState<
+    'imoveis' | 'discovery' | 'detail' | 'ledger' | 'renovation' | 'partners' | 'portfolio' | 'banco-admin' | 'jornada'
+  >('imoveis');
   const [viewMode, setViewMode] = useState<'grid' | 'map' | 'split'>('split');
-  const [activeMapLayer, setActiveMapLayer] = useState<'default' | 'price' | 'flood' | 'safety' | 'noise'>('default');
+  const [activeMapLayer, setActiveMapLayer] = useState<'default' | 'price' | 'flood' | 'safety' | 'noise' | '3d'>('default');
 
   // Modais
   const [isCopilotOpen, setIsCopilotOpen] = useState(false);
@@ -86,15 +90,11 @@ export function App() {
   });
 
   const handleAddLedgerEntry = (entry: Omit<LedgerEntry, 'id'>) => {
-    const newEntry: LedgerEntry = {
-      ...entry,
-      id: Date.now().toString(),
-    };
-    setLedgerEntries((prev) => [newEntry, ...prev]);
+    const newEntry: LedgerEntry = { ...entry, id: Date.now().toString() };
+    setLedgerEntries(prev => [newEntry, ...prev]);
   };
 
   const handleRegisterVoiceExpense = (voiceText: string) => {
-    // Processamento de voz simulado para adição automática no Livro Caixa
     handleAddLedgerEntry({
       propertyId: selectedProperty?.id || properties[0].id,
       category: 'Mão de Obra Reforma',
@@ -106,10 +106,24 @@ export function App() {
     });
   };
 
+  type MainTab = typeof activeMainTab;
+
+  const navItems: { id: MainTab; label: string; icon: React.ElementType; iconColor: string; highlight?: boolean }[] = [
+    { id: 'imoveis', label: 'Imóveis CAIXA', icon: Building2, iconColor: 'text-orange-200' },
+    { id: 'jornada', label: 'Minha Jornada 🗺️', icon: Route, iconColor: 'text-emerald-400', highlight: true },
+    { id: 'discovery', label: 'Descoberta & Mapa', icon: Search, iconColor: 'text-orange-500' },
+    { id: 'detail', label: 'Ficha 360°', icon: Layers, iconColor: 'text-sky-500' },
+    { id: 'ledger', label: 'Livro Caixa', icon: Wallet, iconColor: 'text-emerald-500' },
+    { id: 'renovation', label: 'Campo & Obra', icon: Wrench, iconColor: 'text-amber-500' },
+    { id: 'partners', label: 'Parceiros', icon: Users, iconColor: 'text-purple-500' },
+    { id: 'portfolio', label: 'Carteira', icon: PieChart, iconColor: 'text-red-500' },
+    { id: 'banco-admin', label: 'Multi-Bancos 🏦', icon: Landmark, iconColor: 'text-orange-400' },
+  ];
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-orange-500 selection:text-white">
-      
-      {/* Intro Splash Mobile-First (Logotipo Flutuante & Slogan) */}
+
+      {/* Intro Splash */}
       {isIntroVisible && (
         <IntroSplash
           version={APP_VERSION}
@@ -117,7 +131,7 @@ export function App() {
         />
       )}
 
-      {/* Header com slogan oficial G2 AUCTION e Versionamento v1.2.0 */}
+      {/* Header */}
       <Header
         userProfile={userProfile}
         setUserProfile={setUserProfile}
@@ -128,197 +142,110 @@ export function App() {
         version={APP_VERSION}
       />
 
-      {/* Stepper Metáfora dos 6 Passos de Arrematação */}
-      <LifecycleTimeline
-        currentStep={currentLifecycleStep}
-        onSelectStep={(step) => setCurrentLifecycleStep(step)}
-      />
-
-      {/* Main Navigation Sub-Bar */}
+      {/* Navigation Bar */}
       <div className="bg-white border-b border-slate-200 px-4 sm:px-8 py-2.5">
         <div className="max-w-7xl mx-auto flex items-center justify-between overflow-x-auto scrollbar-none gap-2">
-          
           <div className="flex items-center space-x-1">
-            <button
-              onClick={() => setActiveMainTab('imoveis')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center space-x-2 ${
-                activeMainTab === 'imoveis'
-                  ? 'bg-gradient-to-r from-orange-500 to-red-600 text-white shadow-md'
-                  : 'text-slate-700 hover:bg-slate-100'
-              }`}
-            >
-              <Building2 className="w-4 h-4 text-orange-200" />
-              <span>Imóveis CAIXA (Catálogo)</span>
-            </button>
-
-            <button
-              onClick={() => setActiveMainTab('discovery')}
-              className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-2 ${
-                activeMainTab === 'discovery'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <Search className="w-4 h-4 text-orange-500" />
-              <span>Descoberta & Mapa</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveMainTab('detail');
-                if (selectedProperty) setIsDetailModalOpen(true);
-              }}
-              className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-2 ${
-                activeMainTab === 'detail'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <Layers className="w-4 h-4 text-sky-500" />
-              <span>Ficha 360° do Imóvel</span>
-            </button>
-
-            <button
-              onClick={() => setActiveMainTab('ledger')}
-              className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-2 ${
-                activeMainTab === 'ledger'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <Wallet className="w-4 h-4 text-emerald-500" />
-              <span>Livro Caixa & Controladoria</span>
-            </button>
-
-            <button
-              onClick={() => setActiveMainTab('renovation')}
-              className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-2 ${
-                activeMainTab === 'renovation'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <Wrench className="w-4 h-4 text-amber-500" />
-              <span>Modo de Campo & Obra</span>
-            </button>
-
-            <button
-              onClick={() => setActiveMainTab('partners')}
-              className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-2 ${
-                activeMainTab === 'partners'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <Users className="w-4 h-4 text-purple-500" />
-              <span>Rede de Parceiros</span>
-            </button>
-
-            <button
-              onClick={() => setActiveMainTab('portfolio')}
-              className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-2 ${
-                activeMainTab === 'portfolio'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <PieChart className="w-4 h-4 text-red-500" />
-              <span>Carteira & Aprendizado</span>
-            </button>
-
-            <button
-              onClick={() => setActiveMainTab('caixa-test')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
-                activeMainTab === 'caixa-test'
-                  ? 'bg-slate-900 text-white shadow-md'
-                  : 'bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200'
-              }`}
-            >
-              <RefreshCw className="w-4 h-4 text-orange-400" />
-              <span>Atualizar Base CAIXA</span>
-            </button>
+            {navItems.map(item => {
+              const Icon = item.icon;
+              const isActive = activeMainTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setActiveMainTab(item.id);
+                    if (item.id === 'detail' && selectedProperty) setIsDetailModalOpen(true);
+                  }}
+                  className={`px-3 py-2 rounded-xl text-xs font-black transition-all flex items-center space-x-1.5 flex-shrink-0 ${
+                    isActive
+                      ? item.highlight
+                        ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md'
+                        : 'bg-gradient-to-r from-orange-500 to-red-600 text-white shadow-md'
+                      : item.highlight
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white/80' : item.iconColor}`} />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
           </div>
 
-          {/* Toggle de Modo de Visão no Mapa/Grid */}
+          {/* View mode toggle (only on discovery tab) */}
           {activeMainTab === 'discovery' && (
-            <div className="hidden sm:flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`px-3 py-1.5 rounded-lg transition-all ${
-                  viewMode === 'grid' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
-                }`}
-              >
-                Grid
-              </button>
-              <button
-                onClick={() => setViewMode('split')}
-                className={`px-3 py-1.5 rounded-lg transition-all ${
-                  viewMode === 'split' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
-                }`}
-              >
-                Dividido (Mapa+Grid)
-              </button>
-              <button
-                onClick={() => setViewMode('map')}
-                className={`px-3 py-1.5 rounded-lg transition-all ${
-                  viewMode === 'map' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
-                }`}
-              >
-                Mapa Tela Cheia
-              </button>
+            <div className="hidden sm:flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold flex-shrink-0">
+              {(['grid', 'split', 'map'] as const).map(mode => (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  className={`px-3 py-1.5 rounded-lg transition-all capitalize ${
+                    viewMode === mode ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+                  }`}
+                >
+                  {mode === 'split' ? 'Mapa+Grid' : mode === 'map' ? 'Mapa' : 'Grid'}
+                </button>
+              ))}
             </div>
           )}
-
         </div>
       </div>
 
-      {/* Main Body View */}
+      {/* Main Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
-        
-        {/* VISTA DA BASE REAL: CATÁLOGO DE IMÓVEIS CAIXA (/imoveis) */}
+
+        {/* Catálogo CAIXA */}
         {activeMainTab === 'imoveis' && (
           <PropertyCatalogPage
-            onOpenAdmin={() => setActiveMainTab('caixa-test')}
+            onOpenAdmin={() => setActiveMainTab('banco-admin')}
           />
         )}
-        
-        {/* VISTA 1: DESCOBERTA & MAPA */}
+
+        {/* Jornada do Arrematante */}
+        {activeMainTab === 'jornada' && selectedProperty && (
+          <JourneyPage
+            property={selectedProperty}
+            onOpenMaxBid={(p) => { setSelectedProperty(p); setIsMaxBidOpen(true); }}
+          />
+        )}
+        {activeMainTab === 'jornada' && !selectedProperty && (
+          <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center">
+            <Route className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <h3 className="font-black text-slate-700 text-lg mb-1">Selecione um Imóvel</h3>
+            <p className="text-sm text-slate-500">Acesse a aba "Imóveis CAIXA" e selecione um imóvel para iniciar sua jornada.</p>
+            <button
+              onClick={() => setActiveMainTab('imoveis')}
+              className="mt-4 px-5 py-2.5 bg-orange-500 text-white font-bold text-sm rounded-xl hover:bg-orange-600 transition-colors"
+            >
+              Ver Catálogo
+            </button>
+          </div>
+        )}
+
+        {/* Descoberta & Mapa */}
         {activeMainTab === 'discovery' && (
           <div className="space-y-6">
-            
-            {/* Se visão dividida ou mapa apenas */}
             {(viewMode === 'split' || viewMode === 'map') && (
               <PropertyMap
                 properties={properties}
                 selectedProperty={selectedProperty}
-                onSelectProperty={(p) => {
-                  setSelectedProperty(p);
-                  setIsDetailModalOpen(true);
-                }}
+                onSelectProperty={p => { setSelectedProperty(p); setIsDetailModalOpen(true); }}
                 activeLayer={activeMapLayer}
                 setActiveLayer={setActiveMapLayer}
               />
             )}
-
-            {/* Se visão dividida ou grid apenas */}
             {(viewMode === 'split' || viewMode === 'grid') && (
               <PropertyDiscovery
                 properties={properties}
-                onSelectProperty={(p) => {
-                  setSelectedProperty(p);
-                  setIsDetailModalOpen(true);
-                }}
-                onOpenMaxBid={(p) => {
-                  setSelectedProperty(p);
-                  setIsMaxBidOpen(true);
-                }}
+                onSelectProperty={p => { setSelectedProperty(p); setIsDetailModalOpen(true); }}
+                onOpenMaxBid={p => { setSelectedProperty(p); setIsMaxBidOpen(true); }}
               />
             )}
-
           </div>
         )}
 
-        {/* VISTA 2: FICHA 360° DO IMÓVEL */}
+        {/* Ficha 360° */}
         {activeMainTab === 'detail' && selectedProperty && (
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex justify-between items-center">
@@ -336,7 +263,7 @@ export function App() {
           </div>
         )}
 
-        {/* VISTA 3: LIVRO CAIXA & CONTROLADORIA */}
+        {/* Livro Caixa */}
         {activeMainTab === 'ledger' && selectedProperty && (
           <InvestmentLedger
             property={selectedProperty}
@@ -346,36 +273,33 @@ export function App() {
           />
         )}
 
-        {/* VISTA 4: MODO DE CAMPO & OBRA */}
+        {/* Campo & Obra */}
         {activeMainTab === 'renovation' && selectedProperty && (
           <RenovationManager property={selectedProperty} />
         )}
 
-        {/* VISTA 5: REDE DE PARCEIROS */}
+        {/* Rede de Parceiros */}
         {activeMainTab === 'partners' && (
           <PartnerNetwork partners={mockParceiros} />
         )}
 
-        {/* VISTA 6: PORTFÓLIO & APRENDIZADO */}
+        {/* Portfólio */}
         {activeMainTab === 'portfolio' && (
           <PortfolioDashboard
             userProfile={userProfile}
             properties={properties}
-            onSelectProperty={(p) => {
-              setSelectedProperty(p);
-              setIsDetailModalOpen(true);
-            }}
+            onSelectProperty={p => { setSelectedProperty(p); setIsDetailModalOpen(true); }}
           />
         )}
 
-        {/* Teste do Feed Oficial CSV da CAIXA (/listaweb/Lista_imoveis_{UF}.csv) */}
-        {activeMainTab === 'caixa-test' && (
-          <CaixaFeedAdminTestPage />
+        {/* Multi-Bancos */}
+        {activeMainTab === 'banco-admin' && (
+          <BancosAdminPage onGoToCatalog={() => setActiveMainTab('imoveis')} />
         )}
 
       </main>
 
-      {/* Floating Action Button Copilot IA */}
+      {/* FAB Copilot */}
       <button
         onClick={() => setIsCopilotOpen(true)}
         className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-orange-500 to-red-600 text-white p-4 rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all flex items-center space-x-2 border-2 border-white"
@@ -391,10 +315,7 @@ export function App() {
           isOpen={isCopilotOpen}
           onClose={() => setIsCopilotOpen(false)}
           properties={properties}
-          onSelectProperty={(p) => {
-            setSelectedProperty(p);
-            setIsDetailModalOpen(true);
-          }}
+          onSelectProperty={p => { setSelectedProperty(p); setIsDetailModalOpen(true); }}
           onRegisterVoiceExpense={handleRegisterVoiceExpense}
         />
       )}
@@ -404,10 +325,7 @@ export function App() {
           isOpen={isWhatsAppOpen}
           onClose={() => setIsWhatsAppOpen(false)}
           properties={properties}
-          onSelectProperty={(p) => {
-            setSelectedProperty(p);
-            setIsDetailModalOpen(true);
-          }}
+          onSelectProperty={p => { setSelectedProperty(p); setIsDetailModalOpen(true); }}
         />
       )}
 
@@ -439,9 +357,9 @@ export function App() {
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center space-x-3 font-bold text-slate-800">
             <img src="/logo/logo.jpeg" alt="G2 AUCTION" className="h-8 w-auto object-contain" />
-            <span>— O passo a passo para arrematar seu imóvel</span>
+            <span>— Jornada Segura do Arrematante</span>
           </div>
-          <p>© 2026 G2 AUCTION. Sistema Operacional de Leilões Imobiliários. Conteúdo 100% em Português (pt-BR).</p>
+          <p>© 2026 G2 AUCTION {APP_VERSION}. Plataforma de Leilões Imobiliários. Conteúdo 100% em Português (pt-BR).</p>
         </div>
       </footer>
 

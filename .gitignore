@@ -28,3 +28,10 @@ __pycache__/
 *.pyc
 *.db
 
+# Variáveis de ambiente — NUNCA commitar!
+.env
+.env.local
+.env.production
+
+# Banco SQLite de desenvolvimento da API
+leiloes_v3.db
