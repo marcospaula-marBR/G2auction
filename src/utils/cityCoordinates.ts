@@ -12,58 +12,58 @@ export interface GeoCoords {
 }
 
 // ── MAPEAMENTO DE BAIRROS DE PRAIA GRANDE (SP) ──────────────────────────────
-// Coordenadas calibradas precisamente na malha urbana em terra firme
+// Coordenadas calibradas precisamente na malha urbana em terra firme (OSM / Nominatim)
 const PRAIA_GRANDE_NEIGHBORHOODS: Record<string, GeoCoords> = {
-  'CANTO DO FORTE': { lat: -24.0075, lng: -46.4155 },
-  'FORTE': { lat: -24.0075, lng: -46.4155 },
-  'BOQUEIRAO': { lat: -24.0085, lng: -46.4215 },
-  'CENTRO': { lat: -24.0085, lng: -46.4215 },
-  'GUILHERMINA': { lat: -24.0125, lng: -46.4305 },
-  'AVIACAO': { lat: -24.0175, lng: -46.4415 },
-  'TUPI': { lat: -24.0235, lng: -46.4545 },
-  'VILA TUPI': { lat: -24.0235, lng: -46.4545 },
-  'OCIAN': { lat: -24.0295, lng: -46.4675 },
-  'CIDADE OCIAN': { lat: -24.0295, lng: -46.4675 },
-  'MIRIM': { lat: -24.0375, lng: -46.4845 },
-  'VILA MIRIM': { lat: -24.0375, lng: -46.4845 },
-  'NOVA MIRIM': { lat: -24.0385, lng: -46.4955 },
-  'MARACANA': { lat: -24.0445, lng: -46.5015 },
-  'BALNEARIO MARACANA': { lat: -24.0445, lng: -46.5015 },
-  'BALNEARIO MARACANA MIRIM': { lat: -24.0460, lng: -46.5055 },
-  'CAICARA': { lat: -24.0545, lng: -46.5215 },
-  'VILA CAICARA': { lat: -24.0545, lng: -46.5215 },
-  'REAL': { lat: -24.0675, lng: -46.5445 },
-  'BALNEARIO REAL': { lat: -24.0675, lng: -46.5445 },
-  'FLORIDA': { lat: -24.0795, lng: -46.5685 },
-  'BALNEARIO FLORIDA': { lat: -24.0795, lng: -46.5685 },
-  'SOLEMAR': { lat: -24.0975, lng: -46.6015 },
-  'BALNEARIO SOLEMAR': { lat: -24.0975, lng: -46.6015 },
-  'VILA SONIA': { lat: -24.0020, lng: -46.4410 },
-  'ANTARTICA': { lat: -24.0045, lng: -46.4340 },
-  'SITIO DO CAMPO': { lat: -23.9965, lng: -46.4280 },
+  'CANTO DO FORTE': { lat: -24.0090, lng: -46.4120 },
+  'FORTE': { lat: -24.0090, lng: -46.4120 },
+  'BOQUEIRAO': { lat: -24.0112, lng: -46.4210 },
+  'CENTRO': { lat: -24.0112, lng: -46.4210 },
+  'GUILHERMINA': { lat: -24.0123, lng: -46.4320 },
+  'AVIACAO': { lat: -24.0169, lng: -46.4510 },
+  'TUPI': { lat: -24.0218, lng: -46.4680 },
+  'VILA TUPI': { lat: -24.0218, lng: -46.4680 },
+  'OCIAN': { lat: -24.0272, lng: -46.4830 },
+  'CIDADE OCIAN': { lat: -24.0272, lng: -46.4830 },
+  'MIRIM': { lat: -24.0375, lng: -46.4950 },
+  'VILA MIRIM': { lat: -24.0375, lng: -46.4950 },
+  'NOVA MIRIM': { lat: -24.0250, lng: -46.4980 },
+  'MARACANA': { lat: -24.0376, lng: -46.5160 },
+  'BALNEARIO MARACANA': { lat: -24.0376, lng: -46.5160 },
+  'BALNEARIO MARACANA MIRIM': { lat: -24.0410, lng: -46.5180 },
+  'CAICARA': { lat: -24.0481, lng: -46.5380 },
+  'VILA CAICARA': { lat: -24.0481, lng: -46.5380 },
+  'REAL': { lat: -24.0675, lng: -46.5650 },
+  'BALNEARIO REAL': { lat: -24.0675, lng: -46.5650 },
+  'FLORIDA': { lat: -24.0780, lng: -46.5900 },
+  'BALNEARIO FLORIDA': { lat: -24.0780, lng: -46.5900 },
+  'SOLEMAR': { lat: -24.0950, lng: -46.6250 },
+  'BALNEARIO SOLEMAR': { lat: -24.0950, lng: -46.6250 },
+  'VILA SONIA': { lat: -24.0027, lng: -46.4472 },
+  'ANTARTICA': { lat: -24.0104, lng: -46.4531 },
+  'SITIO DO CAMPO': { lat: -23.9973, lng: -46.4228 },
   'JARDIM GLORIA': { lat: -24.0080, lng: -46.4370 },
   'GLORIA': { lat: -24.0080, lng: -46.4370 },
   'QUIETUDE': { lat: -24.0185, lng: -46.4740 },
   'TUPIRY': { lat: -24.0205, lng: -46.4670 },
-  'SAMAMBAIA': { lat: -24.0315, lng: -46.4940 },
-  'ESMERALDA': { lat: -24.0415, lng: -46.5190 },
-  'MELVI': { lat: -24.0475, lng: -46.5240 },
-  'RIBEIROPOLIS': { lat: -24.0375, lng: -46.5070 },
-  'PRINCESA': { lat: -24.0445, lng: -46.5140 },
-  'ANHANGUERA': { lat: -24.0105, lng: -46.4540 },
+  'SAMAMBAIA': { lat: -24.0342, lng: -46.5265 },
+  'ESMERALDA': { lat: -24.0291, lng: -46.5200 },
+  'MELVI': { lat: -24.0375, lng: -46.5310 },
+  'RIBEIROPOLIS': { lat: -24.0228, lng: -46.5170 },
+  'PRINCESA': { lat: -24.0593, lng: -46.5624 },
+  'ANHANGUERA': { lat: -24.0160, lng: -46.4800 },
   'VILA SAO JORGE': { lat: -24.0010, lng: -46.4240 },
   'VILA NOGUEIRA': { lat: -24.0035, lng: -46.4270 },
-  'VILA RIOMAR': { lat: -24.0065, lng: -46.4300 },
+  'VILA RIOMAR': { lat: -24.0065, lng: -46.4350 },
   'VILA BALNEARIA': { lat: -24.0115, lng: -46.4350 },
   'VILA ASSUNCAO': { lat: -24.0215, lng: -46.4600 },
-  'JARDIM PRAIA GRANDE': { lat: -24.0350, lng: -46.4800 },
-  'JARDIM SILMARA': { lat: -24.0400, lng: -46.4900 },
-  'JARDIM ACLIMACAO': { lat: -24.0250, lng: -46.4650 },
-  'JARDIM TREVO': { lat: -24.0450, lng: -46.5100 },
-  'BALNEARIO ABC': { lat: -24.0500, lng: -46.5150 },
-  'BALNEARIO JOIA': { lat: -24.0580, lng: -46.5250 },
-  'BALNEARIO MIRANTE': { lat: -24.0620, lng: -46.5350 },
-  'CALIPAL': { lat: -24.0500, lng: -46.5100 },
+  'JARDIM PRAIA GRANDE': { lat: -24.0350, lng: -46.4880 },
+  'JARDIM SILMARA': { lat: -24.0400, lng: -46.5220 },
+  'JARDIM ACLIMACAO': { lat: -24.0220, lng: -46.4700 },
+  'JARDIM TREVO': { lat: -24.0420, lng: -46.5150 },
+  'BALNEARIO ABC': { lat: -24.0350, lng: -46.5200 },
+  'BALNEARIO JOIA': { lat: -24.0320, lng: -46.5180 },
+  'BALNEARIO MIRANTE': { lat: -24.0550, lng: -46.5500 },
+  'CALIPAL': { lat: -24.0420, lng: -46.5180 },
   'PARQUE DAS AMERICAS': { lat: -24.0125, lng: -46.4450 },
   'SITIO SAO SEBASTIAO': { lat: -24.0000, lng: -46.4300 },
   'SITIO CAIUBURA': { lat: -23.9950, lng: -46.4200 },
@@ -338,15 +338,36 @@ export function clampCoordinatesToLand(
   if (!city) return { lat, lng };
   const normCity = stripAccents(city).trim().toUpperCase();
 
-  // 1. PRAIA GRANDE: A linha costeira vai de Canto do Forte (-24.007, -46.415) a Solemar (-24.100, -46.605).
-  // Qualquer longitude mais a leste que a linha da praia está dentro da água (Enseada de Itaipu / mar aberto).
+  // 1. PRAIA GRANDE: A linha costeira vai de Canto do Forte (-24.007, -46.408) a Solemar (-24.105, -46.680).
+  // A interpolação por segmentos reais garante que os marcadores fiquem a pelo menos 400m-500m da areia/mar.
   if (normCity.includes('PRAIA GRANDE')) {
     const safeLat = Math.min(-23.990, Math.max(-24.110, lat));
-    // Equação da linha costeira segura
-    const coastLng = -46.414 - ((-24.007 - safeLat) * 2.05);
-    // Margem de segurança de ~300m para dentro da terra
-    const maxLandLng = coastLng - 0.003;
-    const safeLng = Math.min(maxLandLng, Math.max(-46.630, lng));
+    const segments = [
+      { lat: -24.005, lng: -46.408 },
+      { lat: -24.011, lng: -46.415 },
+      { lat: -24.018, lng: -46.438 },
+      { lat: -24.025, lng: -46.460 },
+      { lat: -24.032, lng: -46.482 },
+      { lat: -24.040, lng: -46.508 },
+      { lat: -24.048, lng: -46.532 },
+      { lat: -24.058, lng: -46.562 },
+      { lat: -24.072, lng: -46.600 },
+      { lat: -24.088, lng: -46.640 },
+      { lat: -24.105, lng: -46.680 },
+    ];
+    let maxLandLng = -46.415 - 0.005;
+    for (let i = 0; i < segments.length - 1; i++) {
+      const p1 = segments[i];
+      const p2 = segments[i + 1];
+      if (safeLat <= p1.lat && safeLat >= p2.lat) {
+        const t = (safeLat - p1.lat) / (p2.lat - p1.lat);
+        const beachLng = p1.lng + t * (p2.lng - p1.lng);
+        // Margem de segurança de ~500m para dentro do continente (afasta da praia e água)
+        maxLandLng = beachLng - 0.005;
+        break;
+      }
+    }
+    const safeLng = Math.min(maxLandLng, Math.max(-46.650, lng));
     return { lat: safeLat, lng: safeLng };
   }
 

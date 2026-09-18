@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import type { Property } from '../types/auction';
 import { generateScenarios, formatCurrencyBRL } from '../utils/financial';
 import { cleanCaixaAddressForMaps } from '../utils/addressSanitizer';
-import { X, ShieldCheck, Printer, Calculator, Info, ExternalLink, Droplets, Volume2 } from 'lucide-react';
+import { X, ShieldCheck, Printer, Calculator, Info, ExternalLink, Droplets, Volume2, MapPin, Navigation } from 'lucide-react';
 
 interface PropertyDetailModalProps {
   property: Property;
@@ -20,30 +20,81 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
   const [activeTab, setActiveTab] = useState<'overview' | 'comparables' | 'legal' | 'geo' | 'scenarios'>('overview');
   const scenarios = generateScenarios(property);
 
+  const addressInfo = cleanCaixaAddressForMaps(
+    property.address?.street,
+    property.address?.city,
+    property.address?.state,
+    property.address?.zip,
+    property.address
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-6 animate-in fade-in">
       <div className="bg-white w-full max-w-5xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col h-[92vh]">
         
-        {/* Modal Topbar */}
-        <div className="p-5 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-2xl bg-orange-500/20 border border-orange-500/30 flex items-center justify-center text-orange-400 font-extrabold text-xs">
+        {/* Modal Topbar com Endereço em Destaque */}
+        <div className="p-5 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-700/60">
+          <div className="flex items-start space-x-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-orange-500/20 border border-orange-500/30 flex items-center justify-center text-orange-400 font-extrabold text-xs shrink-0 mt-0.5 shadow-xs">
               360°
             </div>
-            <div>
-              <div className="flex items-center space-x-2">
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-wider bg-orange-500 text-white px-2 py-0.5 rounded-md">
                   {property.code}
                 </span>
                 <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-700 text-slate-200 px-2 py-0.5 rounded-md">
                   {property.acquisitionType}
                 </span>
+                <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-600/70 text-blue-100 px-2 py-0.5 rounded-md">
+                  🏦 {property.bankName || property.originBank || 'CAIXA'}
+                </span>
               </div>
-              <h2 className="font-extrabold text-base sm:text-lg text-white leading-tight mt-0.5">{property.title}</h2>
+              
+              <h2 className="font-extrabold text-base sm:text-lg text-white leading-tight">{property.title}</h2>
+
+              {/* Endereço Completo no Cabeçalho */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-slate-300 font-medium pt-1">
+                <div className="flex items-center gap-1.5 text-slate-200">
+                  <MapPin className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                  <span className="font-bold">
+                    {property.address?.street ? `${property.address.street}` : ''}
+                    {property.address?.number ? `, Nº ${property.address.number}` : ''}
+                    {property.address?.neighborhood ? ` · ${property.address.neighborhood}` : ''}
+                    {' — '}
+                    <strong className="text-white font-black">{property.address?.city || 'SP'}/{property.address?.state || 'SP'}</strong>
+                    {property.address?.zip && property.address.zip !== '00000-000' ? ` (CEP ${property.address.zip})` : ''}
+                  </span>
+                </div>
+
+                {/* Ações diretas de GPS */}
+                <div className="flex items-center gap-2">
+                  <a
+                    href={addressInfo.googleMapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Abrir no Google Maps"
+                    className="inline-flex items-center gap-1 text-[10px] font-black text-white bg-blue-600 hover:bg-blue-500 px-2.5 py-0.5 rounded-lg border border-blue-400/40 transition-colors shadow-2xs"
+                  >
+                    <ExternalLink className="w-2.5 h-2.5" />
+                    <span>Google Maps</span>
+                  </a>
+                  <a
+                    href={addressInfo.wazeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Abrir no Waze"
+                    className="inline-flex items-center gap-1 text-[10px] font-black text-cyan-200 bg-cyan-950/80 hover:bg-cyan-900 px-2.5 py-0.5 rounded-lg border border-cyan-500/40 transition-colors shadow-2xs"
+                  >
+                    <Navigation className="w-2.5 h-2.5" />
+                    <span>Waze</span>
+                  </a>
+                </div>
+              </div>
             </div>
           </div>
 
-          <button onClick={onClose} className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-white/10 transition-colors">
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-white/10 transition-colors shrink-0 self-start sm:self-center">
             <X className="w-5 h-5" />
           </button>
         </div>

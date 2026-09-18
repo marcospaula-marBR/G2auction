@@ -61,9 +61,9 @@ export function adaptCatalogItemToProperty(raw: any, index: number = 0): Propert
   let finalLng = baseLng;
   if (!hasExactCoords) {
     const seed = (raw.source_property_id ? parseInt(String(raw.source_property_id).replace(/\D/g, '').slice(-4), 10) : index) || index;
-    const latOffset = Math.sin(seed * 0.73 + index) * 0.002;
-    // Deslocamento longitudinal sutil
-    const lngOffset = Math.cos(seed * 0.81 + index) * 0.002;
+    const latOffset = Math.sin(seed * 0.73 + index) * 0.0015;
+    // Deslocamento suave com viés para o interior
+    const lngOffset = (Math.cos(seed * 0.81 + index) - 0.25) * 0.0015;
     finalLat += latOffset;
     finalLng += lngOffset;
   }

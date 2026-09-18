@@ -184,9 +184,10 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
           </div>
         </div>
 
-        <!-- Dica de Ação -->
-        <div class="mt-2 text-center text-[9px] font-bold text-orange-600 bg-orange-50/80 py-1 rounded-lg">
-          👉 Clique no balão para abrir Ficha 360° & Jornada
+        <!-- Dica de Ação / Botão de Abertura da Ficha 360° -->
+        <div class="mt-2.5 text-center text-[10px] font-black text-white bg-gradient-to-r from-orange-600 to-amber-600 py-1.5 px-3 rounded-xl shadow-xs hover:from-orange-700 hover:to-amber-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer">
+          <span>Abrir Ficha 360° deste Imóvel</span>
+          <span class="text-xs">➔</span>
         </div>
       </div>
     `;
@@ -283,13 +284,20 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
         closeButton: false,
         offset: [0, -10],
         autoPan: false,
-        className: 'g2-rich-hover-popup',
+        className: 'g2-rich-hover-popup cursor-pointer',
         maxWidth: 320,
       });
 
       marker.on('mouseover', () => marker.openPopup());
       marker.on('mouseout', () => marker.closePopup());
       marker.on('click', () => onSelectProperty(p));
+      marker.on('popupopen', (e: any) => {
+        const popupEl = e.popup?.getElement();
+        if (popupEl) {
+          popupEl.style.cursor = 'pointer';
+          popupEl.onclick = () => onSelectProperty(p);
+        }
+      });
     });
 
     if (bounds.isValid() && properties.length > 0) {
@@ -456,6 +464,14 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
               closeOnClick: false,
               maxWidth: '320px',
             }).setHTML(renderRichHoverCardHtml(p));
+
+            mapboxPopup.on('open', () => {
+              const popupEl = mapboxPopup.getElement();
+              if (popupEl) {
+                popupEl.style.cursor = 'pointer';
+                popupEl.onclick = () => onSelectProperty(p);
+              }
+            });
 
             el.addEventListener('mouseenter', () => {
               mapboxPopup.setLngLat([coords.lng, coords.lat]).addTo(map);
