@@ -1,5 +1,5 @@
 import type { Property, AcquisitionType, OccupancyStatus } from '../types/auction';
-import { getCityCoordinates } from './cityCoordinates';
+import { getCityCoordinates, getNeighborhoodCoordinates, clampCoordinatesToLand } from './cityCoordinates';
 import { parseCaixaDescription, parseBrazilianNumber, extractHdnImovelFromUrl } from './caixaListImporter';
 
 const PROPERTY_TYPE_FALLBACK_IMAGES: Record<string, string[]> = {
@@ -29,15 +29,50 @@ const PROPERTY_TYPE_FALLBACK_IMAGES: Record<string, string[]> = {
 export function adaptCatalogItemToProperty(raw: any, index: number = 0): Property {
   const city = (raw.city || 'São Paulo').trim();
   const state = (raw.state || 'SP').trim().toUpperCase();
-  const coords = getCityCoordinates(city, state);
+  const neighborhood = (raw.neighborhood || raw.bairro || '').trim();
+
+  // 1. Coordenadas base: se já existirem no registro bruto, usa diretamente
+  let baseLat: number;
+  let baseLng: number;
+  let hasExactCoords = false;
+
+  const rawLat = parseFloat(raw.latitude ?? raw.lat);
+  const rawLng = parseFloat(raw.longitude ?? raw.lng);
+  if (!isNaN(rawLat) && !isNaN(rawLng) && rawLat !== 0 && rawLng !== 0) {
+    baseLat = rawLat;
+    baseLng = rawLng;
+    hasExactCoords = true;
+  } else {
+    // 2. Busca por bairro específico calibrado
+    const neighCoords = getNeighborhoodCoordinates(city, neighborhood);
+    if (neighCoords) {
+      baseLat = neighCoords.lat;
+      baseLng = neighCoords.lng;
+    } else {
+      // 3. Centroide da cidade calibrado em terra firme
+      const cityCoords = getCityCoordinates(city, state);
+      baseLat = cityCoords.lat;
+      baseLng = cityCoords.lng;
+    }
+  }
+
+  // Micro-offset geográfico seguro para imóveis da mesma área não ficarem 100% colados (máx ~150-200m)
+  let finalLat = baseLat;
+  let finalLng = baseLng;
+  if (!hasExactCoords) {
+    const seed = (raw.source_property_id ? parseInt(String(raw.source_property_id).replace(/\D/g, '').slice(-4), 10) : index) || index;
+    const latOffset = Math.sin(seed * 0.73 + index) * 0.002;
+    // Deslocamento longitudinal sutil
+    const lngOffset = Math.cos(seed * 0.81 + index) * 0.002;
+    finalLat += latOffset;
+    finalLng += lngOffset;
+  }
+
+  // Trava de segurança geográfica: NUNCA permite marcadores dentro do mar/oceano
+  const safeCoords = clampCoordinatesToLand(finalLat, finalLng, city);
 
   // Extrai dados detalhados da descrição se disponíveis
   const descFields = raw.description ? parseCaixaDescription(raw.description) : null;
-
-  // Offset geográfico para imóveis da mesma cidade não ficarem 100% sobrepostos
-  const seed = (raw.source_property_id ? parseInt(String(raw.source_property_id).replace(/\D/g, '').slice(-4), 10) : index) || index;
-  const latOffset = Math.sin(seed * 0.7 + index) * 0.015;
-  const lngOffset = Math.cos(seed * 0.7 + index) * 0.015;
 
   // Valores financeiros
   const saleValue = raw.sale_value 
@@ -112,8 +147,8 @@ export function adaptCatalogItemToProperty(raw: any, index: number = 0): Propert
       city: city,
       state: state,
       zip: '00000-000',
-      lat: coords.lat + latOffset,
-      lng: coords.lng + lngOffset,
+      lat: safeCoords.lat,
+      lng: safeCoords.lng,
     },
     appraisalValue: appraisalValue,
     firstAuctionPrice: appraisalValue,

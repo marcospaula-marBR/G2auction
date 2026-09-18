@@ -1,11 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { Property } from '../types/auction';
-import { Target, Maximize2, Box, Map } from 'lucide-react';
+import { Target, Maximize2, Box, Map, Layers, RefreshCw, AlertCircle } from 'lucide-react';
 import L from 'leaflet';
-import { getCityCoordinates } from '../utils/cityCoordinates';
+import { getCityCoordinates, clampCoordinatesToLand } from '../utils/cityCoordinates';
 
 // Mapbox GL import dinâmico
-let mapboxgl: typeof import('mapbox-gl') | null = null;
+let mapboxgl: any = null;
 
 // Token Mapbox seguro para execução
 const getMapboxToken = (): string => {
@@ -36,15 +36,28 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
   const mapboxContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const mapboxInstanceRef = useRef<any>(null);
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
   const popupsRef = useRef<any[]>([]);
+
+  // Estilo 2D: Ruas vs Satélite HD
+  const [map2DType, setMap2DType] = useState<'streets' | 'satellite'>('streets');
+  const [is3DLoading, setIs3DLoading] = useState(false);
+  const [error3D, setError3D] = useState<string | null>(null);
 
   const is3D = activeLayer === '3d';
 
+  // Obtém coordenadas seguras, garantindo SEMPRE terra firme (nunca no oceano)
   const getPropertyCoords = (p: Property): { lat: number; lng: number } => {
+    const city = p.address?.city || (p as any).city;
     if (p.address && typeof p.address.lat === 'number' && typeof p.address.lng === 'number' && p.address.lat !== 0) {
-      return { lat: p.address.lat, lng: p.address.lng };
+      return clampCoordinatesToLand(p.address.lat, p.address.lng, city);
     }
-    return getCityCoordinates(p.address?.city || (p as any).city, p.address?.state || (p as any).state);
+    const coords = getCityCoordinates(
+      city,
+      p.address?.state || (p as any).state,
+      p.address?.neighborhood || (p as any).neighborhood
+    );
+    return clampCoordinatesToLand(coords.lat, coords.lng, city);
   };
 
   const getRiskColor = (p: Property) => {
@@ -146,7 +159,7 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
           <div>🚗 ${parking} vg</div>
         </div>
 
-        <!-- Marcações de Entorno & Risco (No próprio imóvel) -->
+        <!-- Marcações de Entorno & Risco -->
         <div class="space-y-1 pt-1.5 border-t border-slate-100">
           <p class="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Marcações desta Localidade:</p>
           
@@ -179,7 +192,7 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
     `;
   };
 
-  // ── LEAFLET 2D (COM autoPan: false PARA NUNCA CORRER NO HOVER) ────────────
+  // ── LEAFLET 2D (COM SUPORTE A RUAS E SATÉLITE HD DIRETO) ──────────────────
   useEffect(() => {
     if (is3D || !mapContainerRef.current) return;
 
@@ -192,20 +205,41 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
         scrollWheelZoom: true,
       }).setView([target.lat, target.lng], 13);
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap | G2 Geointeligência',
-      }).addTo(map);
       mapInstanceRef.current = map;
     }
 
     const map = mapInstanceRef.current;
-    map.eachLayer(layer => {
+
+    // Atualiza camada base (Ruas vs Satélite HD Esri)
+    if (tileLayerRef.current) {
+      map.removeLayer(tileLayerRef.current);
+    }
+
+    if (map2DType === 'satellite') {
+      // Satélite HD de alta resolução (Esri World Imagery)
+      tileLayerRef.current = L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        {
+          attribution: 'Tiles &copy; Esri &mdash; Maxar, Earthstar Geographics | G2 Geointeligência',
+          maxZoom: 19,
+        }
+      ).addTo(map);
+    } else {
+      // Mapa padrão OpenStreetMap
+      tileLayerRef.current = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap | G2 Geointeligência',
+        maxZoom: 19,
+      }).addTo(map);
+    }
+
+    // Limpa marcadores anteriores
+    map.eachLayer((layer) => {
       if (layer instanceof L.Marker || layer instanceof L.Circle) map.removeLayer(layer);
     });
 
     const bounds = L.latLngBounds([]);
 
-    properties.forEach(p => {
+    properties.forEach((p) => {
       const coords = getPropertyCoords(p);
       bounds.extend([coords.lat, coords.lng]);
       const isSelected = selectedProperty?.id === p.id;
@@ -243,205 +277,243 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
 
       const marker = L.marker([coords.lat, coords.lng], { icon: customIcon }).addTo(map);
 
-      // Popup Rico com autoPan: false (O MAPA NUNCA CORRE NO HOVER)
+      // Popup Rico com autoPan: false (o mapa nunca corre no hover)
       const popupContent = renderRichHoverCardHtml(p);
       marker.bindPopup(popupContent, {
         closeButton: false,
         offset: [0, -10],
-        autoPan: false, // IMPEDE O MAPA DE SE MOVER SOZINHO AO PASSAR O MOUSE
+        autoPan: false,
         className: 'g2-rich-hover-popup',
         maxWidth: 320,
       });
 
-      marker.on('mouseover', () => {
-        marker.openPopup();
-      });
-
-      marker.on('mouseout', () => {
-        marker.closePopup();
-      });
-
-      marker.on('click', () => {
-        onSelectProperty(p);
-      });
+      marker.on('mouseover', () => marker.openPopup());
+      marker.on('mouseout', () => marker.closePopup());
+      marker.on('click', () => onSelectProperty(p));
     });
 
     if (bounds.isValid() && properties.length > 0) {
       map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
     }
-  }, [properties, selectedProperty, activeLayer, is3D]);
+  }, [properties, selectedProperty, activeLayer, is3D, map2DType]);
 
-  // ── MAPBOX 3D (COM map.resize() E TOKEN GARANTIDO) ───────────────────────
+  // ── MAPBOX 3D (CORREÇÃO DE IMPORTAÇÃO ESM + REDIMENSIONAMENTO FORÇADO) ────
   useEffect(() => {
     if (!is3D || !mapboxContainerRef.current) return;
 
     let map: any = null;
+    setIs3DLoading(true);
+    setError3D(null);
 
     const init3DMap = async () => {
-      if (!mapboxgl) {
-        try {
-          mapboxgl = await import('mapbox-gl');
-        } catch {
-          console.warn('mapbox-gl não carregado');
-          return;
+      try {
+        if (!mapboxgl) {
+          const mod = await import('mapbox-gl');
+          mapboxgl = (mod as any).default || mod;
         }
-      }
 
-      if (mapboxInstanceRef.current) {
-        mapboxInstanceRef.current.remove();
-        mapboxInstanceRef.current = null;
-      }
+        const mb = (mapboxgl as any)?.default || mapboxgl;
+        if (!mb || !mb.Map) {
+          throw new Error('Construtor Mapbox GL não disponível.');
+        }
 
-      popupsRef.current.forEach(p => p.remove());
-      popupsRef.current = [];
+        // Verifica suporte a WebGL
+        if (typeof mb.supported === 'function' && !mb.supported()) {
+          throw new Error('WebGL não suportado neste navegador.');
+        }
 
-      const center = selectedProperty
-        ? getPropertyCoords(selectedProperty)
-        : properties.length > 0 ? getPropertyCoords(properties[0])
-        : { lat: -23.5505, lng: -46.6333 };
+        if (mapboxInstanceRef.current) {
+          mapboxInstanceRef.current.remove();
+          mapboxInstanceRef.current = null;
+        }
 
-      (mapboxgl as any).accessToken = MAPBOX_TOKEN;
+        popupsRef.current.forEach((p) => p.remove());
+        popupsRef.current = [];
 
-      map = new (mapboxgl as any).Map({
-        container: mapboxContainerRef.current!,
-        style: 'mapbox://styles/mapbox/satellite-streets-v12',
-        center: [center.lng, center.lat],
-        zoom: 14,
-        pitch: 55,
-        bearing: -20,
-        antialias: true,
-      });
+        const center = selectedProperty
+          ? getPropertyCoords(selectedProperty)
+          : properties.length > 0
+          ? getPropertyCoords(properties[0])
+          : { lat: -23.5505, lng: -46.6333 };
 
-      mapboxInstanceRef.current = map;
+        mb.accessToken = MAPBOX_TOKEN;
 
-      map.on('load', () => {
-        // Redimensiona o canvas imediatamente para não ficar branco
-        map.resize();
-
-        // Camada 3D de Edificações Extrudadas
-        try {
-          map.addLayer({
-            id: '3d-buildings',
-            source: 'composite',
-            'source-layer': 'building',
-            filter: ['==', 'extrude', 'true'],
-            type: 'fill-extrusion',
-            minzoom: 13,
-            paint: {
-              'fill-extrusion-color': [
-                'interpolate', ['linear'], ['get', 'height'],
-                0, '#1e293b', 40, '#334155', 80, '#475569',
-              ],
-              'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 13, 0, 14, ['get', 'height']],
-              'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 13, 0, 14, ['get', 'min_height']],
-              'fill-extrusion-opacity': 0.85,
-            },
-          });
-        } catch { /* camada opcional */ }
-
-        // Adiciona Marcadores Flutuantes 3D
-        properties.forEach(p => {
-          const coords = getPropertyCoords(p);
-          const price = (p.secondAuctionPrice || p.estimatedMarketPrice || (p as any).sale_value || 0)
-            .toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
-          const rawDiscount = p.apparentDiscountPercentage || (p as any).discount_percentage || 0;
-          const discount = Math.round(Number(rawDiscount));
-          const area = p.area || (p as any).private_area || (p as any).total_area || 72;
-          const title = p.title || p.address?.neighborhood || 'Imóvel';
-          const isSelected = selectedProperty?.id === p.id;
-          const bankName = p.bankName || p.originBank || 'CAIXA';
-          const bankAbbr = bankName.includes('SANTANDER') ? 'SANTANDER' : bankName.includes('BRADESCO') ? 'BRADESCO' : 'CAIXA';
-
-          const el = document.createElement('div');
-          el.innerHTML = `
-            <div style="
-              background: ${isSelected ? '#0f172a' : 'rgba(255, 255, 255, 0.95)'};
-              color: ${isSelected ? '#f8fafc' : '#0f172a'};
-              border: 2px solid ${isSelected ? '#f97316' : '#cbd5e1'};
-              border-radius: 16px;
-              padding: 7px 10px;
-              font-family: system-ui, -apple-system, sans-serif;
-              font-size: 11px;
-              font-weight: 800;
-              box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-              min-width: 150px;
-              cursor: pointer;
-              transition: all 0.2s;
-              position: relative;
-              backdrop-filter: blur(8px);
-            ">
-              <div style="display:flex; justify-content:space-between; font-size:9px; opacity:0.75; margin-bottom:2px; font-weight:900; text-transform:uppercase;">
-                <span>🏦 ${bankAbbr}</span>
-                <span>📐 ${area}m²</span>
-              </div>
-              <div style="font-size:11px; margin-bottom:2px; line-height:1.2; font-weight:900;">
-                ${title.substring(0, 20)}${title.length > 20 ? '…' : ''}
-              </div>
-              <div style="font-size:13px; font-weight:900; color:${isSelected ? '#fb923c' : '#059669'}; margin-bottom:2px;">
-                ${price}
-              </div>
-              <div style="display:flex; justify-content:space-between; font-size:10px;">
-                <span style="color:#ea580c; font-weight:900;">-${discount}% desc.</span>
-                <span style="opacity:0.75;">${p.address?.city || 'SP'}</span>
-              </div>
-              <div style="
-                position:absolute; bottom:-7px; left:50%; transform:translateX(-50%);
-                width:0; height:0;
-                border-left:7px solid transparent;
-                border-right:7px solid transparent;
-                border-top:7px solid ${isSelected ? '#0f172a' : 'rgba(255,255,255,0.95)'};
-              "></div>
-            </div>
-          `;
-          el.style.cursor = 'pointer';
-
-          const mapboxPopup = new (mapboxgl as any).Popup({
-            offset: 25,
-            closeButton: false,
-            closeOnClick: false,
-            maxWidth: '320px',
-          }).setHTML(renderRichHoverCardHtml(p));
-
-          el.addEventListener('mouseenter', () => {
-            mapboxPopup.setLngLat([coords.lng, coords.lat]).addTo(map);
-          });
-
-          el.addEventListener('mouseleave', () => {
-            mapboxPopup.remove();
-          });
-
-          el.addEventListener('click', () => {
-            onSelectProperty(p);
-          });
-
-          const marker = new (mapboxgl as any).Marker({ element: el, anchor: 'bottom', offset: [0, -4] })
-            .setLngLat([coords.lng, coords.lat])
-            .addTo(map);
-
-          popupsRef.current.push(marker);
+        map = new mb.Map({
+          container: mapboxContainerRef.current!,
+          style: 'mapbox://styles/mapbox/satellite-streets-v12',
+          center: [center.lng, center.lat],
+          zoom: 14,
+          pitch: 55,
+          bearing: -20,
+          antialias: true,
         });
 
-        if (properties.length > 0) {
-          const coords = properties.map(p => getPropertyCoords(p));
-          const bounds = coords.reduce(
-            (b, c) => [[Math.min(b[0][0], c.lng), Math.min(b[0][1], c.lat)], [Math.max(b[1][0], c.lng), Math.max(b[1][1], c.lat)]],
-            [[180, 90], [-180, -90]]
-          );
-          map.fitBounds(bounds, { padding: 60, pitch: 50, duration: 1000 });
-        }
-      });
+        mapboxInstanceRef.current = map;
 
-      // Redimensiona o mapa após pequeno delay para garantir rendering WebGL
-      setTimeout(() => {
-        if (map) map.resize();
-      }, 200);
+        map.on('error', (e: any) => {
+          console.warn('[Mapbox 3D Error Event]', e);
+        });
+
+        map.on('load', () => {
+          setIs3DLoading(false);
+          map.resize();
+
+          // Camada 3D de Edificações Extrudadas
+          try {
+            map.addLayer({
+              id: '3d-buildings',
+              source: 'composite',
+              'source-layer': 'building',
+              filter: ['==', 'extrude', 'true'],
+              type: 'fill-extrusion',
+              minzoom: 13,
+              paint: {
+                'fill-extrusion-color': [
+                  'interpolate',
+                  ['linear'],
+                  ['get', 'height'],
+                  0,
+                  '#1e293b',
+                  40,
+                  '#334155',
+                  80,
+                  '#475569',
+                ],
+                'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 13, 0, 14, ['get', 'height']],
+                'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 13, 0, 14, ['get', 'min_height']],
+                'fill-extrusion-opacity': 0.85,
+              },
+            });
+          } catch {
+            /* camada opcional de prédios 3D */
+          }
+
+          // Adiciona Marcadores Flutuantes 3D
+          properties.forEach((p) => {
+            const coords = getPropertyCoords(p);
+            const price = (p.secondAuctionPrice || p.estimatedMarketPrice || (p as any).sale_value || 0).toLocaleString(
+              'pt-BR',
+              { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }
+            );
+            const rawDiscount = p.apparentDiscountPercentage || (p as any).discount_percentage || 0;
+            const discount = Math.round(Number(rawDiscount));
+            const area = p.area || (p as any).private_area || (p as any).total_area || 72;
+            const title = p.title || p.address?.neighborhood || 'Imóvel';
+            const isSelected = selectedProperty?.id === p.id;
+            const bankName = p.bankName || p.originBank || 'CAIXA';
+            const bankAbbr = bankName.includes('SANTANDER')
+              ? 'SANTANDER'
+              : bankName.includes('BRADESCO')
+              ? 'BRADESCO'
+              : 'CAIXA';
+
+            const el = document.createElement('div');
+            el.innerHTML = `
+              <div style="
+                background: ${isSelected ? '#0f172a' : 'rgba(255, 255, 255, 0.95)'};
+                color: ${isSelected ? '#f8fafc' : '#0f172a'};
+                border: 2px solid ${isSelected ? '#f97316' : '#cbd5e1'};
+                border-radius: 16px;
+                padding: 7px 10px;
+                font-family: system-ui, -apple-system, sans-serif;
+                font-size: 11px;
+                font-weight: 800;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+                min-width: 150px;
+                cursor: pointer;
+                transition: all 0.2s;
+                position: relative;
+                backdrop-filter: blur(8px);
+              ">
+                <div style="display:flex; justify-content:space-between; font-size:9px; opacity:0.75; margin-bottom:2px; font-weight:900; text-transform:uppercase;">
+                  <span>🏦 ${bankAbbr}</span>
+                  <span>📐 ${area}m²</span>
+                </div>
+                <div style="font-size:11px; margin-bottom:2px; line-height:1.2; font-weight:900;">
+                  ${title.substring(0, 20)}${title.length > 20 ? '…' : ''}
+                </div>
+                <div style="font-size:13px; font-weight:900; color:${isSelected ? '#fb923c' : '#059669'}; margin-bottom:2px;">
+                  ${price}
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:10px;">
+                  <span style="color:#ea580c; font-weight:900;">-${discount}% desc.</span>
+                  <span style="opacity:0.75;">${p.address?.city || 'SP'}</span>
+                </div>
+                <div style="
+                  position:absolute; bottom:-7px; left:50%; transform:translateX(-50%);
+                  width:0; height:0;
+                  border-left:7px solid transparent;
+                  border-right:7px solid transparent;
+                  border-top:7px solid ${isSelected ? '#0f172a' : 'rgba(255,255,255,0.95)'};
+                "></div>
+              </div>
+            `;
+            el.style.cursor = 'pointer';
+
+            const mapboxPopup = new mb.Popup({
+              offset: 25,
+              closeButton: false,
+              closeOnClick: false,
+              maxWidth: '320px',
+            }).setHTML(renderRichHoverCardHtml(p));
+
+            el.addEventListener('mouseenter', () => {
+              mapboxPopup.setLngLat([coords.lng, coords.lat]).addTo(map);
+            });
+
+            el.addEventListener('mouseleave', () => {
+              mapboxPopup.remove();
+            });
+
+            el.addEventListener('click', () => {
+              onSelectProperty(p);
+            });
+
+            const marker = new mb.Marker({ element: el, anchor: 'bottom', offset: [0, -4] })
+              .setLngLat([coords.lng, coords.lat])
+              .addTo(map);
+
+            popupsRef.current.push(marker);
+          });
+
+          if (properties.length > 0) {
+            const coords = properties.map((p) => getPropertyCoords(p));
+            const bounds = coords.reduce(
+              (b, c) => [
+                [Math.min(b[0][0], c.lng), Math.min(b[0][1], c.lat)],
+                [Math.max(b[1][0], c.lng), Math.max(b[1][1], c.lat)],
+              ],
+              [
+                [180, 90],
+                [-180, -90],
+              ]
+            );
+            map.fitBounds(bounds, { padding: 60, pitch: 50, duration: 1000 });
+          }
+        });
+
+        // Força resize múltiplo para evitar tela escura caso o container mude de visibilidade
+        requestAnimationFrame(() => {
+          if (map) map.resize();
+        });
+        setTimeout(() => {
+          if (map) map.resize();
+        }, 150);
+        setTimeout(() => {
+          if (map) map.resize();
+        }, 600);
+      } catch (err: any) {
+        console.warn('[Mapbox 3D Init Failed]', err);
+        setError3D(err.message || 'Falha ao inicializar o Mapa 3D');
+        setIs3DLoading(false);
+      }
     };
 
     init3DMap();
 
     return () => {
       if (mapboxInstanceRef.current) {
-        popupsRef.current.forEach(p => p.remove());
+        popupsRef.current.forEach((p) => p.remove());
         popupsRef.current = [];
         mapboxInstanceRef.current.remove();
         mapboxInstanceRef.current = null;
@@ -461,22 +533,30 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
 
   const handleFitAllBounds = () => {
     if (is3D && mapboxInstanceRef.current && properties.length > 0) {
-      const coords = properties.map(p => getPropertyCoords(p));
+      const coords = properties.map((p) => getPropertyCoords(p));
       const bounds = coords.reduce(
-        (b, c) => [[Math.min(b[0][0], c.lng), Math.min(b[0][1], c.lat)], [Math.max(b[1][0], c.lng), Math.max(b[1][1], c.lat)]],
-        [[180, 90], [-180, -90]]
+        (b, c) => [
+          [Math.min(b[0][0], c.lng), Math.min(b[0][1], c.lat)],
+          [Math.max(b[1][0], c.lng), Math.max(b[1][1], c.lat)],
+        ],
+        [
+          [180, 90],
+          [-180, -90],
+        ]
       );
       mapboxInstanceRef.current.fitBounds(bounds, { padding: 80, pitch: 50, duration: 1500 });
     } else if (mapInstanceRef.current && properties.length > 0) {
       const bounds = L.latLngBounds([]);
-      properties.forEach(p => { const c = getPropertyCoords(p); bounds.extend([c.lat, c.lng]); });
+      properties.forEach((p) => {
+        const c = getPropertyCoords(p);
+        bounds.extend([c.lat, c.lng]);
+      });
       if (bounds.isValid()) mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
     }
   };
 
   return (
     <div className="relative w-full h-[550px] rounded-3xl overflow-hidden shadow-md border border-slate-200">
-
       {/* Container Leaflet 2D */}
       <div
         ref={mapContainerRef}
@@ -490,6 +570,36 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
         className="w-full h-full z-0 absolute inset-0 bg-slate-900"
         style={{ display: is3D ? 'block' : 'none' }}
       />
+
+      {/* Overlay de Loading 3D */}
+      {is3D && is3DLoading && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm text-white">
+          <RefreshCw className="w-8 h-8 text-purple-400 animate-spin mb-3" />
+          <p className="text-sm font-black">Carregando Satélite 3D & Edificações...</p>
+          <p className="text-xs text-slate-400 mt-1">Renderizando perspectiva e relevo</p>
+        </div>
+      )}
+
+      {/* Overlay de Erro 3D (Caso WebGL indisponível) com Fallback imediato para Satélite 2D */}
+      {is3D && error3D && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-6 bg-slate-950/90 text-white text-center">
+          <AlertCircle className="w-10 h-10 text-amber-400 mb-3" />
+          <h3 className="text-base font-black mb-1">Aceleração WebGL Indisponível</h3>
+          <p className="text-xs text-slate-300 max-w-md mb-4">
+            Seu navegador ou placa de vídeo não pôde inicializar a projeção 3D de alta performance.
+            Você pode visualizar a mesma localidade em <b>Satélite HD 2D</b> com alta definição.
+          </p>
+          <button
+            onClick={() => {
+              setActiveLayer('default');
+              setMap2DType('satellite');
+            }}
+            className="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs rounded-xl shadow-lg transition-all"
+          >
+            Abrir em Satélite HD (2D)
+          </button>
+        </div>
+      )}
 
       {/* Botões de Foco da Câmera (Canto Superior Esquerdo) */}
       <div className="absolute top-4 left-4 z-10 flex flex-col space-y-2">
@@ -511,14 +621,39 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
         </button>
       </div>
 
-      {/* Barra de Alternância 2D / 3D Simplificada (Canto Superior Direito) */}
-      <div className="absolute top-4 right-4 z-10 bg-white/95 backdrop-blur-md p-1.5 rounded-2xl shadow-lg border border-slate-200 flex items-center space-x-1">
+      {/* Seletor de Camadas e Modos de Mapa (Canto Superior Direito) */}
+      <div className="absolute top-4 right-4 z-10 bg-white/95 backdrop-blur-md p-1.5 rounded-2xl shadow-lg border border-slate-200 flex items-center space-x-1.5">
+        {/* Toggle 2D Ruas vs Satélite */}
+        {!is3D && (
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 mr-1">
+            <button
+              onClick={() => setMap2DType('streets')}
+              className={`text-[11px] px-2.5 py-1 rounded-lg font-bold transition-all ${
+                map2DType === 'streets'
+                  ? 'bg-white text-slate-900 shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Ruas
+            </button>
+            <button
+              onClick={() => setMap2DType('satellite')}
+              className={`text-[11px] px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 transition-all ${
+                map2DType === 'satellite'
+                  ? 'bg-blue-600 text-white shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Layers className="w-3 h-3" />
+              <span>Satélite HD</span>
+            </button>
+          </div>
+        )}
+
         <button
           onClick={() => setActiveLayer('default')}
           className={`flex items-center space-x-1.5 text-xs px-3.5 py-2 rounded-xl font-black transition-all ${
-            !is3D
-              ? 'bg-slate-900 text-white shadow-sm'
-              : 'text-slate-600 hover:bg-slate-100'
+            !is3D ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
           <Map className="w-4 h-4 text-orange-400" />
@@ -542,7 +677,6 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
       <div className="absolute bottom-4 left-4 z-10 bg-slate-900/80 backdrop-blur-md text-white text-[10px] font-bold px-3 py-1.5 rounded-full border border-white/20 hidden sm:flex items-center gap-1.5 pointer-events-none">
         <span>💡 Passe o mouse sobre qualquer balão para ver dados completos</span>
       </div>
-
     </div>
   );
 };
