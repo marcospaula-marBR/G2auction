@@ -13,7 +13,7 @@ import {
   ArrowUpDown,
   X,
   Sparkles,
-  FileText,
+  Calculator,
 } from 'lucide-react';
 
 import {
@@ -28,8 +28,9 @@ import {
 
 import { formatCurrencyBRL } from '../utils/financial';
 import { cleanCaixaAddressForMaps } from '../utils/addressSanitizer';
-import { getCaixaEditalUrl, getCaixaPropertyPageUrl } from '../utils/caixaEditalHelper';
+import { getCaixaPropertyPageUrl } from '../utils/caixaEditalHelper';
 import { EditalAnalysisModal } from './EditalAnalysisModal';
+import { FinanciamentoCaixaModal } from './FinanciamentoCaixaModal';
 
 interface PropertyCatalogPageProps {
   onOpenAdmin?: () => void;
@@ -86,6 +87,9 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
 
   // Modal de Análise de Edital via G2 AI
   const [selectedEditalProperty, setSelectedEditalProperty] = useState<any | null>(null);
+
+  // Modal do Simulador de Financiamento CAIXA
+  const [selectedFinancingProperty, setSelectedFinancingProperty] = useState<any | null>(null);
 
   // Painel de Filtros Expansível
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState<boolean>(true);
@@ -712,17 +716,15 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                     );
                   })()}
 
-                  {/* BOTÕES DE EDITAL CAIXA E ANÁLISE G2 AI */}
+                  {/* BOTÕES DE FINANCIAMENTO E ANÁLISE G2 AI */}
                   <div className="grid grid-cols-2 gap-2 pt-1">
-                    <a
-                      href={getCaixaEditalUrl(prop)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-300 font-extrabold text-[11px] py-2.5 rounded-2xl transition-colors flex items-center justify-center space-x-1 text-center"
+                    <button
+                      onClick={() => setSelectedFinancingProperty(prop)}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black text-[11px] py-2.5 rounded-2xl shadow-xs transition-colors flex items-center justify-center space-x-1"
                     >
-                      <FileText className="w-3.5 h-3.5 text-orange-600" />
-                      <span>[ 📄 EDITAL PDF ]</span>
-                    </a>
+                      <Calculator className="w-3.5 h-3.5 text-blue-100" />
+                      <span>[ 🏦 FINANCIAMENTO ]</span>
+                    </button>
 
                     <button
                       onClick={() => setSelectedEditalProperty(prop)}
@@ -937,15 +939,13 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                   <span>[ 🤖 ANALISAR EDITAL (G2 AI) ]</span>
                 </button>
 
-                <a
-                  href={getCaixaEditalUrl(selectedDetailProperty)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-5 py-3 rounded-2xl transition-colors flex items-center space-x-1.5 shadow-md"
+                <button
+                  onClick={() => setSelectedFinancingProperty(selectedDetailProperty)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-black text-xs px-5 py-3 rounded-2xl transition-colors flex items-center space-x-1.5 shadow-md"
                 >
-                  <FileText className="w-4 h-4 text-emerald-100" />
-                  <span>[ 📄 EDITAL REGULAMENTO PDF ]</span>
-                </a>
+                  <Calculator className="w-4 h-4 text-blue-100" />
+                  <span>[ 🏦 SIMULAR FINANCIAMENTO ]</span>
+                </button>
               </div>
             </div>
 
@@ -958,6 +958,14 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
         <EditalAnalysisModal
           property={selectedEditalProperty}
           onClose={() => setSelectedEditalProperty(null)}
+        />
+      )}
+
+      {/* Modal do Simulador de Financiamento CAIXA */}
+      {selectedFinancingProperty && (
+        <FinanciamentoCaixaModal
+          property={selectedFinancingProperty}
+          onClose={() => setSelectedFinancingProperty(null)}
         />
       )}
 
