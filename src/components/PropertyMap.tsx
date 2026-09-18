@@ -3,6 +3,9 @@ import type { Property } from '../types/auction';
 import { Target, Maximize2, Box, Map, Layers, RefreshCw, AlertCircle } from 'lucide-react';
 import L from 'leaflet';
 import { getCityCoordinates, clampCoordinatesToLand } from '../utils/cityCoordinates';
+import pgGeocodesData from '../data/praiaGrandeGeocodes.json';
+
+const pgGeocodes = pgGeocodesData as Record<string, { lat: number; lng: number }>;
 
 // Mapbox GL import dinâmico
 let mapboxgl: any = null;
@@ -46,8 +49,21 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
 
   const is3D = activeLayer === '3d';
 
-  // Obtém coordenadas seguras, garantindo SEMPRE terra firme (nunca no oceano)
+  // Obtém coordenadas exatas de rua ou com trava continental calibrada
   const getPropertyCoords = (p: Property): { lat: number; lng: number } => {
+    // 1. Dicionário oficial de geocodificação de rua do Mapbox (precisão milimétrica de logradouro)
+    const rawAddr = p.address?.street || (p as any).address || (p as any).endereco || '';
+    if (rawAddr && pgGeocodes[rawAddr]) {
+      return { lat: pgGeocodes[rawAddr].lat, lng: pgGeocodes[rawAddr].lng };
+    }
+    if (rawAddr) {
+      for (const key of Object.keys(pgGeocodes)) {
+        if (key.includes(rawAddr) || rawAddr.includes(key)) {
+          return { lat: pgGeocodes[key].lat, lng: pgGeocodes[key].lng };
+        }
+      }
+    }
+
     const city = p.address?.city || (p as any).city;
     if (p.address && typeof p.address.lat === 'number' && typeof p.address.lng === 'number' && p.address.lat !== 0) {
       return clampCoordinatesToLand(p.address.lat, p.address.lng, city);
@@ -226,11 +242,26 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
         }
       ).addTo(map);
     } else {
-      // Mapa padrão OpenStreetMap
-      tileLayerRef.current = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap | G2 Geointeligência',
-        maxZoom: 19,
-      }).addTo(map);
+      // Ruas de Alta Definição: Mapbox Streets Retina v12 (com fallback para CartoDB Voyager)
+      if (MAPBOX_TOKEN) {
+        tileLayerRef.current = L.tileLayer(
+          `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${MAPBOX_TOKEN}`,
+          {
+            attribution: '© Mapbox © OpenStreetMap | G2 Geointeligência',
+            maxZoom: 20,
+            tileSize: 256,
+          }
+        ).addTo(map);
+      } else {
+        tileLayerRef.current = L.tileLayer(
+          'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+          {
+            attribution: '© CARTO © OpenStreetMap | G2 Geointeligência',
+            subdomains: 'abcd',
+            maxZoom: 20,
+          }
+        ).addTo(map);
+      }
     }
 
     // Limpa marcadores anteriores
@@ -288,14 +319,47 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
         maxWidth: 320,
       });
 
-      marker.on('mouseover', () => marker.openPopup());
-      marker.on('mouseout', () => marker.closePopup());
-      marker.on('click', () => onSelectProperty(p));
+      // Ponte de tolerância (Hover-Bridge): previne o fechamento do card ao mover o mouse do pino para o card
+      let closeTimer: any = null;
+      const scheduleClose = () => {
+        clearTimeout(closeTimer);
+        closeTimer = setTimeout(() => {
+          marker.closePopup();
+        }, 350);
+      };
+      const cancelClose = () => {
+        if (closeTimer) {
+          clearTimeout(closeTimer);
+          closeTimer = null;
+        }
+      };
+
+      marker.on('mouseover', () => {
+        cancelClose();
+        marker.openPopup();
+      });
+      marker.on('mouseout', () => {
+        scheduleClose();
+      });
+      marker.on('click', () => {
+        cancelClose();
+        onSelectProperty(p);
+      });
       marker.on('popupopen', (e: any) => {
         const popupEl = e.popup?.getElement();
         if (popupEl) {
           popupEl.style.cursor = 'pointer';
-          popupEl.onclick = () => onSelectProperty(p);
+          popupEl.onmouseenter = () => {
+            cancelClose();
+          };
+          popupEl.onmouseleave = () => {
+            scheduleClose();
+          };
+          popupEl.onclick = (evt: MouseEvent) => {
+            evt.stopPropagation();
+            cancelClose();
+            onSelectProperty(p);
+          };
         }
       });
     });
@@ -465,23 +529,49 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
               maxWidth: '320px',
             }).setHTML(renderRichHoverCardHtml(p));
 
+            let mbCloseTimer: any = null;
+            const scheduleMbClose = () => {
+              clearTimeout(mbCloseTimer);
+              mbCloseTimer = setTimeout(() => {
+                mapboxPopup.remove();
+              }, 350);
+            };
+            const cancelMbClose = () => {
+              if (mbCloseTimer) {
+                clearTimeout(mbCloseTimer);
+                mbCloseTimer = null;
+              }
+            };
+
             mapboxPopup.on('open', () => {
               const popupEl = mapboxPopup.getElement();
               if (popupEl) {
                 popupEl.style.cursor = 'pointer';
-                popupEl.onclick = () => onSelectProperty(p);
+                popupEl.onmouseenter = () => {
+                  cancelMbClose();
+                };
+                popupEl.onmouseleave = () => {
+                  scheduleMbClose();
+                };
+                popupEl.onclick = (evt: MouseEvent) => {
+                  evt.stopPropagation();
+                  cancelMbClose();
+                  onSelectProperty(p);
+                };
               }
             });
 
             el.addEventListener('mouseenter', () => {
+              cancelMbClose();
               mapboxPopup.setLngLat([coords.lng, coords.lat]).addTo(map);
             });
 
             el.addEventListener('mouseleave', () => {
-              mapboxPopup.remove();
+              scheduleMbClose();
             });
 
             el.addEventListener('click', () => {
+              cancelMbClose();
               onSelectProperty(p);
             });
 

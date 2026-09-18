@@ -1,0 +1,398 @@
+{
+  "RUA PADRE  MANOEL DA NOBREGA, N. 1240, LOTE 07 QUADRA T": {
+    "lat": -24.019311,
+    "lng": -46.50393,
+    "matched": "Rodovia Padre Manoel Da Nóbrega 1240, Mirim, Praia Grande - São Paulo, 11715, Brazil",
+    "relevance": 0.825397
+  },
+  "RUA ANTONIO FAGUNDES DOS SANTOS, N. 330, Apto 36, BL C": {
+    "lat": -23.997863,
+    "lng": -46.450479,
+    "matched": "Rua Antônio Fagundes Dos Santos 330, Vila Sônia, Praia Grande - São Paulo, 11722-260, Brazil",
+    "relevance": 1
+  },
+  "RUA CLODOARDO AMARAL, N. 1810, CS 07, 1º E 2º PAV": {
+    "lat": -24.028189,
+    "lng": -46.51147,
+    "matched": "Avenida Clodoardo Amaral 1810, Ribeirópolis, Praia Grande - São Paulo, 11714, Brazil",
+    "relevance": 0.777778
+  },
+  "AVENIDA JOSE LEANDRO DE CARVALHO, N. 2087, CS 02": {
+    "lat": -24.034422,
+    "lng": -46.517123,
+    "matched": "Avenida José Leandro De Carvalho 2087, Samambaia, Praia Grande - São Paulo, 11713, Brazil",
+    "relevance": 0.814815
+  },
+  "AVENIDA DOUTOR ANTONIO SYLVIO CUNHA BUENO, N. 859, CS 04 LT 26 QD 18": {
+    "lat": -24.037224,
+    "lng": -46.532701,
+    "matched": "Avenida Doutor Antônio Sylvio Cunha Bueno 859, Melvi, Praia Grande - São Paulo, 11712, Brazil",
+    "relevance": 1
+  },
+  "RUA AFONSO DESCRAGNOLLE TAUNAY, N. 1685, CS 01": {
+    "lat": -24.023987,
+    "lng": -46.524105,
+    "matched": "Rua Afonso D'escragnolle Taunay 1685, Samambaia, Praia Grande - São Paulo, 11713-490, Brazil",
+    "relevance": 0.922222
+  },
+  "RUA VANIVALDO GOMES DE ARAGAO, N. 224, CASA 02": {
+    "lat": -24.062073,
+    "lng": -46.567905,
+    "matched": "Rua Vanivaldo Gomes De Aragão 224, Princesa, Praia Grande - São Paulo, 11711-110, Brazil",
+    "relevance": 1
+  },
+  "RUA EDILSON DE JESUS RAMOS, N. 197, CS 03": {
+    "lat": -24.062981,
+    "lng": -46.568871,
+    "matched": "Rua Edilson De Jesus Ramos 197, Princesa, Praia Grande - São Paulo, 11711-090, Brazil",
+    "relevance": 1
+  },
+  "AVENIDA DOUTOR ESMERALDO SOARES TARQUINI, N. 1491, CS 08": {
+    "lat": -24.019766,
+    "lng": -46.520435,
+    "matched": "Avenida Doutor Esmeraldo Soares Tarquínio De Campos Filho 1491, Ribeirópolis, Praia Grande - São Paulo, 11714-140, Brazil",
+    "relevance": 0.996072
+  },
+  "AVENIDA HERMENEGILDO PEREIRA DE FRANCA, N. 549, QD 03 LT 39 CS 03": {
+    "lat": -24.033641,
+    "lng": -46.516024,
+    "matched": "Avenida Hermenegildo Pereira De França 549, Samambaia, Praia Grande - São Paulo, 11713, Brazil",
+    "relevance": 0.814815
+  },
+  "RUA JOSE CRISTOVAO BARBOSA FILHO, N. 70, CS 06": {
+    "lat": -24.007923,
+    "lng": -46.443796,
+    "matched": "Rua José Cristóvão Barbosa Filho 70, Antartica, Praia Grande - São Paulo, 11721, Brazil",
+    "relevance": 0.786325
+  },
+  "RUA SERGIO GREGORIO, N. 671, Apto 17, TORRE D": {
+    "lat": -24.008335,
+    "lng": -46.452182,
+    "matched": "Rua Sergio Gregorio 671, Antartica, Praia Grande - São Paulo, 11721, Brazil",
+    "relevance": 0.839506
+  },
+  "RUA WALDEMAR CREVATIN, N. 128, CS 23 QD 11": {
+    "lat": -24.008558,
+    "lng": -46.456932,
+    "matched": "Rua Waldemar Crevatin 128, Antartica, Praia Grande - São Paulo, 11720-100, Brazil",
+    "relevance": 0.767677
+  },
+  "RUA MARIA MARTINS BAPTISTA, N. 1509, CS 01": {
+    "lat": -24.00575,
+    "lng": -46.448575,
+    "matched": "Rua Maria Martins Baptista 1509, Vila Sônia, Praia Grande - São Paulo, 11722-050, Brazil",
+    "relevance": 1
+  },
+  "RUA OLGA DE ALMEIDA MACHADO, N. 172, CS 04 GLB 2": {
+    "lat": -24.002386,
+    "lng": -46.449057,
+    "matched": "Rua Olga De Almeida Machado 172, Vila Sônia, Praia Grande - São Paulo, 11722-200, Brazil",
+    "relevance": 1
+  },
+  "RUA MARIA MARTINS BAPTISTA, N. 1389, CS 05": {
+    "lat": -24.005432,
+    "lng": -46.44763,
+    "matched": "Rua Maria Martins Baptista 1389, Vila Sônia, Praia Grande - São Paulo, 11722-050, Brazil",
+    "relevance": 1
+  },
+  "RUA SERGIO GREGORIO, N. 671, Apto 46, TORRE A": {
+    "lat": -24.000807,
+    "lng": -46.451361,
+    "matched": "Rua Sérgio Gregório 671, Vila Sônia, Praia Grande - São Paulo, 11722, Brazil",
+    "relevance": 1
+  },
+  "RUA SERGIO GREGORIO, N. 671, Apto 16, TORRE C": {
+    "lat": -24.000807,
+    "lng": -46.451361,
+    "matched": "Rua Sérgio Gregório 671, Vila Sônia, Praia Grande - São Paulo, 11722, Brazil",
+    "relevance": 1
+  },
+  "RUA JOAO RAMALHO, N. 648, Apto 113, BLOCO A": {
+    "lat": -24.015742,
+    "lng": -46.445556,
+    "matched": "Rua João Ramalho 648, Aviação, Praia Grande - São Paulo, 11702-820, Brazil",
+    "relevance": 1
+  },
+  "AVENIDA ALMEIDA JUNIOR, N. 806, RES 03": {
+    "lat": -24.032757,
+    "lng": -46.524158,
+    "matched": "Avenida Almeida Júnior 806, Samambaia, Praia Grande - São Paulo, 11713-050, Brazil",
+    "relevance": 1
+  },
+  "AVENIDA PEDRO AMERICO, N. 1823, CS 07": {
+    "lat": -24.026059,
+    "lng": -46.531128,
+    "matched": "Avenida Pedro Américo 1823, Samambaia, Praia Grande - São Paulo, 11713-070, Brazil",
+    "relevance": 1
+  },
+  "AVENIDA JAIRO DE CAMARGO MARTINS, N. 1860, CS 04 LT 15 QD 96 PQ AMERICAS": {
+    "lat": -24.026973,
+    "lng": -46.531021,
+    "matched": "Rua Jairo De Camargo Martins 1860, Samambaia, Praia Grande - São Paulo, 11713, Brazil",
+    "relevance": 0.867003
+  },
+  "RUA AFONSO DESCRAGNOLLE TAUNAY, N. 735, CS 05": {
+    "lat": -24.029208,
+    "lng": -46.516552,
+    "matched": "Rua Afonso D'escragnolle Taunay 735, Samambaia, Praia Grande - São Paulo, 11713-490, Brazil",
+    "relevance": 0.808081
+  },
+  "RUA NESTOR FERREIRA DA ROCHA JUNIOR, N. 468, QD 24 LT 26 CS 07": {
+    "lat": -24.042237,
+    "lng": -46.516067,
+    "matched": "Rua Nestor Ferreira Da Rocha Júnior 468, Caiçara, Praia Grande - São Paulo, 11706, Brazil",
+    "relevance": 1
+  },
+  "AVENIDA DOUTOR ANTONIO SYLVIO CUNHA BUENO, N. 1431, CS 02": {
+    "lat": -24.033857,
+    "lng": -46.537441,
+    "matched": "Avenida Doutor Antônio Sylvio Cunha Bueno 1431, Melvi, Praia Grande - São Paulo, 11712-040, Brazil",
+    "relevance": 1
+  },
+  "AVENIDA MILENA PERUTICH, N. 466, CS 04 TÉRREO - PARTE LT 15 QD 09": {
+    "lat": -24.039631,
+    "lng": -46.53038,
+    "matched": "Avenida Milena Perutich 466, Melvi, Praia Grande - São Paulo, 11712-030, Brazil",
+    "relevance": 1
+  },
+  "RUA  PROFESSORA HELENY ROSA, N. 1597, Apto 05,": {
+    "lat": -24.01136,
+    "lng": -46.472453,
+    "matched": "Rua Cantor Emílio Santiago 1597, Tupiry, Praia Grande - São Paulo, 11724, Brazil",
+    "relevance": 0.666667
+  },
+  "AVENIDA BRIGADEIRO EDUARDO GOMES, N. 408, CS 03": {
+    "lat": -24.040245,
+    "lng": -46.530663,
+    "matched": "Avenida Brigadeiro Eduardo Gomes 408, Melvi, Praia Grande - São Paulo, 11712-020, Brazil",
+    "relevance": 0.808081
+  },
+  "AVENIDA BRIGADEIRO EDUARDO GOMES, N. 522, CS 04": {
+    "lat": -24.039568,
+    "lng": -46.53159,
+    "matched": "Avenida Brigadeiro Eduardo Gomes 522, Melvi, Praia Grande - São Paulo, 11712-020, Brazil",
+    "relevance": 0.808081
+  },
+  "AVENIDA ZELIA GIGLIOLI GALVES, N. 170, CASA 07,": {
+    "lat": -24.033601,
+    "lng": -46.513952,
+    "matched": "Rua Zélia Giglioli Galvez 170, Samambaia, Praia Grande - São Paulo, 11713-300, Brazil",
+    "relevance": 0.922222
+  },
+  "AVENIDA HUGO DE CARVALHO RAMOS, N. 1738, CS 03": {
+    "lat": -24.024712,
+    "lng": -46.526024,
+    "matched": "Rua Hugo De Carvalho Ramos 1738, Samambaia, Praia Grande - São Paulo, 11713-320, Brazil",
+    "relevance": 0.924242
+  },
+  "AVENIDA HERMENEGILDO PEREIRA DE FRANCA, N. 1397, CS 05": {
+    "lat": -24.033638,
+    "lng": -46.516028,
+    "matched": "Avenida Hermenegildo Pereira De França 1397, Samambaia, Praia Grande - São Paulo, 11713, Brazil",
+    "relevance": 0.924242
+  },
+  "RUA SERGIO PAULO FREDDI, N. 1159, CS 06": {
+    "lat": -24.024412,
+    "lng": -46.487427,
+    "matched": "Rua Sérgio Paulo Freddi 1159, Ocian, Praia Grande - São Paulo, 11704-595, Brazil",
+    "relevance": 0.808081
+  },
+  "RUA COMENDADOR OTTO CARLOS GOLANDA, N. 500, Apto 95, TR 01": {
+    "lat": -24.027675,
+    "lng": -46.479302,
+    "matched": "Rua Comendador Otto Carlos Golanda 500, Ocian, Praia Grande - São Paulo, 11704-450, Brazil",
+    "relevance": 1
+  },
+  "AVENIDA ROCHA PITA, N. 392, CS 03": {
+    "lat": -24.022915,
+    "lng": -46.509384,
+    "matched": "Avenida Rocha Pita 392, Ribeirópolis, Praia Grande - São Paulo, 11714-440, Brazil",
+    "relevance": 0.8
+  },
+  "RUA INGLES DE SOUZA, N. 515, CASA 02": {
+    "lat": -24.030167,
+    "lng": -46.511055,
+    "matched": "Rua Inglês De Souza 515, Ribeirópolis, Praia Grande - São Paulo, 11714-210, Brazil",
+    "relevance": 0.981481
+  },
+  "RUA DOUTOR ESMERALDO SOARES TARQUÍNIO DE CAMPOS F, N. 1461, Apto 02,": {
+    "lat": -24.021632,
+    "lng": -46.517681,
+    "matched": "Avenida Doutor Esmeraldo Soares Tarquínio De Campos Filho, Ribeirópolis, Praia Grande - São Paulo, 11714, Brazil",
+    "relevance": 0.755556
+  },
+  "RUA FLAVIO MONTEIRO DE CASTRO, N. 976, CS 09": {
+    "lat": -24.0238,
+    "lng": -46.516171,
+    "matched": "Avenida Flávio Monteiro De Castro 976, Ribeirópolis, Praia Grande - São Paulo, 11714-130, Brazil",
+    "relevance": 0.981481
+  },
+  "RUA MANUEL ANTONIO DE ALMEIDA, N. 182, CS 08": {
+    "lat": -24.02181,
+    "lng": -46.516979,
+    "matched": "Rua Manuel Antônio De Almeida, Ribeirópolis, Praia Grande - São Paulo, 11714, Brazil",
+    "relevance": 0.867003
+  },
+  "RUA ALECIO MESSIANO, N. 79, CS 03 PV SUPERIOR LT 08": {
+    "lat": -24.008494,
+    "lng": -46.453365,
+    "matched": "Rua Alécio Messiano 79, Antartica, Praia Grande - São Paulo, 11720, Brazil",
+    "relevance": 1
+  },
+  "RUA MARTINIANO JOSE DAS NEVES, N. 214, CS 1, PAV SUPERIOR": {
+    "lat": -24.023528,
+    "lng": -46.493795,
+    "matched": "Rua Martiniano José Das Neves 214, Mirim, Praia Grande - São Paulo, 11717-130, Brazil",
+    "relevance": 0.87037
+  },
+  "AVENIDA PEDRO AMERICO, N. 1814, LT 08 QD 97": {
+    "lat": -24.025906,
+    "lng": -46.531136,
+    "matched": "Avenida Pedro Américo 1814, Samambaia, Praia Grande - São Paulo, 11713-070, Brazil",
+    "relevance": 0.767677
+  },
+  "RUA PREFEITO WILSON GUEDES, N. 41, Apto 11, 1º PAV, BL 3-D, CONDOMINIO D": {
+    "lat": -24.005573,
+    "lng": -46.400421,
+    "matched": "Rua Prefeito Wilson Guedes 41, Canto Do Forte, Praia Grande - São Paulo, 11700-560, Brazil",
+    "relevance": 1
+  },
+  "RUA GENERAL OSORIO, N. 54, CS 12": {
+    "lat": -24.012905,
+    "lng": -46.396812,
+    "matched": "Rua General Ozório 54, Canto Do Forte, Praia Grande - São Paulo, 11700-730, Brazil",
+    "relevance": 0.793122
+  },
+  "AVENIDA SILVIO LUIZ SANTOS BARROSO, N. 00, QD 77, LT 21": {
+    "lat": -23.995782,
+    "lng": -46.427555,
+    "matched": "Avenida Silvio Luiz Santos Barroso, Sítio Do Campo, Praia Grande - São Paulo, 11725, Brazil",
+    "relevance": 0.873219
+  },
+  "RUA CHILE, N. 508, CS 02 LT 05 QD 14": {
+    "lat": -24.010845,
+    "lng": -46.430332,
+    "matched": "Rua Chile 508, Guilhermina, Praia Grande - São Paulo, 11702-150, Brazil",
+    "relevance": 1
+  },
+  "RUA SANTO AGOSTINHO, N. 186, Apto 22, PAV 3": {
+    "lat": -24.04645,
+    "lng": -46.518806,
+    "matched": "Rua Santo Agostinho 186, Caiçara, Praia Grande - São Paulo, 11706-150, Brazil",
+    "relevance": 1
+  },
+  "RUA SAO LOURENCO, N. 192, CS 02": {
+    "lat": -24.062472,
+    "lng": -46.554324,
+    "matched": "Rua São Lourenço 192, Real, Praia Grande - São Paulo, 11707-490, Brazil",
+    "relevance": 0.8
+  },
+  "AVENIDA PRESIDENTE CASTELO BRANCO, N. 16578, Apto 72, PAV 8": {
+    "lat": -24.064383,
+    "lng": -46.554993,
+    "matched": "Avenida Presidente Castelo Branco 16578, Real, Praia Grande - São Paulo, 11707-450, Brazil",
+    "relevance": 1
+  },
+  "RUA LIBERO BADARO, N. 495, CS 03": {
+    "lat": -24.023851,
+    "lng": -46.470058,
+    "matched": "Rua Libero Badaró 495, Ocian, Praia Grande - São Paulo, 11704-070, Brazil",
+    "relevance": 0.8
+  },
+  "RUA JOSE BENEDITO DE ALMEIDA, N. 592, Apto 03,": {
+    "lat": -24.015467,
+    "lng": -46.467094,
+    "matched": "Rua José Benedito De Almeida 592, Tupiry, Praia Grande - São Paulo, 11719-120, Brazil",
+    "relevance": 1
+  },
+  "RUA JOSE DEMAR PERES, N. 238, CS 03 PAV SUPERIOR": {
+    "lat": -24.04235,
+    "lng": -46.510707,
+    "matched": "Rua José Demar Peres 238, Maracanã, Praia Grande - São Paulo, 11705-630, Brazil",
+    "relevance": 0.981481
+  },
+  "RUA PROFESSORA MARIA JOSE BARONI F. DA S, N. 103, LT 36 QD 11": {
+    "lat": -24.04417,
+    "lng": -46.512417,
+    "matched": "Rua Nossa Senhora Da Praia Grande 103, Caiçara, Praia Grande - São Paulo, 11706-010, Brazil",
+    "relevance": 0.591799
+  },
+  "AVENIDA MILTON DE OLIVEIRA, N. 1002, Apto 01, PAV SUPERIOR": {
+    "lat": -24.037988,
+    "lng": -46.535929,
+    "matched": "Avenida Milton De Oliveira 1002, Melvi, Praia Grande - São Paulo, 11712, Brazil",
+    "relevance": 0.922222
+  },
+  "AVENIDA BRIGADEIRO EDUARDO GOMES, N. 1148, CASA 03": {
+    "lat": -24.036088,
+    "lng": -46.536357,
+    "matched": "Avenida Brigadeiro Eduardo Gomes 1148, Melvi, Praia Grande - São Paulo, 11712-020, Brazil",
+    "relevance": 0.808081
+  },
+  "RUA CORNELIO PROCOPIO, N. 202, Apto 41, 3º PAV BL B GLEBA H": {
+    "lat": -24.00445,
+    "lng": -46.410736,
+    "matched": "Rua Cornélio Procópio 202, Boqueirão, Praia Grande - São Paulo, 11700-120, Brazil",
+    "relevance": 0.8
+  },
+  "RUA REINALDO DOS SANTOS, N. 441, Apto 05, DUPLEX": {
+    "lat": -24.004588,
+    "lng": -46.432495,
+    "matched": "Rua Reinaldo Dos Santos 441, Santa Marina, Praia Grande - São Paulo, 11724-160, Brazil",
+    "relevance": 0.808081
+  },
+  "RUA SERGIO GREGORIO, N. 671, Apto 73, TORRE D": {
+    "lat": -24.008335,
+    "lng": -46.452182,
+    "matched": "Rua Sergio Gregorio 671, Antartica, Praia Grande - São Paulo, 11721, Brazil",
+    "relevance": 0.839506
+  },
+  "RUA FRANCISCO MANUEL DA SILVA, N. 75, Qd 69, lt 28(P)": {
+    "lat": -24.034084,
+    "lng": -46.520535,
+    "matched": "Rua Francisco Manuel Da Silva 75, Samambaia, Praia Grande - São Paulo, 11713-120, Brazil",
+    "relevance": 1
+  },
+  "RUA JOSE LINS DO REGO, N. 106, PARTE DO LT 11 QD 03": {
+    "lat": -24.08673,
+    "lng": -46.603725,
+    "matched": "Rua José Lemos De Rêgo 106, Solemar, Praia Grande - São Paulo, 11709, Brazil",
+    "relevance": 1
+  },
+  "RUA CLODOALDO NORBERTO BUCHETTI, N. 193, PARTE LT 12 QD 27": {
+    "lat": -24.061972,
+    "lng": -46.56723,
+    "matched": "Rua Clodoaldo Noberto Buchetti 193, Princesa, Praia Grande - São Paulo, 11711-120, Brazil",
+    "relevance": 1
+  },
+  "AVENIDA ROCHA POMBO, N. 114, CASA 04": {
+    "lat": -24.026752,
+    "lng": -46.507918,
+    "matched": "Avenida Rocha Pombo 114, Ribeirópolis, Praia Grande - São Paulo, 11714-410, Brazil",
+    "relevance": 0.8
+  },
+  "RUA JOSE BENEDITO DE ALMEIDA, N. 592, Apto 04,": {
+    "lat": -24.015467,
+    "lng": -46.467094,
+    "matched": "Rua José Benedito De Almeida 592, Tupiry, Praia Grande - São Paulo, 11719-120, Brazil",
+    "relevance": 1
+  },
+  "RUA UBALDO PINTO, N. 1263, 02 CASA ASSOBRADADA": {
+    "lat": -23.99892,
+    "lng": -46.428539,
+    "matched": "Rua Ubaldo Pinto 1263, Sítio Do Campo, Praia Grande - São Paulo, 11725-040, Brazil",
+    "relevance": 1
+  },
+  "AVENIDA FREI VICENTE DO SALVADOR, N. 608, UNIDADE 21": {
+    "lat": -24.02358,
+    "lng": -46.50757,
+    "matched": "Avenida Frei Vicente Do Salvador 608, Ribeirópolis, Praia Grande - São Paulo, 11714, Brazil",
+    "relevance": 0.981481
+  },
+  "RUA TIRADENTES, N. 1219,": {
+    "lat": -24.00358,
+    "lng": -46.403988,
+    "matched": "Rua Tiradentes 507 1219, Canto Do Forte, Praia Grande - São Paulo, 11700-290, Brazil",
+    "relevance": 1
+  }
+}

@@ -338,32 +338,33 @@ export function clampCoordinatesToLand(
   if (!city) return { lat, lng };
   const normCity = stripAccents(city).trim().toUpperCase();
 
-  // 1. PRAIA GRANDE: A linha costeira vai de Canto do Forte (-24.007, -46.408) a Solemar (-24.105, -46.680).
-  // A interpolação por segmentos reais garante que os marcadores fiquem a pelo menos 400m-500m da areia/mar.
+  // 1. PRAIA GRANDE: A linha costeira vai de Canto do Forte (-24.007, -46.404) a Solemar (-24.090, -46.615).
+  // A interpolação por segmentos calibrados na orla (Av. Pres. Castelo Branco) com recuo seguro de 250m-350m para terra firme
   if (normCity.includes('PRAIA GRANDE')) {
     const safeLat = Math.min(-23.990, Math.max(-24.110, lat));
     const segments = [
-      { lat: -24.005, lng: -46.408 },
-      { lat: -24.011, lng: -46.415 },
-      { lat: -24.018, lng: -46.438 },
-      { lat: -24.025, lng: -46.460 },
-      { lat: -24.032, lng: -46.482 },
-      { lat: -24.040, lng: -46.508 },
-      { lat: -24.048, lng: -46.532 },
-      { lat: -24.058, lng: -46.562 },
-      { lat: -24.072, lng: -46.600 },
-      { lat: -24.088, lng: -46.640 },
-      { lat: -24.105, lng: -46.680 },
+      { lat: -24.005, lng: -46.403 }, // Canto do Forte
+      { lat: -24.009, lng: -46.416 }, // Boqueirão
+      { lat: -24.014, lng: -46.432 }, // Guilhermina
+      { lat: -24.019, lng: -46.452 }, // Aviação
+      { lat: -24.024, lng: -46.471 }, // Tupi
+      { lat: -24.028, lng: -46.485 }, // Ocian
+      { lat: -24.034, lng: -46.499 }, // Mirim
+      { lat: -24.041, lng: -46.513 }, // Maracanã
+      { lat: -24.048, lng: -46.530 }, // Caiçara
+      { lat: -24.062, lng: -46.558 }, // Real
+      { lat: -24.075, lng: -46.585 }, // Flórida
+      { lat: -24.090, lng: -46.615 }, // Solemar
     ];
-    let maxLandLng = -46.415 - 0.005;
+    let maxLandLng = -46.415 - 0.003;
     for (let i = 0; i < segments.length - 1; i++) {
       const p1 = segments[i];
       const p2 = segments[i + 1];
       if (safeLat <= p1.lat && safeLat >= p2.lat) {
         const t = (safeLat - p1.lat) / (p2.lat - p1.lat);
         const beachLng = p1.lng + t * (p2.lng - p1.lng);
-        // Margem de segurança de ~500m para dentro do continente (afasta da praia e água)
-        maxLandLng = beachLng - 0.005;
+        // Recuo continental seguro (~300m para o interior) para que nenhum marcador caia na areia ou água
+        maxLandLng = beachLng - 0.0035;
         break;
       }
     }

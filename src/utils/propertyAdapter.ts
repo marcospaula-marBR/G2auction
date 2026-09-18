@@ -1,6 +1,9 @@
 import type { Property, AcquisitionType, OccupancyStatus } from '../types/auction';
 import { getCityCoordinates, getNeighborhoodCoordinates, clampCoordinatesToLand } from './cityCoordinates';
 import { parseCaixaDescription, parseBrazilianNumber, extractHdnImovelFromUrl } from './caixaListImporter';
+import pgGeocodesData from '../data/praiaGrandeGeocodes.json';
+
+const pgGeocodes = pgGeocodesData as Record<string, { lat: number; lng: number }>;
 
 const PROPERTY_TYPE_FALLBACK_IMAGES: Record<string, string[]> = {
   Apartamento: [
@@ -30,17 +33,36 @@ export function adaptCatalogItemToProperty(raw: any, index: number = 0): Propert
   const city = (raw.city || 'São Paulo').trim();
   const state = (raw.state || 'SP').trim().toUpperCase();
   const neighborhood = (raw.neighborhood || raw.bairro || '').trim();
+  const rawAddress = (raw.address || raw.endereco || '').trim();
 
-  // 1. Coordenadas base: se já existirem no registro bruto, usa diretamente
+  // 1. Coordenadas base:
+  // a) Se já existirem latitude/longitude numéricas no registro bruto
+  // b) Ou se existir no dicionário de geocodificação de rua oficial (Mapbox)
   let baseLat: number;
   let baseLng: number;
   let hasExactCoords = false;
 
   const rawLat = parseFloat(raw.latitude ?? raw.lat);
   const rawLng = parseFloat(raw.longitude ?? raw.lng);
+  let matchedGeo = pgGeocodes[rawAddress];
+
+  if (!matchedGeo && rawAddress) {
+    // Tenta correspondência flexível se endereço tiver vírgula ou complemento
+    for (const key of Object.keys(pgGeocodes)) {
+      if (rawAddress.includes(key) || key.includes(rawAddress)) {
+        matchedGeo = pgGeocodes[key];
+        break;
+      }
+    }
+  }
+
   if (!isNaN(rawLat) && !isNaN(rawLng) && rawLat !== 0 && rawLng !== 0) {
     baseLat = rawLat;
     baseLng = rawLng;
+    hasExactCoords = true;
+  } else if (matchedGeo && typeof matchedGeo.lat === 'number') {
+    baseLat = matchedGeo.lat;
+    baseLng = matchedGeo.lng;
     hasExactCoords = true;
   } else {
     // 2. Busca por bairro específico calibrado
@@ -68,8 +90,8 @@ export function adaptCatalogItemToProperty(raw: any, index: number = 0): Propert
     finalLng += lngOffset;
   }
 
-  // Trava de segurança geográfica: NUNCA permite marcadores dentro do mar/oceano
-  const safeCoords = clampCoordinatesToLand(finalLat, finalLng, city);
+  // Trava de segurança geográfica: aplica trava costeira somente se NÃO tiver coordenadas exatas verificadas
+  const safeCoords = hasExactCoords ? { lat: finalLat, lng: finalLng } : clampCoordinatesToLand(finalLat, finalLng, city);
 
   // Extrai dados detalhados da descrição se disponíveis
   const descFields = raw.description ? parseCaixaDescription(raw.description) : null;
