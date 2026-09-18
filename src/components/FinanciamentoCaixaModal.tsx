@@ -61,10 +61,7 @@ function fmt(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 }
 
-// Converte string "R$ 1.234" → número
-function parseBRL(s: string): number {
-  return Number(s.replace(/[^\d]/g, '')) || 0;
-}
+
 
 // ── Sub-componente: Slider + Input numérico sincronizados ──────────────────────
 interface SliderInputProps {
