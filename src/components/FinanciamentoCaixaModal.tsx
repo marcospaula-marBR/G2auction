@@ -75,11 +75,9 @@ interface SliderInputProps {
   step?: number;
   onChange: (v: number) => void;
   formatDisplay?: (v: number) => string;
-  /** Se true, o input exibe o valor como moeda (R$). Se false, exibe número puro */
   isCurrency?: boolean;
-  /** Sufixo visível ao lado do valor (ex: "anos", "%") */
   suffix?: string;
-  accentColor?: string; // classe accent-* do Tailwind
+  accentColor?: string;
   errorMsg?: string;
   hint?: string;
 }
@@ -89,18 +87,22 @@ function SliderInput({
   formatDisplay, isCurrency = false, suffix = '',
   accentColor = 'accent-blue-600', errorMsg, hint,
 }: SliderInputProps) {
-  const [rawInput, setRawInput]     = useState('');
-  const [editing, setEditing]       = useState(false);
+  const [editing, setEditing]     = useState(false);
+  const [inputStr, setInputStr]   = useState('');
 
   const displayVal = formatDisplay ? formatDisplay(value) : `${value}`;
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setRawInput(e.target.value);
+  const startEdit = () => {
+    // Abre o campo com o valor atual como string limpa (sem R$, sem símbolo)
+    setInputStr(String(value));
+    setEditing(true);
   };
 
-  const commitInput = () => {
+  const commit = () => {
     setEditing(false);
-    const num = isCurrency ? parseBRL(rawInput) : Number(rawInput.replace(',', '.'));
+    // Remove tudo exceto dígitos e ponto/vírgula
+    const cleaned = inputStr.replace(',', '.').replace(/[^\d.]/g, '');
+    const num     = parseFloat(cleaned);
     if (!isNaN(num) && num > 0) {
       onChange(Math.min(max, Math.max(min, Math.round(num / (step || 1)) * (step || 1))));
     }
@@ -108,33 +110,33 @@ function SliderInput({
 
   return (
     <div>
-      {/* Cabeçalho: label + input manual */}
+      {/* Cabeçalho: label + botão/input */}
       <div className="flex items-center justify-between mb-1.5 gap-2">
         <label className="text-xs font-black text-slate-700 shrink-0">{label}</label>
-
-        <div className="flex items-center gap-1.5">
-          {editing ? (
-            <input
-              autoFocus
-              type="text"
-              defaultValue={isCurrency ? String(value) : String(value)}
-              onChange={handleInputChange}
-              onBlur={commitInput}
-              onKeyDown={(e) => e.key === 'Enter' && commitInput()}
-              placeholder={isCurrency ? 'Ex: 50000' : String(value)}
-              className="w-28 text-right text-xs font-black border border-blue-400 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-300 bg-blue-50"
-            />
-          ) : (
-            <button
-              onClick={() => { setEditing(true); setRawInput(isCurrency ? String(value) : String(value)); }}
-              title="Clique para digitar o valor manualmente"
-              className={`text-xs font-black px-2 py-1 rounded-lg border transition-colors ${errorMsg ? 'text-red-500 border-red-200 bg-red-50' : 'text-blue-700 border-blue-100 bg-blue-50 hover:border-blue-300'}`}
-            >
-              {displayVal}{suffix ? ` ${suffix}` : ''}
-              <span className="ml-1 text-[9px] text-blue-400 font-normal">✏️</span>
-            </button>
-          )}
-        </div>
+        {editing ? (
+          <input
+            autoFocus
+            type="text"
+            inputMode="numeric"
+            value={inputStr}
+            onChange={(e) => setInputStr(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+            className="w-32 text-right text-xs font-black border-2 border-blue-400 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-300 bg-blue-50"
+          />
+        ) : (
+          <button
+            onClick={startEdit}
+            title="Clique para digitar o valor"
+            className={`text-xs font-black px-2 py-1 rounded-lg border transition-colors ${
+              errorMsg
+                ? 'text-red-500 border-red-200 bg-red-50'
+                : 'text-blue-700 border-blue-100 bg-blue-50 hover:border-blue-400 hover:bg-blue-100'
+            }`}
+          >
+            {displayVal}{suffix ? ` ${suffix}` : ''} <span className="text-[9px] text-blue-400">✏️</span>
+          </button>
+        )}
       </div>
 
       {/* Slider */}
@@ -150,13 +152,77 @@ function SliderInput({
         <span>{isCurrency ? fmt(max) : `${max}${suffix ? ' ' + suffix : ''}`}</span>
       </div>
 
-      {errorMsg && (
-        <p className="text-[10px] text-red-500 font-semibold mt-1">{errorMsg}</p>
-      )}
-      {hint && !errorMsg && (
-        <p className="text-[10px] text-slate-400 mt-1">{hint}</p>
+      {errorMsg && <p className="text-[10px] text-red-500 font-semibold mt-1">{errorMsg}</p>}
+      {hint && !errorMsg && <p className="text-[10px] text-slate-400 mt-1">{hint}</p>}
+    </div>
+  );
+}
+
+// ── EntradaReaisInput: input de R$ com estado string livre ────────────────────
+function EntradaReaisInput({ valorImovel, entradaVal, entradaPctMin, onChangePct }: {
+  valorImovel: number; entradaVal: number; entradaPctMin: number;
+  onChangePct: (pct: number) => void;
+}) {
+  const [str, setStr] = useState('');
+  const [active, setActive] = useState(false);
+
+  const open = () => { setStr(String(entradaVal)); setActive(true); };
+  const commit = () => {
+    setActive(false);
+    const v = parseFloat(str.replace(/[^\d]/g, ''));
+    if (!isNaN(v) && v > 0 && valorImovel > 0) {
+      const pct = Math.min(80, Math.max(entradaPctMin, Math.round((v / valorImovel) * 100)));
+      onChangePct(pct);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
+      <span className="text-[11px] text-slate-500 font-semibold shrink-0">Ou insira o valor em R$:</span>
+      {active ? (
+        <input autoFocus type="text" inputMode="numeric" value={str}
+          onChange={(e) => setStr(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setActive(false); }}
+          className="flex-1 text-right text-sm font-black text-blue-800 border-2 border-blue-400 rounded-lg px-3 py-1 outline-none focus:ring-2 focus:ring-blue-300 bg-white"
+        />
+      ) : (
+        <button onClick={open}
+          className="flex-1 text-right text-sm font-black text-blue-800 border border-blue-200 rounded-lg px-3 py-1 bg-white hover:border-blue-400 hover:bg-blue-50 transition-colors">
+          {fmt(entradaVal)} <span className="text-[10px] text-blue-400">✏️</span>
+        </button>
       )}
     </div>
+  );
+}
+
+// ── PrazoMesesInput: input de meses com estado string livre ───────────────────
+function PrazoMesesInput({ prazoMeses, prazoMax, onChangePrazo }: {
+  prazoMeses: number; prazoMax: number;
+  onChangePrazo: (anos: number) => void;
+}) {
+  const [str, setStr]     = useState('');
+  const [active, setActive] = useState(false);
+
+  const open = () => { setStr(String(prazoMeses)); setActive(true); };
+  const commit = () => {
+    setActive(false);
+    const m = parseInt(str.replace(/\D/g, ''), 10);
+    if (!isNaN(m) && m >= 60) onChangePrazo(Math.min(prazoMax, Math.max(5, Math.round(m / 12))));
+  };
+
+  return active ? (
+    <input autoFocus type="text" inputMode="numeric" value={str}
+      onChange={(e) => setStr(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setActive(false); }}
+      className="flex-1 text-right text-sm font-black text-blue-800 border-2 border-blue-400 rounded-lg px-3 py-1 outline-none focus:ring-2 focus:ring-blue-300 bg-white"
+    />
+  ) : (
+    <button onClick={open}
+      className="flex-1 text-right text-sm font-black text-blue-800 border border-blue-200 rounded-lg px-3 py-1 bg-white hover:border-blue-400 hover:bg-blue-50 transition-colors">
+      {prazoMeses} meses <span className="text-[10px] text-blue-400">✏️</span>
+    </button>
   );
 }
 
@@ -283,25 +349,12 @@ export function FinanciamentoCaixaModal({ property, onClose }: FinanciamentoCaix
           />
 
           {/* Entrada em R$ — campo adicional sincronizado */}
-          <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
-            <span className="text-[11px] text-slate-500 font-semibold shrink-0">Ou insira o valor em R$:</span>
-            <input
-              type="number"
-              min={entradaMinReais}
-              max={Math.round(valorImovel * 0.8)}
-              step={1000}
-              value={entradaVal}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                if (v >= 0 && valorImovel > 0) {
-                  const pct = Math.min(80, Math.max(entradaPctMin, Math.round((v / valorImovel) * 100)));
-                  setEntradaPct(pct);
-                }
-              }}
-              className="flex-1 text-right text-sm font-black text-blue-800 border border-blue-200 rounded-lg px-3 py-1 outline-none focus:ring-2 focus:ring-blue-300 bg-white"
-              placeholder={fmt(entradaVal)}
-            />
-          </div>
+          <EntradaReaisInput
+            valorImovel={valorImovel}
+            entradaVal={entradaVal}
+            entradaPctMin={entradaPctMin}
+            onChangePct={setEntradaPct}
+          />
 
           {/* FGTS */}
           {isSFH && (
@@ -347,19 +400,8 @@ export function FinanciamentoCaixaModal({ property, onClose }: FinanciamentoCaix
           {/* Campo extra: prazo em meses */}
           <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 -mt-3">
             <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span className="text-[11px] text-slate-500 font-semibold shrink-0">Ou insira o prazo em meses:</span>
-            <input
-              type="number"
-              min={60}
-              max={prazoMax * 12}
-              step={12}
-              value={prazoMeses}
-              onChange={(e) => {
-                const m = Number(e.target.value);
-                if (m >= 60) setPrazoAnos(Math.min(prazoMax, Math.max(5, Math.round(m / 12))));
-              }}
-              className="flex-1 text-right text-sm font-black text-blue-800 border border-blue-200 rounded-lg px-3 py-1 outline-none focus:ring-2 focus:ring-blue-300 bg-white"
-            />
+            <span className="text-[11px] text-slate-500 font-semibold shrink-0">Ou insira em meses:</span>
+            <PrazoMesesInput prazoMeses={prazoMeses} prazoMax={prazoMax} onChangePrazo={setPrazoAnos} />
           </div>
 
           {/* Sistema de Amortização */}
@@ -452,7 +494,7 @@ export function FinanciamentoCaixaModal({ property, onClose }: FinanciamentoCaix
             Fechar
           </button>
           <a
-            href="https://habitacao.caixa.gov.br/portalcaixa/produto/HABITACAO/SIMULADOR/index.asp"
+            href="https://simuladorhabitacao.caixa.gov.br/home"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs px-5 py-2.5 rounded-xl transition-colors"
