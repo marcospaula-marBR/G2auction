@@ -20,8 +20,8 @@ interface FinanciamentoCaixaModalProps {
 }
 
 // Taxas referenciais CAIXA (setembro 2026)
-const TAXA_POUPANCA = 0.0695;   // 6.95% a.a. (SFH com poupança)
-const TAXA_SFI      = 0.1199;   // 11.99% a.a. (SFI – acima do limite SFH)
+const TAXA_POUPANCA = 0.0695;    // 6.95% a.a. (SFH com poupança)
+const TAXA_SFI      = 0.1199;    // 11.99% a.a. (SFI – acima do limite SFH)
 const LIMITE_SFH    = 1_500_000; // Limite avaliação SFH
 
 type Sistema = 'SAC' | 'PRICE';
@@ -41,38 +41,126 @@ function calcularFinanciamento(
   if (sistema === 'PRICE') {
     const coef = (taxaMensal * Math.pow(1 + taxaMensal, prazoMeses)) /
                  (Math.pow(1 + taxaMensal, prazoMeses) - 1);
-    const parcela = saldo * coef;
+    const parcela   = saldo * coef;
     const totalPago = parcela * prazoMeses;
-    return {
-      parcela1: parcela,
-      parcelaUltima: parcela,
-      totalPago,
-      totalJuros: totalPago - saldo,
-      saldoFinanciado: saldo,
-    };
+    return { parcela1: parcela, parcelaUltima: parcela, totalPago, totalJuros: totalPago - saldo, saldoFinanciado: saldo };
   }
 
   // SAC
-  const amortizacao = saldo / prazoMeses;
-  const jurosMes1   = saldo * taxaMensal;
-  const parcela1    = amortizacao + jurosMes1;
-  const jurosMesN   = amortizacao * taxaMensal;
+  const amortizacao   = saldo / prazoMeses;
+  const jurosMes1     = saldo * taxaMensal;
+  const parcela1      = amortizacao + jurosMes1;
+  const jurosMesN     = amortizacao * taxaMensal;
   const parcelaUltima = amortizacao + jurosMesN;
-  const totalJuros  = ((jurosMes1 + jurosMesN) / 2) * prazoMeses;
-  const totalPago   = saldo + totalJuros;
-  return {
-    parcela1,
-    parcelaUltima,
-    totalPago,
-    totalJuros,
-    saldoFinanciado: saldo,
-  };
+  const totalJuros    = ((jurosMes1 + jurosMesN) / 2) * prazoMeses;
+  const totalPago     = saldo + totalJuros;
+  return { parcela1, parcelaUltima, totalPago, totalJuros, saldoFinanciado: saldo };
 }
 
 function fmt(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 }
 
+// Converte string "R$ 1.234" → número
+function parseBRL(s: string): number {
+  return Number(s.replace(/[^\d]/g, '')) || 0;
+}
+
+// ── Sub-componente: Slider + Input numérico sincronizados ──────────────────────
+interface SliderInputProps {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  onChange: (v: number) => void;
+  formatDisplay?: (v: number) => string;
+  /** Se true, o input exibe o valor como moeda (R$). Se false, exibe número puro */
+  isCurrency?: boolean;
+  /** Sufixo visível ao lado do valor (ex: "anos", "%") */
+  suffix?: string;
+  accentColor?: string; // classe accent-* do Tailwind
+  errorMsg?: string;
+  hint?: string;
+}
+
+function SliderInput({
+  label, value, min, max, step = 1, onChange,
+  formatDisplay, isCurrency = false, suffix = '',
+  accentColor = 'accent-blue-600', errorMsg, hint,
+}: SliderInputProps) {
+  const [rawInput, setRawInput]     = useState('');
+  const [editing, setEditing]       = useState(false);
+
+  const displayVal = formatDisplay ? formatDisplay(value) : `${value}`;
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setRawInput(e.target.value);
+  };
+
+  const commitInput = () => {
+    setEditing(false);
+    const num = isCurrency ? parseBRL(rawInput) : Number(rawInput.replace(',', '.'));
+    if (!isNaN(num) && num > 0) {
+      onChange(Math.min(max, Math.max(min, Math.round(num / (step || 1)) * (step || 1))));
+    }
+  };
+
+  return (
+    <div>
+      {/* Cabeçalho: label + input manual */}
+      <div className="flex items-center justify-between mb-1.5 gap-2">
+        <label className="text-xs font-black text-slate-700 shrink-0">{label}</label>
+
+        <div className="flex items-center gap-1.5">
+          {editing ? (
+            <input
+              autoFocus
+              type="text"
+              defaultValue={isCurrency ? String(value) : String(value)}
+              onChange={handleInputChange}
+              onBlur={commitInput}
+              onKeyDown={(e) => e.key === 'Enter' && commitInput()}
+              placeholder={isCurrency ? 'Ex: 50000' : String(value)}
+              className="w-28 text-right text-xs font-black border border-blue-400 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-300 bg-blue-50"
+            />
+          ) : (
+            <button
+              onClick={() => { setEditing(true); setRawInput(isCurrency ? String(value) : String(value)); }}
+              title="Clique para digitar o valor manualmente"
+              className={`text-xs font-black px-2 py-1 rounded-lg border transition-colors ${errorMsg ? 'text-red-500 border-red-200 bg-red-50' : 'text-blue-700 border-blue-100 bg-blue-50 hover:border-blue-300'}`}
+            >
+              {displayVal}{suffix ? ` ${suffix}` : ''}
+              <span className="ml-1 text-[9px] text-blue-400 font-normal">✏️</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Slider */}
+      <input
+        type="range" min={min} max={max} step={step} value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className={`w-full h-2 ${accentColor} cursor-pointer rounded-full`}
+      />
+
+      {/* Limites */}
+      <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
+        <span>{isCurrency ? fmt(min) : `${min}${suffix ? ' ' + suffix : ''}`}</span>
+        <span>{isCurrency ? fmt(max) : `${max}${suffix ? ' ' + suffix : ''}`}</span>
+      </div>
+
+      {errorMsg && (
+        <p className="text-[10px] text-red-500 font-semibold mt-1">{errorMsg}</p>
+      )}
+      {hint && !errorMsg && (
+        <p className="text-[10px] text-slate-400 mt-1">{hint}</p>
+      )}
+    </div>
+  );
+}
+
+// ── Modal principal ────────────────────────────────────────────────────────────
 export function FinanciamentoCaixaModal({ property, onClose }: FinanciamentoCaixaModalProps) {
   const valorImovel     = property?.secondAuctionPrice || property?.sale_value || property?.preco_minimo || 300_000;
   const avaliacaoImovel = property?.appraisalValue || property?.preco_avaliacao || valorImovel * 1.5;
@@ -82,6 +170,7 @@ export function FinanciamentoCaixaModal({ property, onClose }: FinanciamentoCaix
   const isSFH               = avaliacaoImovel <= LIMITE_SFH;
   // Entrada mínima: 5% se financiamento liberado, senão 20% (SFH) ou 30% (SFI)
   const entradaPctMin       = aceitaFinanciamento ? 5 : (isSFH ? 20 : 30);
+  const prazoMax            = isSFH ? 35 : 30;
 
   const [entradaPct, setEntradaPct] = useState(() => entradaPctMin);
   const [prazoAnos, setPrazoAnos]   = useState(30);
@@ -103,6 +192,9 @@ export function FinanciamentoCaixaModal({ property, onClose }: FinanciamentoCaix
     [valorImovel, entradaVal, prazoMeses, taxaAnual, sistema]
   );
 
+  // Entrada mínima em R$ pelo % atual
+  const entradaMinReais = Math.round(valorImovel * entradaPctMin / 100);
+
   return (
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
@@ -111,7 +203,7 @@ export function FinanciamentoCaixaModal({ property, onClose }: FinanciamentoCaix
     >
       <div className="relative w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-white rounded-3xl shadow-2xl">
 
-        {/* Header */}
+        {/* ── Header ─────────────────────────────────────────────────────── */}
         <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-gradient-to-r from-blue-700 to-blue-500 rounded-t-3xl">
           <div className="flex items-center gap-3">
             <div className="bg-white/20 p-2 rounded-xl">
@@ -127,7 +219,7 @@ export function FinanciamentoCaixaModal({ property, onClose }: FinanciamentoCaix
           </button>
         </div>
 
-        {/* Dados do imóvel */}
+        {/* ── Dados do imóvel ─────────────────────────────────────────────── */}
         <div className="mx-6 mt-5 p-4 bg-blue-50 border border-blue-200 rounded-2xl flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2 min-w-[150px]">
             <Home className="w-4 h-4 text-blue-600 shrink-0" />
@@ -154,7 +246,7 @@ export function FinanciamentoCaixaModal({ property, onClose }: FinanciamentoCaix
           </div>
         </div>
 
-        {/* Badge financiamento do lance */}
+        {/* Badge: financiamento do lance */}
         {aceitaFinanciamento && (
           <div className="mx-6 mt-3 flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
             <CheckCircle className="w-4 h-4 shrink-0" />
@@ -172,24 +264,43 @@ export function FinanciamentoCaixaModal({ property, onClose }: FinanciamentoCaix
           </div>
         </div>
 
-        {/* Controles */}
+        {/* ── Controles ────────────────────────────────────────────────────── */}
         <div className="px-6 mt-5 space-y-5">
 
-          {/* Entrada */}
-          <div>
-            <div className="flex justify-between mb-1.5">
-              <label className="text-xs font-black text-slate-700">Entrada</label>
-              <span className={`text-xs font-black ${!entradaOk ? 'text-red-500' : 'text-blue-700'}`}>
-                {entradaPct}% · {fmt(entradaVal)}
-                {!entradaOk && <span className="ml-1">(mín. {entradaPctMin}%)</span>}
-              </span>
-            </div>
-            <input type="range" min={entradaPctMin} max={80} value={entradaPct}
-              onChange={(e) => setEntradaPct(Number(e.target.value))}
-              className="w-full h-2 accent-blue-600 cursor-pointer" />
-            <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
-              <span>{entradaPctMin}%</span><span>80%</span>
-            </div>
+          {/* Entrada em % */}
+          <SliderInput
+            label="Entrada (%)"
+            value={entradaPct}
+            min={entradaPctMin}
+            max={80}
+            step={1}
+            onChange={setEntradaPct}
+            formatDisplay={(v) => `${v}%`}
+            suffix=""
+            accentColor="accent-blue-600"
+            errorMsg={!entradaOk ? `Mín. ${entradaPctMin}% · ${fmt(entradaMinReais)}` : undefined}
+            hint={entradaOk ? `Valor da entrada: ${fmt(entradaVal)}` : undefined}
+          />
+
+          {/* Entrada em R$ — campo adicional sincronizado */}
+          <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
+            <span className="text-[11px] text-slate-500 font-semibold shrink-0">Ou insira o valor em R$:</span>
+            <input
+              type="number"
+              min={entradaMinReais}
+              max={Math.round(valorImovel * 0.8)}
+              step={1000}
+              value={entradaVal}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                if (v >= 0 && valorImovel > 0) {
+                  const pct = Math.min(80, Math.max(entradaPctMin, Math.round((v / valorImovel) * 100)));
+                  setEntradaPct(pct);
+                }
+              }}
+              className="flex-1 text-right text-sm font-black text-blue-800 border border-blue-200 rounded-lg px-3 py-1 outline-none focus:ring-2 focus:ring-blue-300 bg-white"
+              placeholder={fmt(entradaVal)}
+            />
           </div>
 
           {/* FGTS */}
@@ -202,39 +313,56 @@ export function FinanciamentoCaixaModal({ property, onClose }: FinanciamentoCaix
               </label>
               {useFGTS && (
                 <div className="mt-3">
-                  <div className="flex justify-between mb-1">
-                    <span className="text-[11px] text-emerald-700 font-semibold">Saldo FGTS disponível</span>
-                    <span className="text-[11px] font-black text-emerald-800">{fmt(fgtsVal)}</span>
-                  </div>
-                  <input type="range" min={1000} max={200_000} step={1000} value={fgtsVal}
-                    onChange={(e) => setFgtsVal(Number(e.target.value))}
-                    className="w-full h-2 accent-emerald-600 cursor-pointer" />
-                  <p className="text-[10px] text-emerald-600 mt-1">
-                    FGTS aplicado: {fmt(fgtsAplicado)} · Entrada em dinheiro: {fmt(entradaEfetiva)}
-                  </p>
+                  <SliderInput
+                    label="Saldo FGTS disponível"
+                    value={fgtsVal}
+                    min={1_000}
+                    max={200_000}
+                    step={1_000}
+                    onChange={setFgtsVal}
+                    isCurrency
+                    formatDisplay={fmt}
+                    accentColor="accent-emerald-600"
+                    hint={`FGTS aplicado: ${fmt(fgtsAplicado)} · Entrada em dinheiro: ${fmt(entradaEfetiva)}`}
+                  />
                 </div>
               )}
             </div>
           )}
 
           {/* Prazo */}
-          <div>
-            <div className="flex justify-between mb-1.5">
-              <label className="text-xs font-black text-slate-700">Prazo</label>
-              <span className="text-xs font-black text-blue-700">
-                <Calendar className="w-3 h-3 inline mr-1" />
-                {prazoAnos} anos ({prazoMeses} meses)
-              </span>
-            </div>
-            <input type="range" min={5} max={isSFH ? 35 : 30} value={prazoAnos}
-              onChange={(e) => setPrazoAnos(Number(e.target.value))}
-              className="w-full h-2 accent-blue-600 cursor-pointer" />
-            <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
-              <span>5 anos</span><span>{isSFH ? '35' : '30'} anos</span>
-            </div>
+          <SliderInput
+            label="Prazo"
+            value={prazoAnos}
+            min={5}
+            max={prazoMax}
+            step={1}
+            onChange={setPrazoAnos}
+            formatDisplay={(v) => `${v} anos`}
+            suffix="anos"
+            accentColor="accent-blue-600"
+            hint={`${prazoMeses} meses`}
+          />
+
+          {/* Campo extra: prazo em meses */}
+          <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 -mt-3">
+            <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span className="text-[11px] text-slate-500 font-semibold shrink-0">Ou insira o prazo em meses:</span>
+            <input
+              type="number"
+              min={60}
+              max={prazoMax * 12}
+              step={12}
+              value={prazoMeses}
+              onChange={(e) => {
+                const m = Number(e.target.value);
+                if (m >= 60) setPrazoAnos(Math.min(prazoMax, Math.max(5, Math.round(m / 12))));
+              }}
+              className="flex-1 text-right text-sm font-black text-blue-800 border border-blue-200 rounded-lg px-3 py-1 outline-none focus:ring-2 focus:ring-blue-300 bg-white"
+            />
           </div>
 
-          {/* Sistema */}
+          {/* Sistema de Amortização */}
           <div>
             <p className="text-xs font-black text-slate-700 mb-2">Sistema de Amortização</p>
             <div className="grid grid-cols-2 gap-2">
@@ -248,7 +376,7 @@ export function FinanciamentoCaixaModal({ property, onClose }: FinanciamentoCaix
           </div>
         </div>
 
-        {/* Resultado */}
+        {/* ── Resultado ────────────────────────────────────────────────────── */}
         {resultado && entradaOk ? (
           <div className="mx-6 mt-6 bg-gradient-to-br from-blue-700 to-blue-900 rounded-2xl p-5 text-white">
             <p className="text-blue-200 text-[10px] font-bold uppercase tracking-widest mb-3">Resultado da Simulação · {sistema}</p>
@@ -293,12 +421,12 @@ export function FinanciamentoCaixaModal({ property, onClose }: FinanciamentoCaix
           <div className="mx-6 mt-6 bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center gap-3">
             <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
             <p className="text-red-700 text-xs font-bold">
-              Entrada mínima para {isSFH ? 'SFH' : 'SFI'}: {entradaPctMin}% · {fmt(valorImovel * entradaPctMin / 100)}
+              Entrada mínima para {isSFH ? 'SFH' : 'SFI'}: {entradaPctMin}% · {fmt(entradaMinReais)}
             </p>
           </div>
         ) : null}
 
-        {/* Info colapsável */}
+        {/* ── Info colapsável ──────────────────────────────────────────────── */}
         <div className="px-6 mt-4">
           <button onClick={() => setShowInfo(!showInfo)}
             className="w-full flex items-center justify-between text-[11px] text-slate-500 font-semibold py-2 border-t border-slate-100">
@@ -310,21 +438,25 @@ export function FinanciamentoCaixaModal({ property, onClose }: FinanciamentoCaix
               <p>• <b>SFH:</b> avaliação ≤ R$ 1,5 mi · Taxa poupança 6,95% a.a. · Prazo até 35 anos · Aceita FGTS</p>
               <p>• <b>SFI:</b> avaliação {'>'} R$ 1,5 mi · 11,99% a.a. · Prazo até 30 anos · Sem FGTS</p>
               <p>• <b>SAC:</b> amortização constante, parcelas decrescentes. <b>PRICE:</b> parcelas fixas.</p>
+              <p>• Campos com ✏️ permitem inserção manual do valor — clique para digitar e pressione Enter.</p>
               <p>• Simulação meramente informativa. Valores sujeitos à análise de crédito da CAIXA.</p>
               <p>• Taxas referenciais de setembro/2026. Consulte a CAIXA para condições oficiais.</p>
             </div>
           )}
         </div>
 
-        {/* Rodapé */}
+        {/* ── Rodapé ───────────────────────────────────────────────────────── */}
         <div className="px-6 pb-6 pt-2 flex flex-wrap gap-3 justify-between items-center border-t border-slate-100 mt-2">
           <button onClick={onClose}
             className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs px-5 py-2.5 rounded-xl">
             Fechar
           </button>
-          <a href="https://www.caixa.gov.br/voce/habitacao/simulador-habitacional/Paginas/default.aspx"
-            target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs px-5 py-2.5 rounded-xl transition-colors">
+          <a
+            href="https://habitacao.caixa.gov.br/portalcaixa/produto/HABITACAO/SIMULADOR/index.asp"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs px-5 py-2.5 rounded-xl transition-colors"
+          >
             <ExternalLink className="w-3.5 h-3.5" />
             Simulador Oficial CAIXA
           </a>
