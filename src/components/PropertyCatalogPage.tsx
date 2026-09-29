@@ -29,6 +29,7 @@ import {
 import { formatCurrencyBRL } from '../utils/financial';
 import { cleanCaixaAddressForMaps } from '../utils/addressSanitizer';
 import { getCaixaPropertyPageUrl } from '../utils/caixaEditalHelper';
+import { extractHdnImovelFromUrl } from '../utils/caixaListImporter';
 import { EditalAnalysisModal } from './EditalAnalysisModal';
 import { FinanciamentoCaixaModal } from './FinanciamentoCaixaModal';
 
@@ -560,7 +561,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {properties.map((prop) => {
+          {properties.map((prop, index) => {
             const hasPrivArea = prop.private_area !== null && prop.private_area > 0;
             const hasTotalArea = prop.total_area !== null && prop.total_area > 0;
             const areaDisplay = hasPrivArea 
@@ -581,11 +582,20 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                   {/* Foto Principal com Fallback Inteligente */}
                   <div className="relative h-48 w-full bg-slate-900 overflow-hidden border-b border-slate-100 flex flex-col items-center justify-center">
                     {(() => {
-                      const hdn = prop.source_property_id || '';
-                      const officialPhotoUrl = prop.main_photo_url || (hdn ? `https://venda-imoveis.caixa.gov.br/fotos/F${hdn}0.jpg` : '');
+                      const rawId = prop.source_property_id || prop.hdnimovel || '';
+                      const cleanHdn = String(rawId).replace(/\D/g, '') || extractHdnImovelFromUrl(prop.source_url || '');
+                      const isCaixa = !prop.source || prop.source === 'CAIXA';
+                      const officialPhotoUrl = prop.main_photo_url || (isCaixa && cleanHdn ? `https://venda-imoveis.caixa.gov.br/fotos/F${cleanHdn}21.jpg` : '');
+
                       const type = (prop.property_type || '').toLowerCase();
+                      const houseFallbacks = [
+                        'https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&w=800&q=80',
+                        'https://images.unsplash.com/photo-1518780664697-55e3ad937233?auto=format&fit=crop&w=800&q=80',
+                        'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=800&q=80',
+                      ];
+                      const hashIdx = Math.abs(String(rawId || index).split('').reduce((acc, char) => acc + char.charCodeAt(0), 0));
                       const defaultPlaceholder = type.includes('casa')
-                        ? 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=800&q=80'
+                        ? houseFallbacks[hashIdx % houseFallbacks.length]
                         : type.includes('terreno')
                         ? 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=800&q=80'
                         : type.includes('comercial') || type.includes('sala') || type.includes('loja')
@@ -597,6 +607,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                           src={officialPhotoUrl || defaultPlaceholder}
                           alt={prop.title || 'Imóvel CAIXA'}
                           className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
+                          referrerPolicy="no-referrer"
                           onError={(e) => {
                             (e.currentTarget as HTMLImageElement).src = defaultPlaceholder;
                           }}

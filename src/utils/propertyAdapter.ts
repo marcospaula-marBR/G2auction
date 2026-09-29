@@ -150,7 +150,9 @@ export function adaptCatalogItemToProperty(raw: any, index: number = 0): Propert
 
   // Foto oficial ou fallback
   const hdnImovel = extractHdnImovelFromUrl(raw.source_url || '') || raw.source_property_id;
-  const officialCaixaPhoto = hdnImovel ? `https://venda-imoveis.caixa.gov.br/fotos/F${hdnImovel}0.jpg` : '';
+  const cleanHdn = String(hdnImovel || '').replace(/\D/g, '');
+  const officialCaixaPhoto = cleanHdn ? `https://venda-imoveis.caixa.gov.br/fotos/F${cleanHdn}21.jpg` : '';
+  const mainPhoto = raw.main_photo_url || officialCaixaPhoto;
   const fallbackList = PROPERTY_TYPE_FALLBACK_IMAGES[category] || PROPERTY_TYPE_FALLBACK_IMAGES.Apartamento;
   const fallbackPhoto = fallbackList[index % fallbackList.length];
 
@@ -230,7 +232,7 @@ export function adaptCatalogItemToProperty(raw: any, index: number = 0): Propert
     },
     newsIntelligence: [],
     comparables: [],
-    images: officialCaixaPhoto ? [officialCaixaPhoto, fallbackPhoto] : [fallbackPhoto],
+    images: mainPhoto ? [mainPhoto, fallbackPhoto] : [fallbackPhoto],
     editalUrl: raw.source_url || '',
     matriculaUrl: '',
     lifecycleStep: 2,

@@ -33,6 +33,7 @@ interface BankProperty {
   address?: string;
   link?: string;
   auctioneer?: string;
+  main_photo_url?: string | null;
 }
 
 const ALL_UFS = [
@@ -131,6 +132,7 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
         land_area: null,
         bedrooms: p.bedrooms || 2,
         parking_spaces: 1,
+        main_photo_url: p.main_photo_url || null,
         source_url: p.link || 'https://www.santanderimoveis.com.br',
         source_generated_at: new Date().toISOString().split('T')[0],
         source_fetched_at: new Date().toISOString(),
@@ -246,19 +248,30 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {properties.map(p => (
               <div key={p.id} className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col justify-between shadow-2xs hover:shadow-md transition-shadow">
-                <div>
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
-                      {p.sale_modality}
-                    </span>
-                    <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
-                      {p.discount_percentage}% OFF
-                    </span>
+                <div className="flex gap-3 items-start">
+                  {p.main_photo_url ? (
+                    <img
+                      src={p.main_photo_url}
+                      alt={p.title}
+                      referrerPolicy="no-referrer"
+                      className="w-16 h-16 rounded-xl object-cover flex-shrink-0 border border-slate-100"
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                    />
+                  ) : null}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 truncate">
+                        {p.sale_modality}
+                      </span>
+                      <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full flex-shrink-0">
+                        {p.discount_percentage}% OFF
+                      </span>
+                    </div>
+                    <h4 className="font-bold text-sm text-slate-900 leading-tight mb-1 line-clamp-2">{p.title}</h4>
+                    <p className="text-xs text-slate-500 mb-2 truncate">{p.city}/{p.state} • {p.area_m2 ? `${p.area_m2}m² • ` : ''}{p.bedrooms ? `${p.bedrooms} quartos` : 'Ver edital'}</p>
                   </div>
-                  <h4 className="font-bold text-sm text-slate-900 leading-tight mb-1">{p.title}</h4>
-                  <p className="text-xs text-slate-500 mb-2">{p.city}/{p.state} • {p.area_m2}m² • {p.bedrooms} quartos</p>
                 </div>
-                <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100 mt-2">
                   <div>
                     <span className="text-[10px] text-slate-400 block">Valor Mínimo</span>
                     <span className="font-black text-emerald-700 text-sm">{formatBRL(p.sale_value)}</span>
@@ -380,6 +393,7 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
         land_area: null,
         bedrooms: p.bedrooms || 2,
         parking_spaces: 1,
+        main_photo_url: p.main_photo_url || null,
         source_url: p.link || 'https://vitrinebradesco.com.br',
         source_generated_at: new Date().toISOString().split('T')[0],
         source_fetched_at: new Date().toISOString(),
@@ -495,19 +509,30 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {properties.map(p => (
               <div key={p.id} className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col justify-between shadow-2xs hover:shadow-md transition-shadow">
-                <div>
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-red-800 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
-                      {p.sale_modality}
-                    </span>
-                    <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
-                      {p.discount_percentage}% OFF
-                    </span>
+                <div className="flex gap-3 items-start">
+                  {p.main_photo_url ? (
+                    <img
+                      src={p.main_photo_url}
+                      alt={p.title}
+                      referrerPolicy="no-referrer"
+                      className="w-16 h-16 rounded-xl object-cover flex-shrink-0 border border-slate-100"
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                    />
+                  ) : null}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-red-800 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 truncate">
+                        {p.sale_modality}
+                      </span>
+                      <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full flex-shrink-0">
+                        {p.discount_percentage}% OFF
+                      </span>
+                    </div>
+                    <h4 className="font-bold text-sm text-slate-900 leading-tight mb-1 line-clamp-2">{p.title}</h4>
+                    <p className="text-xs text-slate-500 mb-2 truncate">{p.city}/{p.state} • {p.auctioneer}</p>
                   </div>
-                  <h4 className="font-bold text-sm text-slate-900 leading-tight mb-1">{p.title}</h4>
-                  <p className="text-xs text-slate-500 mb-2">{p.city}/{p.state} • {p.area_m2}m² • {p.auctioneer}</p>
                 </div>
-                <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100 mt-2">
                   <div>
                     <span className="text-[10px] text-slate-400 block">Valor Mínimo</span>
                     <span className="font-black text-emerald-700 text-sm">{formatBRL(p.sale_value)}</span>
