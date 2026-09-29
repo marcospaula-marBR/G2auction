@@ -463,7 +463,7 @@ export interface PropertyFilterParams {
   propertyType?: string;
   saleModality?: string;
 
-  sortBy?: 'discount_desc' | 'price_asc' | 'appraisal_desc' | 'area_desc' | 'recent_desc';
+  sortBy?: 'discount_desc' | 'price_asc' | 'appraisal_desc' | 'area_desc' | 'recent_desc' | 'neighborhood_asc' | 'address_asc';
   page?: number;
   pageSize?: number;
 }
@@ -535,6 +535,12 @@ export async function queryPropertiesFromSupabase(
         case 'recent_desc':
           query = query.order('first_seen_at', { ascending: false });
           break;
+        case 'neighborhood_asc':
+          query = query.order('neighborhood', { ascending: true, nullsFirst: false }).order('address', { ascending: true, nullsFirst: false });
+          break;
+        case 'address_asc':
+          query = query.order('address', { ascending: true, nullsFirst: false });
+          break;
         case 'discount_desc':
         default:
           query = query.order('discount_percentage', { ascending: false, nullsFirst: false });
@@ -590,6 +596,14 @@ export async function queryPropertiesFromSupabase(
     if (filters.sortBy === 'appraisal_desc') return (b.appraisal_value || 0) - (a.appraisal_value || 0);
     if (filters.sortBy === 'area_desc') return (b[areaCol] || 0) - (a[areaCol] || 0);
     if (filters.sortBy === 'recent_desc') return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    if (filters.sortBy === 'neighborhood_asc') {
+      const nComp = (a.neighborhood || '').localeCompare(b.neighborhood || '', 'pt-BR');
+      if (nComp !== 0) return nComp;
+      return (a.address || '').localeCompare(b.address || '', 'pt-BR');
+    }
+    if (filters.sortBy === 'address_asc') {
+      return (a.address || '').localeCompare(b.address || '', 'pt-BR');
+    }
     return (b.discount_percentage || 0) - (a.discount_percentage || 0);
   });
 

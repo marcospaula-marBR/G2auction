@@ -63,10 +63,44 @@ export default async function handler(req, res) {
       let liveHtml = '';
       let isLiveFetched = false;
 
+      const shouldFetchAll = urlObj.searchParams.get('fetchAll') === 'true' || !urlObj.searchParams.has('page');
       const targetApiUrl = `https://api.vitrinebradesco.com.br/v1/auctions?type=realstate&ufs=${encodeURIComponent(uf)}&page=${page}`;
       let realProperties = [];
       let totalFound = 0;
       let totalPages = 1;
+
+      const mapBradescoItem = (item) => {
+        const saleVal = item.price || 0;
+        const appraisalVal = item.min_auction_value_1 || item.final_auction_value || saleVal;
+        let discount = 0;
+        if (appraisalVal > saleVal && appraisalVal > 0) {
+          discount = Math.round(((appraisalVal - saleVal) / appraisalVal) * 100);
+        }
+
+        const photo = Array.isArray(item.images) && item.images.length > 0 ? item.images[0] : '';
+        const auctioneerName = item.auctioneer?.name ? `${item.auctioneer.name} (Bradesco Homologado)` : 'Bradesco Leilões';
+
+        return {
+          source: 'BRADESCO',
+          id: `brd_${item.guid || Math.random().toString(36).substr(2, 9)}`,
+          title: item.name || `Imóvel Bradesco — ${item.city}/${item.state}`,
+          city: item.city || '',
+          state: item.state || uf,
+          neighborhood: item.neighborhood || '',
+          address: `${item.neighborhood ? item.neighborhood + ', ' : ''}${item.city || ''} - ${item.state || uf}`,
+          sale_value: saleVal,
+          appraisal_value: appraisalVal,
+          discount_percentage: discount,
+          sale_modality: item.realstate_auction_type === 'convencional' ? 'Leilão Extrajudicial Bradesco' : (item.realstate_auction_type || 'Leilão Bradesco'),
+          property_type: item.category || 'Imóvel',
+          area_m2: 0,
+          bedrooms: 0,
+          main_photo_url: photo,
+          link: item.slug ? `https://vitrinebradesco.com.br/auctions/${item.slug}` : targetSearchUrl,
+          auctioneer: auctioneerName,
+          description: item.description || '',
+        };
+      };
 
       try {
         const r = await fetch(targetApiUrl, {
@@ -85,38 +119,43 @@ export default async function handler(req, res) {
           totalPages = json.total_pages || 1;
 
           if (Array.isArray(json.data) && json.data.length > 0) {
-            realProperties = json.data.map((item) => {
-              const saleVal = item.price || 0;
-              const appraisalVal = item.min_auction_value_1 || item.final_auction_value || saleVal;
-              let discount = 0;
-              if (appraisalVal > saleVal && appraisalVal > 0) {
-                discount = Math.round(((appraisalVal - saleVal) / appraisalVal) * 100);
+            realProperties.push(...json.data.map(mapBradescoItem));
+
+            // Se deve buscar todas as páginas e totalPages > 1, busca em paralelo
+            if (shouldFetchAll && totalPages > 1) {
+              const extraPages = [];
+              for (let p = 2; p <= totalPages; p++) {
+                extraPages.push(p);
               }
 
-              const photo = Array.isArray(item.images) && item.images.length > 0 ? item.images[0] : '';
-              const auctioneerName = item.auctioneer?.name ? `${item.auctioneer.name} (Bradesco Homologado)` : 'Bradesco Leilões';
+              const extraResponses = await Promise.all(
+                extraPages.map(async (p) => {
+                  try {
+                    const pUrl = `https://api.vitrinebradesco.com.br/v1/auctions?type=realstate&ufs=${encodeURIComponent(uf)}&page=${p}`;
+                    const pRes = await fetch(pUrl, {
+                      headers: {
+                        'Accept': 'application/json, text/plain, */*',
+                        'Origin': 'https://vitrinebradesco.com.br',
+                        'Referer': 'https://vitrinebradesco.com.br/',
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                      },
+                    });
+                    if (pRes.ok) {
+                      return await pRes.json();
+                    }
+                  } catch (e) {
+                    console.warn(`[Bradesco Page ${p} Fetch Error]`, e);
+                  }
+                  return { data: [] };
+                })
+              );
 
-              return {
-                source: 'BRADESCO',
-                id: `brd_${item.guid || Math.random().toString(36).substr(2, 9)}`,
-                title: item.name || `Imóvel Bradesco — ${item.city}/${item.state}`,
-                city: item.city || '',
-                state: item.state || uf,
-                neighborhood: item.neighborhood || '',
-                address: `${item.neighborhood ? item.neighborhood + ', ' : ''}${item.city || ''} - ${item.state || uf}`,
-                sale_value: saleVal,
-                appraisal_value: appraisalVal,
-                discount_percentage: discount,
-                sale_modality: item.realstate_auction_type === 'convencional' ? 'Leilão Extrajudicial Bradesco' : (item.realstate_auction_type || 'Leilão Bradesco'),
-                property_type: item.category || 'Imóvel',
-                area_m2: 0,
-                bedrooms: 0,
-                main_photo_url: photo,
-                link: item.slug ? `https://vitrinebradesco.com.br/auctions/${item.slug}` : targetSearchUrl,
-                auctioneer: auctioneerName,
-                description: item.description || '',
-              };
-            });
+              extraResponses.forEach((res) => {
+                if (Array.isArray(res.data)) {
+                  realProperties.push(...res.data.map(mapBradescoItem));
+                }
+              });
+            }
           }
         }
       } catch (err) {

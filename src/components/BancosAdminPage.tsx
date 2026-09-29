@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Building2, RefreshCw, AlertTriangle,
   ExternalLink, Loader2, Wifi, WifiOff,
   Search, Globe, Landmark, CheckCircle2,
-  Info, DownloadCloud,
+  Info, DownloadCloud, ArrowUpDown,
 } from 'lucide-react';
 import { CaixaFeedAdminTestPage } from './CaixaFeedAdminTestPage';
 import { batchUpsertPropertiesToSupabase, type PropertyUpsertPayload } from '../lib/supabaseClient';
@@ -76,6 +76,9 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
   const [importing, setImporting] = useState(false);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
 
+  const [filterText, setFilterText] = useState('');
+  const [sortBy, setSortBy] = useState<'bairro' | 'rua' | 'desconto' | 'preco_asc' | 'preco_desc'>('bairro');
+
   const diagnose = async () => {
     setDiagLoading(true); setError(null);
     try {
@@ -93,7 +96,7 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
   const search = async () => {
     setLoading(true); setError(null); setImportSuccess(null);
     try {
-      const res = await fetch(`/api/santander-proxy?action=search&uf=${uf}`);
+      const res = await fetch(`/api/santander-proxy?action=search&uf=${uf}&fetchAll=true`);
       const text = await res.text();
       let data: any;
       try { data = JSON.parse(text); } catch { data = { properties: [] }; }
@@ -104,6 +107,40 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
       setError(e.message);
     } finally { setLoading(false); }
   };
+
+  const filteredAndSortedProperties = useMemo(() => {
+    let list = [...properties];
+    if (filterText.trim()) {
+      const q = filterText.toLowerCase();
+      list = list.filter(p =>
+        (p.title || '').toLowerCase().includes(q) ||
+        (p.city || '').toLowerCase().includes(q) ||
+        (p.neighborhood || '').toLowerCase().includes(q) ||
+        (p.address || '').toLowerCase().includes(q)
+      );
+    }
+    list.sort((a, b) => {
+      if (sortBy === 'bairro') {
+        const cmp = (a.neighborhood || '').localeCompare(b.neighborhood || '', 'pt-BR');
+        if (cmp !== 0) return cmp;
+        return (a.address || '').localeCompare(b.address || '', 'pt-BR');
+      }
+      if (sortBy === 'rua') {
+        return (a.address || '').localeCompare(b.address || '', 'pt-BR');
+      }
+      if (sortBy === 'desconto') {
+        return (b.discount_percentage || 0) - (a.discount_percentage || 0);
+      }
+      if (sortBy === 'preco_asc') {
+        return (a.sale_value || 0) - (b.sale_value || 0);
+      }
+      if (sortBy === 'preco_desc') {
+        return (b.sale_value || 0) - (a.sale_value || 0);
+      }
+      return 0;
+    });
+    return list;
+  }, [properties, filterText, sortBy]);
 
   const handleImportToDatabase = async () => {
     if (properties.length === 0) return;
@@ -243,10 +280,40 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
 
       {/* Lista de Imóveis Encontrados */}
       {properties.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-black text-slate-600 uppercase tracking-wider">{properties.length} imóveis Santander encontrados em {uf}</p>
+        <div className="space-y-3">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Search className="w-4 h-4 text-slate-400 flex-shrink-0" />
+              <input
+                type="text"
+                placeholder="Filtrar por bairro, rua ou cidade..."
+                value={filterText}
+                onChange={e => setFilterText(e.target.value)}
+                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-400 w-full sm:w-64"
+              />
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              <ArrowUpDown className="w-3.5 h-3.5 text-red-600 flex-shrink-0" />
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Ordenar por:</span>
+              <select
+                value={sortBy}
+                onChange={e => setSortBy(e.target.value as any)}
+                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-400"
+              >
+                <option value="bairro">Bairro (A-Z) · Agrupar p/ Comparar</option>
+                <option value="rua">Rua / Logradouro (A-Z)</option>
+                <option value="desconto">Maior Desconto (%)</option>
+                <option value="preco_asc">Menor Preço</option>
+                <option value="preco_desc">Maior Preço</option>
+              </select>
+            </div>
+          </div>
+
+          <p className="text-xs font-black text-slate-600 uppercase tracking-wider">
+            {filteredAndSortedProperties.length} de {properties.length} imóveis Santander encontrados em {uf}
+          </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {properties.map(p => (
+            {filteredAndSortedProperties.map(p => (
               <div key={p.id} className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col justify-between shadow-2xs hover:shadow-md transition-shadow">
                 <div className="flex gap-3 items-start">
                   {p.main_photo_url ? (
@@ -268,7 +335,12 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
                       </span>
                     </div>
                     <h4 className="font-bold text-sm text-slate-900 leading-tight mb-1 line-clamp-2">{p.title}</h4>
-                    <p className="text-xs text-slate-500 mb-2 truncate">{p.city}/{p.state} • {p.area_m2 ? `${p.area_m2}m² • ` : ''}{p.bedrooms ? `${p.bedrooms} quartos` : 'Ver edital'}</p>
+                    <p className="text-xs text-slate-500 mb-2 truncate">
+                      {p.neighborhood ? <strong className="text-slate-700">{p.neighborhood}</strong> : null}
+                      {p.neighborhood && p.address ? ' • ' : ''}
+                      {p.address && p.address !== p.neighborhood ? <span>{p.address} • </span> : ''}
+                      {p.city}/{p.state} • {p.area_m2 ? `${p.area_m2}m² • ` : ''}{p.bedrooms ? `${p.bedrooms} quartos` : 'Ver edital'}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center justify-between pt-2 border-t border-slate-100 mt-2">
@@ -337,6 +409,9 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
   const [importing, setImporting] = useState(false);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
 
+  const [filterText, setFilterText] = useState('');
+  const [sortBy, setSortBy] = useState<'bairro' | 'rua' | 'desconto' | 'preco_asc' | 'preco_desc'>('bairro');
+
   const diagnose = async () => {
     setDiagLoading(true); setError(null);
     try {
@@ -354,7 +429,7 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
   const search = async () => {
     setLoading(true); setError(null); setImportSuccess(null);
     try {
-      const res = await fetch(`/api/bradesco-proxy?action=search&uf=${uf}&tipo=imovel`);
+      const res = await fetch(`/api/bradesco-proxy?action=search&uf=${uf}&tipo=imovel&fetchAll=true`);
       const text = await res.text();
       let data: any;
       try { data = JSON.parse(text); } catch { data = { properties: [] }; }
@@ -365,6 +440,40 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
       setError(e.message);
     } finally { setLoading(false); }
   };
+
+  const filteredAndSortedProperties = useMemo(() => {
+    let list = [...properties];
+    if (filterText.trim()) {
+      const q = filterText.toLowerCase();
+      list = list.filter(p =>
+        (p.title || '').toLowerCase().includes(q) ||
+        (p.city || '').toLowerCase().includes(q) ||
+        (p.neighborhood || '').toLowerCase().includes(q) ||
+        (p.address || '').toLowerCase().includes(q)
+      );
+    }
+    list.sort((a, b) => {
+      if (sortBy === 'bairro') {
+        const cmp = (a.neighborhood || '').localeCompare(b.neighborhood || '', 'pt-BR');
+        if (cmp !== 0) return cmp;
+        return (a.address || '').localeCompare(b.address || '', 'pt-BR');
+      }
+      if (sortBy === 'rua') {
+        return (a.address || '').localeCompare(b.address || '', 'pt-BR');
+      }
+      if (sortBy === 'desconto') {
+        return (b.discount_percentage || 0) - (a.discount_percentage || 0);
+      }
+      if (sortBy === 'preco_asc') {
+        return (a.sale_value || 0) - (b.sale_value || 0);
+      }
+      if (sortBy === 'preco_desc') {
+        return (b.sale_value || 0) - (a.sale_value || 0);
+      }
+      return 0;
+    });
+    return list;
+  }, [properties, filterText, sortBy]);
 
   const handleImportToDatabase = async () => {
     if (properties.length === 0) return;
@@ -504,10 +613,40 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
 
       {/* Lista de Imóveis Encontrados */}
       {properties.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-black text-slate-600 uppercase tracking-wider">{properties.length} imóveis Bradesco encontrados em {uf}</p>
+        <div className="space-y-3">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Search className="w-4 h-4 text-slate-400 flex-shrink-0" />
+              <input
+                type="text"
+                placeholder="Filtrar por bairro, rua ou cidade..."
+                value={filterText}
+                onChange={e => setFilterText(e.target.value)}
+                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-400 w-full sm:w-64"
+              />
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              <ArrowUpDown className="w-3.5 h-3.5 text-red-800 flex-shrink-0" />
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Ordenar por:</span>
+              <select
+                value={sortBy}
+                onChange={e => setSortBy(e.target.value as any)}
+                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-400"
+              >
+                <option value="bairro">Bairro (A-Z) · Agrupar p/ Comparar</option>
+                <option value="rua">Rua / Logradouro (A-Z)</option>
+                <option value="desconto">Maior Desconto (%)</option>
+                <option value="preco_asc">Menor Preço</option>
+                <option value="preco_desc">Maior Preço</option>
+              </select>
+            </div>
+          </div>
+
+          <p className="text-xs font-black text-slate-600 uppercase tracking-wider">
+            {filteredAndSortedProperties.length} de {properties.length} imóveis Bradesco encontrados em {uf}
+          </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {properties.map(p => (
+            {filteredAndSortedProperties.map(p => (
               <div key={p.id} className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col justify-between shadow-2xs hover:shadow-md transition-shadow">
                 <div className="flex gap-3 items-start">
                   {p.main_photo_url ? (
@@ -529,7 +668,12 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
                       </span>
                     </div>
                     <h4 className="font-bold text-sm text-slate-900 leading-tight mb-1 line-clamp-2">{p.title}</h4>
-                    <p className="text-xs text-slate-500 mb-2 truncate">{p.city}/{p.state} • {p.auctioneer}</p>
+                    <p className="text-xs text-slate-500 mb-2 truncate">
+                      {p.neighborhood ? <strong className="text-slate-700">{p.neighborhood}</strong> : null}
+                      {p.neighborhood && p.address ? ' • ' : ''}
+                      {p.address && p.address !== p.neighborhood ? <span>{p.address} • </span> : ''}
+                      {p.city}/{p.state} • {p.auctioneer || 'Leilão Oficial'}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center justify-between pt-2 border-t border-slate-100 mt-2">

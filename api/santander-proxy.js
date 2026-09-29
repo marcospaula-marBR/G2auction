@@ -60,69 +60,101 @@ export default async function handler(req, res) {
 
     if (action === 'search') {
       const startTime = Date.now();
-      let liveHtml = '';
+      const shouldFetchAll = urlObj.searchParams.get('fetchAll') === 'true' || !urlObj.searchParams.has('page');
+      const maxPages = parseInt(urlObj.searchParams.get('maxPages') || '25', 10);
+      let realProperties = [];
+      let totalFound = 0;
       let isLiveFetched = false;
 
       const targetPageUrl = `${BASE_URL}/?txtsearch=${encodeURIComponent(city)}&uf=${encodeURIComponent(uf)}&pag=${page}`;
 
+      const parseSantanderList = (html, defaultLink) => {
+        if (!html) return [];
+        const matchImoveis = html.match(/var allImoveis\s*=\s*(\[[\s\S]*?\]);/);
+        if (!matchImoveis) return [];
+        try {
+          const rawList = JSON.parse(matchImoveis[1]);
+          return rawList.map((item) => {
+            const saleVal = parseFloat(item.valorVenda) || 0;
+            const appraisalVal = parseFloat(item.valorAvaliado) || saleVal;
+            let discount = parseFloat(item.desagio) || 0;
+            if (discount === 0 && appraisalVal > saleVal && appraisalVal > 0) {
+              discount = Math.round(((appraisalVal - saleVal) / appraisalVal) * 100);
+            }
+
+            const addr = `${item.logradrouro || ''} ${item.numeroResidencia || ''}`.trim() || `${item.bairroDeclarado || ''}, ${item.descCidade || ''} - ${item.uf || ''}`;
+
+            return {
+              source: 'SANTANDER',
+              id: `snt_${item.codigo || item.idWpShi || Math.random().toString(36).substr(2, 9)}`,
+              title: item.seoH1 || `${item.descTipoImovel || 'Imóvel'} Santander — ${item.descCidade}/${item.uf}`,
+              city: item.descCidade || city || '',
+              state: item.uf || uf || '',
+              neighborhood: item.bairroDeclarado || '',
+              address: addr,
+              sale_value: saleVal,
+              appraisal_value: appraisalVal,
+              discount_percentage: discount,
+              sale_modality: item.descProduto ? `Leilão Santander — ${item.descProduto}` : 'Leilão Santander Oficial',
+              property_type: item.descTipoImovel || 'Imóvel',
+              area_m2: parseFloat(item.areaPrivativa || item.areaTotal || item.area || 0),
+              bedrooms: parseInt(item.dormitorios || 0, 10),
+              parking_spaces: parseInt(item.vagas || 0, 10),
+              latitude: item.latitude ? parseFloat(item.latitude) : null,
+              longitude: item.longitude ? parseFloat(item.longitude) : null,
+              main_photo_url: item.thumbnail || '',
+              link: item.urlLink || defaultLink,
+              auctioneer: 'Santander Imóveis Oficial',
+            };
+          });
+        } catch {
+          return [];
+        }
+      };
+
       try {
         const r = await fetch(targetPageUrl, { headers: BROWSER_HEADERS, redirect: 'follow' });
         if (r.ok) {
-          liveHtml = await r.text();
+          const liveHtml = await r.text();
           isLiveFetched = liveHtml.length > 500;
-        }
-      } catch (err) {
-        console.warn('[Santander Proxy Fetch Error]', err);
-      }
-
-      let realProperties = [];
-      let totalFound = 0;
-
-      if (liveHtml) {
-        try {
-          const matchImoveis = liveHtml.match(/var allImoveis\s*=\s*(\[[\s\S]*?\]);/);
           const matchTotal = liveHtml.match(/var totalReg\s*=\s*(\d+);/);
           if (matchTotal) totalFound = parseInt(matchTotal[1], 10);
 
-          if (matchImoveis) {
-            const rawList = JSON.parse(matchImoveis[1]);
-            realProperties = rawList.map((item) => {
-              const saleVal = parseFloat(item.valorVenda) || 0;
-              const appraisalVal = parseFloat(item.valorAvaliado) || saleVal;
-              let discount = parseFloat(item.desagio) || 0;
-              if (discount === 0 && appraisalVal > saleVal && appraisalVal > 0) {
-                discount = Math.round(((appraisalVal - saleVal) / appraisalVal) * 100);
-              }
+          const firstPageList = parseSantanderList(liveHtml, targetPageUrl);
+          realProperties.push(...firstPageList);
 
-              const addr = `${item.logradrouro || ''} ${item.numeroResidencia || ''}`.trim() || `${item.bairroDeclarado || ''}, ${item.descCidade || ''} - ${item.uf || ''}`;
+          const totalPages = Math.ceil(totalFound / 9);
 
-              return {
-                source: 'SANTANDER',
-                id: `snt_${item.codigo || item.idWpShi || Math.random().toString(36).substr(2, 9)}`,
-                title: item.seoH1 || `${item.descTipoImovel || 'Imóvel'} Santander — ${item.descCidade}/${item.uf}`,
-                city: item.descCidade || city || '',
-                state: item.uf || uf || '',
-                neighborhood: item.bairroDeclarado || '',
-                address: addr,
-                sale_value: saleVal,
-                appraisal_value: appraisalVal,
-                discount_percentage: discount,
-                sale_modality: item.descProduto ? `Leilão Santander — ${item.descProduto}` : 'Leilão Santander Oficial',
-                property_type: item.descTipoImovel || 'Imóvel',
-                area_m2: parseFloat(item.areaPrivativa || item.areaTotal || item.area || 0),
-                bedrooms: parseInt(item.dormitorios || 0, 10),
-                parking_spaces: parseInt(item.vagas || 0, 10),
-                latitude: item.latitude ? parseFloat(item.latitude) : null,
-                longitude: item.longitude ? parseFloat(item.longitude) : null,
-                main_photo_url: item.thumbnail || '',
-                link: item.urlLink || targetPageUrl,
-                auctioneer: 'Santander Imóveis Oficial',
-              };
+          // Se deve buscar todas as páginas e existem páginas subsequentes
+          if (shouldFetchAll && totalPages > 1) {
+            const pagesToFetch = [];
+            for (let p = 2; p <= Math.min(totalPages, maxPages); p++) {
+              pagesToFetch.push(p);
+            }
+
+            const extraResponses = await Promise.all(
+              pagesToFetch.map(async (p) => {
+                try {
+                  const pUrl = `${BASE_URL}/?txtsearch=${encodeURIComponent(city)}&uf=${encodeURIComponent(uf)}&pag=${p}`;
+                  const pRes = await fetch(pUrl, { headers: BROWSER_HEADERS, redirect: 'follow' });
+                  if (pRes.ok) {
+                    const pHtml = await pRes.text();
+                    return parseSantanderList(pHtml, pUrl);
+                  }
+                } catch (e) {
+                  console.warn(`[Santander Page ${p} Fetch Error]`, e);
+                }
+                return [];
+              })
+            );
+
+            extraResponses.forEach((list) => {
+              realProperties.push(...list);
             });
           }
-        } catch (parseErr) {
-          console.warn('[Santander Proxy Parse Error]', parseErr);
         }
+      } catch (err) {
+        console.warn('[Santander Proxy Fetch Error]', err);
       }
 
       // Se a extração ao vivo não encontrou registros (ex: estado sem leilões no momento), usa gerador resiliente

@@ -72,7 +72,9 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
   const [saleModality, setSaleModality] = useState<string>('Todas');
 
   // Ordenação e Paginação (Seção 32 & 33)
-  const [sortBy, setSortBy] = useState<'discount_desc' | 'price_asc' | 'appraisal_desc' | 'area_desc' | 'recent_desc'>('discount_desc');
+  const [sortBy, setSortBy] = useState<
+    'discount_desc' | 'price_asc' | 'appraisal_desc' | 'area_desc' | 'recent_desc' | 'neighborhood_asc' | 'address_asc'
+  >('discount_desc');
   const [page, setPage] = useState<number>(1);
   const pageSize = 24;
 
@@ -535,6 +537,8 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
             <option value="appraisal_desc">Maior avaliação</option>
             <option value="area_desc">Maior área</option>
             <option value="recent_desc">Mais recentes</option>
+            <option value="neighborhood_asc">Bairro (A-Z) · Agrupar p/ Comparar</option>
+            <option value="address_asc">Rua / Logradouro (A-Z)</option>
           </select>
         </div>
       </div>
