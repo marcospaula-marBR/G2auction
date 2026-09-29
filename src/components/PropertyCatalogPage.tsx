@@ -14,6 +14,8 @@ import {
   X,
   Sparkles,
   Calculator,
+  CreditCard,
+  AlertCircle,
 } from 'lucide-react';
 
 import {
@@ -30,6 +32,7 @@ import { formatCurrencyBRL } from '../utils/financial';
 import { cleanCaixaAddressForMaps } from '../utils/addressSanitizer';
 import { getCaixaPropertyPageUrl } from '../utils/caixaEditalHelper';
 import { extractHdnImovelFromUrl } from '../utils/caixaListImporter';
+import { getAuctionValues, getPaymentConditions } from '../utils/propertyAuctionHelper';
 import { EditalAnalysisModal } from './EditalAnalysisModal';
 import { FinanciamentoCaixaModal } from './FinanciamentoCaixaModal';
 
@@ -694,82 +697,155 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                     </div>
                   </div>
 
-                  <div className="p-5 space-y-4">
-                    {/* Cabeçalho do Card */}
-                    <div>
-                      <div className="flex items-center space-x-2 text-[11px] font-black uppercase tracking-wider mb-1">
-                        {prop.source === 'SANTANDER' && (
-                          <span className="bg-red-600 text-white font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider">
-                            Santander
-                          </span>
-                        )}
-                        {prop.source === 'BRADESCO' && (
-                          <span className="bg-red-800 text-white font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider">
-                            Bradesco
-                          </span>
-                        )}
-                        {(!prop.source || prop.source === 'CAIXA') && (
-                          <span className="bg-blue-600 text-white font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider">
-                            Caixa
-                          </span>
-                        )}
-                        <span className="text-orange-600">{prop.property_type || 'Imóvel'}</span>
-                        <span className="text-slate-400">•</span>
-                        <span className="flex items-center gap-0.5 text-slate-500 font-bold">
-                          <MapPin className="w-3 h-3 text-orange-500" /> {prop.city} / {prop.state}
-                        </span>
-                      </div>
+                  {(() => {
+                    const auctionInfo = getAuctionValues(prop);
+                    const paymentInfo = getPaymentConditions(prop);
 
-                      <h3 className="text-sm font-black text-slate-900 line-clamp-2 leading-snug">
-                        {prop.address || `${prop.title || 'Imóvel'} em ${prop.city} / ${prop.state}`}
-                      </h3>
+                    return (
+                      <div className="p-5 space-y-4">
+                        {/* Cabeçalho do Card */}
+                        <div>
+                          <div className="flex items-center flex-wrap gap-1.5 text-[11px] font-black uppercase tracking-wider mb-1">
+                            {prop.source === 'SANTANDER' && (
+                              <span className="bg-red-600 text-white font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                Santander
+                              </span>
+                            )}
+                            {prop.source === 'BRADESCO' && (
+                              <span className="bg-red-800 text-white font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                Bradesco
+                              </span>
+                            )}
+                            {(!prop.source || prop.source === 'CAIXA') && (
+                              <span className="bg-blue-600 text-white font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                Caixa
+                              </span>
+                            )}
 
-                      {prop.neighborhood && (
-                        <p className="text-[11px] font-bold text-slate-500 mt-1 truncate">
-                          Bairro: {prop.neighborhood}
-                        </p>
-                      )}
-                    </div>
+                            {auctionInfo.hasBothAuctions && (
+                              <span className="bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shadow-2xs">
+                                ⚡ 1º e 2º Leilão
+                              </span>
+                            )}
 
-                    {/* Valoração Financeira (Seção 5, 34) */}
-                    <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <span className="text-slate-400 font-bold block text-[9px] uppercase">
-                          PREÇO MÍNIMO {prop.source || 'CAIXA'}:
-                        </span>
-                        <span className="text-base font-black text-emerald-600">
-                          {prop.current_minimum_value || prop.sale_value ? formatCurrencyBRL(prop.current_minimum_value || prop.sale_value) : 'Sob Consulta'}
-                        </span>
-                      </div>
+                            <span className="text-orange-600">{prop.property_type || 'Imóvel'}</span>
+                            <span className="text-slate-400">•</span>
+                            <span className="flex items-center gap-0.5 text-slate-500 font-bold">
+                              <MapPin className="w-3 h-3 text-orange-500" /> {prop.city} / {prop.state}
+                            </span>
+                          </div>
 
-                      <div>
-                        <span className="text-slate-400 font-bold block text-[9px] uppercase">AVALIAÇÃO:</span>
-                        <span className="text-xs font-extrabold text-slate-700 line-through">
-                          {prop.appraisal_value ? formatCurrencyBRL(prop.appraisal_value) : 'N/I'}
-                        </span>
-                      </div>
-                    </div>
+                          <h3 className="text-sm font-black text-slate-900 line-clamp-2 leading-snug">
+                            {prop.address || `${prop.title || 'Imóvel'} em ${prop.city} / ${prop.state}`}
+                          </h3>
 
-                    {/* Atributos Básicos (Seção 36, 37) */}
-                    <div className="grid grid-cols-2 gap-2 text-[11px]">
-                      {/* Área no Card (Seção 36) */}
-                      {areaDisplay && (
-                        <div className="bg-slate-100 p-2 rounded-xl border border-slate-200/60 font-bold text-slate-800 truncate">
-                          📐 {areaDisplay}
+                          {prop.neighborhood && (
+                            <p className="text-[11px] font-bold text-slate-500 mt-1 truncate">
+                              Bairro: {prop.neighborhood}
+                            </p>
+                          )}
                         </div>
-                      )}
 
-                      {/* Financiamento */}
-                      <div className="bg-slate-100 p-2 rounded-xl border border-slate-200/60 font-bold text-slate-800 truncate">
-                        💰 {prop.accepts_financing ? 'Financiável' : prop.accepts_financing === false ? 'Não financiável' : 'Financ: N/I'}
-                      </div>
+                        {/* Valoração Financeira (Se houver 1º e 2º leilão, apresenta ambos) */}
+                        {auctionInfo.hasBothAuctions ? (
+                          <div className="bg-amber-50/70 p-3.5 rounded-2xl border border-amber-200 space-y-2 text-xs">
+                            <div className="flex items-center justify-between pb-1.5 border-b border-amber-200/80">
+                              <span className="text-[10px] font-black text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded-md flex items-center gap-1">
+                                ⚡ LEILÃO EM 2 PRAÇAS
+                              </span>
+                              <span className="text-[9px] font-bold text-amber-800" title="Para filtros de preço, o sistema considera o maior valor">
+                                Filtro: {formatCurrencyBRL(auctionInfo.higherPriceForFilter)}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <span className="text-slate-500 font-bold block text-[9px] uppercase">1º LEILÃO:</span>
+                                <span className="text-xs font-black text-slate-800">
+                                  {formatCurrencyBRL(auctionInfo.firstAuctionValue)}
+                                </span>
+                                {auctionInfo.firstAuctionDate && (
+                                  <span className="text-[9px] font-semibold text-slate-500 block truncate">
+                                    📅 {auctionInfo.firstAuctionDate}
+                                  </span>
+                                )}
+                              </div>
+                              <div>
+                                <span className="text-slate-500 font-bold block text-[9px] uppercase">2º LEILÃO ({prop.source || 'BANCO'}):</span>
+                                <span className="text-sm font-black text-emerald-600">
+                                  {formatCurrencyBRL(auctionInfo.secondAuctionValue)}
+                                </span>
+                                {auctionInfo.secondAuctionDate && (
+                                  <span className="text-[9px] font-semibold text-emerald-700 block truncate">
+                                    📅 {auctionInfo.secondAuctionDate}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                              <span className="text-slate-400 font-bold block text-[9px] uppercase">
+                                PREÇO MÍNIMO {prop.source || 'CAIXA'}:
+                              </span>
+                              <span className="text-base font-black text-emerald-600">
+                                {prop.current_minimum_value || prop.sale_value ? formatCurrencyBRL(prop.current_minimum_value || prop.sale_value) : 'Sob Consulta'}
+                              </span>
+                            </div>
 
-                      {/* Ocupação (Seção 37) */}
-                      <div className="bg-slate-100 p-2 rounded-xl border border-slate-200/60 font-bold text-slate-800 truncate col-span-2">
-                        🏠 Ocupação: {isOccupied ? 'Ocupado' : isVacant ? 'Desocupado' : 'Não informada'}
+                            <div>
+                              <span className="text-slate-400 font-bold block text-[9px] uppercase">AVALIAÇÃO:</span>
+                              <span className="text-xs font-extrabold text-slate-700 line-through">
+                                {prop.appraisal_value ? formatCurrencyBRL(prop.appraisal_value) : 'N/I'}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Atributos Básicos com Financiamento e Parcelamento */}
+                        <div className="grid grid-cols-2 gap-2 text-[11px]">
+                          {/* Área no Card */}
+                          {areaDisplay && (
+                            <div className="bg-slate-100 p-2 rounded-xl border border-slate-200/60 font-bold text-slate-800 truncate">
+                              📐 {areaDisplay}
+                            </div>
+                          )}
+
+                          {/* Financiamento */}
+                          <div 
+                            className={`p-2 rounded-xl border font-bold truncate ${paymentInfo.canFinance ? 'bg-slate-100 border-slate-200/60 text-slate-800' : 'bg-amber-50 border-amber-200 text-amber-900'}`}
+                            title={paymentInfo.paymentConditionsText}
+                          >
+                            💰 {paymentInfo.canFinance ? 'Financiável' : 'Somente à vista'}
+                          </div>
+
+                          {/* Quantidade máxima de parcelas disponíveis */}
+                          {paymentInfo.canFinance && paymentInfo.maxInstallments > 1 && (
+                            <div 
+                              className="bg-emerald-50 text-emerald-900 border border-emerald-200 p-2 rounded-xl font-bold truncate text-[10px]"
+                              title={`Até ${paymentInfo.maxInstallments} meses | Entrada mínima: ${formatCurrencyBRL(paymentInfo.minDownPayment)} | Parcelas a partir de: ${formatCurrencyBRL(paymentInfo.minInstallmentValue)}/mês`}
+                            >
+                              💳 Até {paymentInfo.maxInstallments}x parcelas
+                            </div>
+                          )}
+
+                          {!paymentInfo.canFinance && prop.source === 'SANTANDER' && (
+                            <div 
+                              className="bg-amber-100/70 text-amber-900 border border-amber-300 p-2 rounded-xl font-black text-[9px] truncate"
+                              title="O Santander somente financia imóveis com valor de venda a partir de R$ 90 mil"
+                            >
+                              ⚠️ Santander: Mín. R$ 90 mil
+                            </div>
+                          )}
+
+                          {/* Ocupação */}
+                          <div className={`bg-slate-100 p-2 rounded-xl border border-slate-200/60 font-bold text-slate-800 truncate ${paymentInfo.canFinance && paymentInfo.maxInstallments > 1 ? '' : 'col-span-2'}`}>
+                            🏠 {isOccupied ? 'Ocupado' : isVacant ? 'Desocupado' : 'Ocupação: N/I'}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
+                    );
+                  })()}
                 </div>
 
                 {/* BOTÕES DO CARD (Seção 34) */}
@@ -889,37 +965,88 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
 
             <div className="p-6 overflow-y-auto space-y-6 text-xs font-sans">
               
-              {/* Valoração Financeira */}
-              <div className="grid grid-cols-3 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
-                <div>
-                  <span className="text-slate-400 font-bold block text-[10px]">PREÇO MÍNIMO {selectedDetailProperty.source || 'CAIXA'}:</span>
-                  <span className="text-lg font-black text-emerald-600">
-                    {selectedDetailProperty.current_minimum_value || selectedDetailProperty.sale_value ? formatCurrencyBRL(selectedDetailProperty.current_minimum_value || selectedDetailProperty.sale_value) : 'Sob Consulta'}
-                  </span>
-                </div>
+              {/* Valoração Financeira com Suporte a 1º e 2º Leilão */}
+              {(() => {
+                const aInfo = getAuctionValues(selectedDetailProperty);
+                if (aInfo.hasBothAuctions) {
+                  return (
+                    <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200 space-y-3">
+                      <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-amber-200">
+                        <span className="text-xs font-black text-amber-900 bg-amber-100 px-2.5 py-0.5 rounded-md flex items-center gap-1">
+                          ⚡ LEILÃO EM 2 PRAÇAS (1º E 2º LEILÃO)
+                        </span>
+                        <span className="text-[11px] font-bold text-amber-800" title="Para filtros de preço, o sistema utiliza o maior valor">
+                          Filtro de busca utiliza o maior valor: {formatCurrencyBRL(aInfo.higherPriceForFilter)}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="bg-white p-3 rounded-xl border border-amber-200/80">
+                          <span className="text-slate-400 font-bold block text-[10px]">1º LEILÃO:</span>
+                          <span className="text-base font-black text-slate-800">
+                            {formatCurrencyBRL(aInfo.firstAuctionValue)}
+                          </span>
+                          {aInfo.firstAuctionDate && (
+                            <span className="text-[10px] font-semibold text-slate-500 block mt-0.5">
+                              📅 {aInfo.firstAuctionDate}
+                            </span>
+                          )}
+                        </div>
+                        <div className="bg-white p-3 rounded-xl border border-emerald-200">
+                          <span className="text-slate-400 font-bold block text-[10px]">2º LEILÃO (LANCE MÍNIMO):</span>
+                          <span className="text-lg font-black text-emerald-600">
+                            {formatCurrencyBRL(aInfo.secondAuctionValue)}
+                          </span>
+                          {aInfo.secondAuctionDate && (
+                            <span className="text-[10px] font-semibold text-emerald-700 block mt-0.5">
+                              📅 {aInfo.secondAuctionDate}
+                            </span>
+                          )}
+                        </div>
+                        <div className="bg-white p-3 rounded-xl border border-slate-200">
+                          <span className="text-slate-400 font-bold block text-[10px]">DESCONTO MÁXIMO:</span>
+                          <span className="text-base font-extrabold text-orange-600">
+                            {selectedDetailProperty.discount_percentage ? `${selectedDetailProperty.discount_percentage}%` : 'N/I'}
+                          </span>
+                          <span className="text-[10px] text-slate-500 block mt-0.5">no 2º Leilão</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
 
-                <div>
-                  <span className="text-slate-400 font-bold block text-[10px]">AVALIAÇÃO:</span>
-                  <span className="text-sm font-extrabold text-slate-700 line-through">
-                    {selectedDetailProperty.appraisal_value ? formatCurrencyBRL(selectedDetailProperty.appraisal_value) : 'N/I'}
-                  </span>
-                </div>
+                return (
+                  <div className="grid grid-cols-3 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                    <div>
+                      <span className="text-slate-400 font-bold block text-[10px]">PREÇO MÍNIMO {selectedDetailProperty.source || 'CAIXA'}:</span>
+                      <span className="text-lg font-black text-emerald-600">
+                        {selectedDetailProperty.current_minimum_value || selectedDetailProperty.sale_value ? formatCurrencyBRL(selectedDetailProperty.current_minimum_value || selectedDetailProperty.sale_value) : 'Sob Consulta'}
+                      </span>
+                    </div>
 
-                <div>
-                  <span className="text-slate-400 font-bold block text-[10px]">DESCONTO:</span>
-                  <span className="text-sm font-extrabold text-orange-600">
-                    {(() => {
-                      const minPrice = selectedDetailProperty.current_minimum_value || selectedDetailProperty.sale_value || 0;
-                      const isSobConsulta = !minPrice || minPrice <= 0;
-                      const rawDiscount = selectedDetailProperty.discount_percentage;
-                      if (isSobConsulta || rawDiscount === null || rawDiscount === undefined) return 'Sob Consulta';
-                      const discount = rawDiscount > 100 ? rawDiscount / 100 : rawDiscount;
-                      if (discount <= 0 || discount >= 100) return 'Sob Consulta';
-                      return `${discount.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`;
-                    })()}
-                  </span>
-                </div>
-              </div>
+                    <div>
+                      <span className="text-slate-400 font-bold block text-[10px]">AVALIAÇÃO:</span>
+                      <span className="text-sm font-extrabold text-slate-700 line-through">
+                        {selectedDetailProperty.appraisal_value ? formatCurrencyBRL(selectedDetailProperty.appraisal_value) : 'N/I'}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-slate-400 font-bold block text-[10px]">DESCONTO:</span>
+                      <span className="text-sm font-extrabold text-orange-600">
+                        {(() => {
+                          const minPrice = selectedDetailProperty.current_minimum_value || selectedDetailProperty.sale_value || 0;
+                          const isSobConsulta = !minPrice || minPrice <= 0;
+                          const rawDiscount = selectedDetailProperty.discount_percentage;
+                          if (isSobConsulta || rawDiscount === null || rawDiscount === undefined) return 'Sob Consulta';
+                          const discount = rawDiscount > 100 ? rawDiscount / 100 : rawDiscount;
+                          if (discount <= 0 || discount >= 100) return 'Sob Consulta';
+                          return `${discount.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`;
+                        })()}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Endereço Completo */}
               <div className="space-y-1">
@@ -960,10 +1087,75 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                 <div className="bg-slate-100 p-3 rounded-xl border border-slate-200">
                   <span className="text-slate-500 font-bold block text-[10px]">FINANCIAMENTO:</span>
                   <span className="font-extrabold text-slate-900">
-                    {selectedDetailProperty.accepts_financing ? 'Sim' : selectedDetailProperty.accepts_financing === false ? 'Não' : 'N/I'}
+                    {selectedDetailProperty.source === 'SANTANDER' && (selectedDetailProperty.sale_value || 0) < 90000
+                      ? 'Não (mín. R$ 90 mil)'
+                      : selectedDetailProperty.accepts_financing ? 'Sim' : selectedDetailProperty.accepts_financing === false ? 'Não' : 'N/I'}
                   </span>
                 </div>
               </div>
+
+              {/* Condições de Pagamento e Financiamento Bancário */}
+              {(() => {
+                const pInfo = getPaymentConditions(selectedDetailProperty);
+                const isSantander = selectedDetailProperty.source === 'SANTANDER';
+                const isBradesco = selectedDetailProperty.source === 'BRADESCO';
+                return (
+                  <div className="bg-slate-50 p-5 rounded-3xl border border-slate-200 space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center space-x-2 text-slate-900 font-black text-xs uppercase tracking-wider">
+                        <CreditCard className="w-4 h-4 text-emerald-600" />
+                        <span>CONDIÇÕES DE PAGAMENTO & FINANCIAMENTO BANCÁRIO</span>
+                      </div>
+                      {pInfo.canFinance && pInfo.maxInstallments > 1 && (
+                        <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold text-[10px] px-2.5 py-0.5 rounded-full">
+                          Até {pInfo.maxInstallments}x parcelas disponíveis
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-xs text-slate-700 font-medium leading-relaxed bg-white p-3.5 rounded-2xl border border-slate-200/80">
+                      {pInfo.paymentConditionsText}
+                    </p>
+
+                    {pInfo.canFinance ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                        <div className="bg-white p-3 rounded-2xl border border-slate-200">
+                          <span className="text-[10px] font-bold text-slate-400 block uppercase">ENTRADA MÍNIMA *:</span>
+                          <span className="text-sm font-black text-slate-900">
+                            {formatCurrencyBRL(pInfo.minDownPayment)}
+                          </span>
+                          <span className="text-[9px] text-slate-500 block">
+                            ({isSantander || isBradesco ? '20%' : '5% a 20%'} do valor de venda)
+                          </span>
+                        </div>
+
+                        <div className="bg-white p-3 rounded-2xl border border-slate-200">
+                          <span className="text-[10px] font-bold text-slate-400 block uppercase">PARCELAS A PARTIR DE *:</span>
+                          <span className="text-sm font-black text-emerald-600">
+                            {formatCurrencyBRL(pInfo.minInstallmentValue)}/mês
+                          </span>
+                          <span className="text-[9px] text-slate-500 block">
+                            em até {pInfo.maxInstallments} meses ({pInfo.maxInstallments / 12} anos)
+                          </span>
+                        </div>
+
+                        <div className="bg-white p-3 rounded-2xl border border-slate-200">
+                          <span className="text-[10px] font-bold text-slate-400 block uppercase">REGRA DE FINANCIAMENTO:</span>
+                          <span className="text-xs font-bold text-slate-800 block mt-0.5">
+                            {isSantander ? 'Financia a partir de R$ 90 mil' : isBradesco ? 'Financia a partir de R$ 100 mil' : 'Financia até 95% do imóvel'}
+                          </span>
+                          <span className="text-[9px] text-slate-500 block">Sujeito a aprovação de crédito</span>
+                        </div>
+                      </div>
+                    ) : isSantander ? (
+                      <div className="bg-amber-50 border border-amber-200 p-3 rounded-2xl text-xs text-amber-900 font-medium flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>Atenção: O Santander somente financia ofertas com valor a partir de R$ 90.000,00. Esta oferta deve ser liquidada à vista com recursos próprios.</span>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })()}
 
               {/* Descrição Original */}
               {selectedDetailProperty.description && (

@@ -90,7 +90,25 @@ export default async function handler(req, res) {
               discount = 0;
             }
 
-            const addr = `${item.logradrouro || ''} ${item.numeroResidencia || ''}`.trim() || `${item.bairroDeclarado || ''}, ${item.descCidade || ''} - ${item.uf || ''}`;
+            const typeStr = (item.descTipoImovel || '').toLowerCase();
+            const isCommercial = typeStr.includes('sala') || typeStr.includes('loja') || typeStr.includes('comercial');
+            const canFinanceSantander = saleVal >= 90000;
+            const maxInstallments = canFinanceSantander ? (isCommercial ? 360 : 420) : 1;
+            const minDownPayment = canFinanceSantander ? Math.round(saleVal * 0.20) : saleVal;
+            const financed = Math.max(0, saleVal - minDownPayment);
+            const minInstallmentValue = canFinanceSantander && financed > 0
+              ? Math.round((financed / maxInstallments) + (financed * 0.0084))
+              : 0;
+
+            const paymentConditions = item.condicoesPagamento || item.formaPagamento || item.descCondicaoPagamento ||
+              (canFinanceSantander
+                ? `À vista com recursos próprios ou Financiamento Imobiliário Santander em até ${maxInstallments} meses (Entrada mínima de 20% a partir de R$ ${minDownPayment.toLocaleString('pt-BR')}, parcelas estimadas a partir de R$ ${minInstallmentValue.toLocaleString('pt-BR')}/mês).`
+                : 'Somente à vista (O Santander não concede financiamento imobiliário para ofertas com valor abaixo de R$ 90.000,00).');
+
+            const firstAuctionVal = appraisalVal;
+            const secondAuctionVal = saleVal;
+            const firstAuctionDate = item.dataPrimeiroLeilao || item.dataLeilao || item.dtLeilao || null;
+            const secondAuctionDate = item.dataSegundoLeilao || null;
 
             return {
               source: 'SANTANDER',
@@ -102,6 +120,10 @@ export default async function handler(req, res) {
               address: addr,
               sale_value: saleVal,
               appraisal_value: appraisalVal,
+              first_auction_value: firstAuctionVal,
+              second_auction_value: secondAuctionVal,
+              first_auction_date: firstAuctionDate,
+              second_auction_date: secondAuctionDate,
               discount_percentage: discount,
               sale_modality: item.descProduto ? `Leilão Santander — ${item.descProduto}` : 'Leilão Santander Oficial',
               property_type: item.descTipoImovel || 'Imóvel',
@@ -113,6 +135,11 @@ export default async function handler(req, res) {
               main_photo_url: item.thumbnail || '',
               link: item.urlLink || defaultLink,
               auctioneer: 'Santander Imóveis Oficial',
+              payment_conditions: paymentConditions,
+              max_installments: maxInstallments,
+              min_down_payment: minDownPayment,
+              min_installment_value: minInstallmentValue,
+              accepts_financing: canFinanceSantander,
             };
           });
         } catch {
@@ -208,6 +235,10 @@ export default async function handler(req, res) {
             neighborhood: tpl.neigh,
             sale_value: saleVal,
             appraisal_value: appraisalVal,
+            first_auction_value: appraisalVal,
+            second_auction_value: saleVal,
+            first_auction_date: '2026-10-15',
+            second_auction_date: '2026-10-25',
             discount_percentage: calcDiscount,
             sale_modality: tpl.mod,
             property_type: tpl.type,
@@ -217,6 +248,13 @@ export default async function handler(req, res) {
             link: targetPageUrl,
             auctioneer: i % 2 === 0 ? 'Mega Leilões (Santander Oficial)' : 'Zukerman Leilões',
             main_photo_url: '',
+            payment_conditions: saleVal >= 90000 
+              ? `À vista com recursos próprios ou Financiamento Imobiliário Santander em até 420 meses (Entrada mínima de 20% a partir de R$ ${Math.round(saleVal * 0.2).toLocaleString('pt-BR')}).`
+              : 'Somente à vista (Santander não financia valores abaixo de R$ 90 mil).',
+            max_installments: saleVal >= 90000 ? 420 : 1,
+            min_down_payment: saleVal >= 90000 ? Math.round(saleVal * 0.2) : saleVal,
+            min_installment_value: saleVal >= 90000 ? Math.round(((saleVal * 0.8) / 420) + ((saleVal * 0.8) * 0.0084)) : 0,
+            accepts_financing: saleVal >= 90000,
           });
         }
         totalFound = realProperties.length;

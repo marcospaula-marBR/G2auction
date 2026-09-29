@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { parseCaixaCsv } from '../utils/caixaListImporter';
 import { savePropertiesToIndexedDB, loadPropertiesFromIndexedDB } from '../utils/indexedDbStore';
 import { stripAccents, formatCityDisplayName } from '../utils/textUtils';
+import { getPropertyFilterPrice } from '../utils/propertyAuctionHelper';
 
 const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY || '';
@@ -174,6 +175,10 @@ export interface PropertyUpsertPayload {
   source_file_url?: string | null;
   source_file_hash?: string | null;
   enrichment_status?: string;
+  payment_conditions?: string | null;
+  max_installments?: number | null;
+  min_down_payment?: number | null;
+  min_installment_value?: number | null;
   raw_list_data?: any;
   raw_detail_data?: any;
 }
@@ -612,8 +617,13 @@ export async function queryPropertiesFromSupabase(
     filtered = filtered.filter((p) => stripAccents(p.city).includes(targetNormCity));
   }
 
-  if (filters.priceMin !== undefined && filters.priceMin !== null) filtered = filtered.filter((p) => (p.current_minimum_value || p.sale_value || 0) >= filters.priceMin!);
-  if (filters.priceMax !== undefined && filters.priceMax !== null) filtered = filtered.filter((p) => (p.current_minimum_value || p.sale_value || 0) <= filters.priceMax!);
+  // Quando houver ainda constando 1º e 2º leilões, utilizar o maior valor para efeitos de filtros
+  if (filters.priceMin !== undefined && filters.priceMin !== null) {
+    filtered = filtered.filter((p) => getPropertyFilterPrice(p) >= filters.priceMin!);
+  }
+  if (filters.priceMax !== undefined && filters.priceMax !== null) {
+    filtered = filtered.filter((p) => getPropertyFilterPrice(p) <= filters.priceMax!);
+  }
 
   if (filters.appraisalMin !== undefined && filters.appraisalMin !== null) filtered = filtered.filter((p) => (p.appraisal_value || 0) >= filters.appraisalMin!);
   if (filters.appraisalMax !== undefined && filters.appraisalMax !== null) filtered = filtered.filter((p) => (p.appraisal_value || 0) <= filters.appraisalMax!);
@@ -635,7 +645,7 @@ export async function queryPropertiesFromSupabase(
 
   const areaCol = filters.areaType || 'private_area';
   filtered.sort((a, b) => {
-    if (filters.sortBy === 'price_asc') return (a.sale_value || 0) - (b.sale_value || 0);
+    if (filters.sortBy === 'price_asc') return getPropertyFilterPrice(a) - getPropertyFilterPrice(b);
     if (filters.sortBy === 'appraisal_desc') return (b.appraisal_value || 0) - (a.appraisal_value || 0);
     if (filters.sortBy === 'area_desc') return (b[areaCol] || 0) - (a[areaCol] || 0);
     if (filters.sortBy === 'recent_desc') return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();

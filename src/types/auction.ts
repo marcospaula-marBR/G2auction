@@ -70,6 +70,11 @@ export interface Property {
   caixaModalidad?: 'Venda Direta Extrajudicial Caixa' | '1º Leilão Caixa (100% Avaliação)' | '2º Leilão Caixa (Deságio Mínimo)' | 'Licitação Aberta Caixa' | 'Leilão Extrajudicial Banco';
   acceptsFGTS?: boolean;
   acceptsBankFinancing?: boolean;
+  paymentConditions?: string;
+  maxInstallments?: number;
+  minDownPayment?: number;
+  minInstallmentValue?: number;
+  hasBothAuctions?: boolean;
   caixaContractNumber?: string;
   processNumber?: string;
   courtName?: string;

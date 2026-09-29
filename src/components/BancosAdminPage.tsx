@@ -5,6 +5,7 @@ import {
   Search, Globe, Landmark, CheckCircle2,
   Info, DownloadCloud, ArrowUpDown, BadgePercent,
   MapPin, Calculator, Sparkles, X, ShieldCheck,
+  CreditCard, AlertCircle,
 } from 'lucide-react';
 import { CaixaFeedAdminTestPage } from './CaixaFeedAdminTestPage';
 import { batchUpsertPropertiesToSupabase, type PropertyUpsertPayload } from '../lib/supabaseClient';
@@ -12,6 +13,7 @@ import { cleanCaixaAddressForMaps } from '../utils/addressSanitizer';
 import { FinanciamentoCaixaModal } from './FinanciamentoCaixaModal';
 import { EditalAnalysisModal } from './EditalAnalysisModal';
 import { batchVerifyNeighborhoods, type NeighborhoodVerificationResult } from '../utils/neighborhoodEnricher';
+import { getAuctionValues, getPaymentConditions, getPropertyFilterPrice } from '../utils/propertyAuctionHelper';
 
 // ── Tipos compartilhados ──────────────────────────────────────────────────
 interface BankStatus {
@@ -30,6 +32,10 @@ interface BankProperty {
   neighborhood?: string;
   sale_value: number;
   appraisal_value: number;
+  first_auction_value?: number | null;
+  second_auction_value?: number | null;
+  first_auction_date?: string | null;
+  second_auction_date?: string | null;
   discount_percentage: number;
   sale_modality: string;
   property_type?: string;
@@ -40,6 +46,11 @@ interface BankProperty {
   auctioneer?: string;
   main_photo_url?: string | null;
   neighborhoodVerification?: NeighborhoodVerificationResult;
+  payment_conditions?: string;
+  max_installments?: number;
+  min_down_payment?: number;
+  min_installment_value?: number;
+  accepts_financing?: boolean;
 }
 
 const ALL_UFS = [
@@ -105,6 +116,8 @@ const BankPropertyCard: React.FC<BankPropertyCardProps> = ({
 
   const photoUrl = p.main_photo_url || defaultPlaceholder;
   const mapsInfo = cleanCaixaAddressForMaps(p.address || p.title, p.city, p.state);
+  const auctionInfo = getAuctionValues(p as any);
+  const paymentInfo = getPaymentConditions(p as any);
 
   return (
     <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between">
@@ -139,6 +152,13 @@ const BankPropertyCard: React.FC<BankPropertyCardProps> = ({
               </div>
             );
           })()}
+
+          {/* Badge 1º e 2º Leilão */}
+          {auctionInfo.hasBoth && (
+            <div className="absolute top-11 left-3 bg-amber-500 text-slate-950 font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-md flex items-center gap-1 border border-amber-300">
+              ⚡ 1º e 2º Leilão
+            </div>
+          )}
 
           {/* ID do Imóvel */}
           <div className="absolute bottom-2 right-2 bg-slate-900/80 text-white text-[10px] font-mono px-2 py-0.5 rounded-lg backdrop-blur-xs">
@@ -186,26 +206,55 @@ const BankPropertyCard: React.FC<BankPropertyCardProps> = ({
             </div>
           </div>
 
-          {/* Valoração Financeira */}
-          <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 grid grid-cols-2 gap-2 text-xs">
-            <div>
-              <span className="text-slate-400 font-bold block text-[9px] uppercase">
-                PREÇO MÍNIMO {p.source}:
-              </span>
-              <span className="text-base font-black text-emerald-600">
-                {p.sale_value ? formatBRL(p.sale_value) : 'Sob Consulta'}
-              </span>
+          {/* Valoração Financeira com suporte a 1º e 2º Leilões */}
+          {auctionInfo.hasBoth ? (
+            <div className="bg-amber-50/90 p-3.5 rounded-2xl border border-amber-200/80 space-y-2 text-xs">
+              <div className="grid grid-cols-2 gap-2 border-b border-amber-200/60 pb-2">
+                <div>
+                  <span className="text-amber-800 font-bold block text-[9px] uppercase">
+                    1º LEILÃO {auctionInfo.firstAuctionDate ? `(${auctionInfo.firstAuctionDate})` : ''}:
+                  </span>
+                  <span className="text-sm font-black text-slate-900">
+                    {formatBRL(auctionInfo.firstAuctionValue!)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-emerald-800 font-bold block text-[9px] uppercase">
+                    2º LEILÃO {auctionInfo.secondAuctionDate ? `(${auctionInfo.secondAuctionDate})` : ''}:
+                  </span>
+                  <span className="text-base font-black text-emerald-600">
+                    {formatBRL(auctionInfo.secondAuctionValue!)}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between text-[10px] text-slate-600 pt-0.5">
+                <span>Filtro de Preço: <strong>{formatBRL(auctionInfo.higherPriceForFilter)}</strong> (Maior)</span>
+                {p.appraisal_value ? (
+                  <span>Avaliação: <strong className="line-through">{formatBRL(p.appraisal_value)}</strong></span>
+                ) : null}
+              </div>
             </div>
+          ) : (
+            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <span className="text-slate-400 font-bold block text-[9px] uppercase">
+                  PREÇO MÍNIMO {p.source}:
+                </span>
+                <span className="text-base font-black text-emerald-600">
+                  {p.sale_value ? formatBRL(p.sale_value) : 'Sob Consulta'}
+                </span>
+              </div>
 
-            <div>
-              <span className="text-slate-400 font-bold block text-[9px] uppercase">AVALIAÇÃO:</span>
-              <span className="text-xs font-extrabold text-slate-700 line-through">
-                {p.appraisal_value ? formatBRL(p.appraisal_value) : 'N/I'}
-              </span>
+              <div>
+                <span className="text-slate-400 font-bold block text-[9px] uppercase">AVALIAÇÃO:</span>
+                <span className="text-xs font-extrabold text-slate-700 line-through">
+                  {p.appraisal_value ? formatBRL(p.appraisal_value) : 'N/I'}
+                </span>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Atributos Básicos */}
+          {/* Atributos Básicos & Financiamento */}
           <div className="grid grid-cols-2 gap-2 text-[11px]">
             {p.area_m2 ? (
               <div className="bg-slate-100 p-2 rounded-xl border border-slate-200/60 font-bold text-slate-800 truncate">
@@ -213,10 +262,33 @@ const BankPropertyCard: React.FC<BankPropertyCardProps> = ({
               </div>
             ) : null}
 
-            {/* Financiamento */}
-            <div className="bg-slate-100 p-2 rounded-xl border border-slate-200/60 font-bold text-slate-800 truncate">
-              💰 Financiável
+            {/* Financiamento & Parcelas */}
+            <div className={`p-2 rounded-xl border font-bold text-[11px] truncate flex items-center gap-1 ${
+              paymentInfo.canFinance
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                : 'bg-amber-50 border-amber-200 text-amber-800'
+            }`}>
+              <CreditCard className="w-3 h-3 shrink-0" />
+              <span>{paymentInfo.canFinance ? `Até ${paymentInfo.maxInstallments}x` : 'À vista'}</span>
             </div>
+
+            {/* Entrada mínima e parcela quando financiável */}
+            {paymentInfo.canFinance && paymentInfo.minDownPayment ? (
+              <div className="bg-slate-100 p-2 rounded-xl border border-slate-200/60 text-slate-800 text-[10px] font-semibold col-span-2 flex items-center justify-between">
+                <span>Entrada mín.: <strong>{formatBRL(paymentInfo.minDownPayment)}</strong></span>
+                {paymentInfo.minInstallmentValue ? (
+                  <span>Parcela: <strong>{formatBRL(paymentInfo.minInstallmentValue)}/mês</strong></span>
+                ) : null}
+              </div>
+            ) : null}
+
+            {/* Alerta Regra Santander < R$ 90 mil */}
+            {isSantander && !paymentInfo.canFinance && (
+              <div className="bg-amber-50 text-amber-900 border border-amber-200 p-2 rounded-xl text-[10px] font-bold col-span-2 flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span>Santander: Financiamento permitido apenas acima de R$ 90 mil.</span>
+              </div>
+            )}
 
             {/* Ocupação */}
             <div className="bg-slate-100 p-2 rounded-xl border border-slate-200/60 font-bold text-slate-800 truncate col-span-2">
@@ -291,6 +363,8 @@ const BankPropertyDetailModal: React.FC<{
   if (!property) return null;
   const p = property;
   const mapsInfo = cleanCaixaAddressForMaps(p.address || p.title, p.city, p.state);
+  const auctionInfo = getAuctionValues(p as any);
+  const paymentInfo = getPaymentConditions(p as any);
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm p-4 flex items-center justify-center overflow-y-auto">
@@ -313,6 +387,38 @@ const BankPropertyDetailModal: React.FC<{
         </div>
 
         <div className="p-6 overflow-y-auto space-y-6 text-xs font-sans">
+          {/* Alerta de 1º e 2º Leilões */}
+          {auctionInfo.hasBoth && (
+            <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-amber-900 font-extrabold text-xs uppercase tracking-wide flex items-center gap-1.5">
+                  ⚡ Oportunidade com 1º e 2º Leilões Ativos
+                </span>
+                <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-full">
+                  Filtro considera o Maior Valor: {formatBRL(auctionInfo.higherPriceForFilter)}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <div className="bg-white p-3 rounded-xl border border-amber-200 shadow-xs">
+                  <span className="text-slate-400 font-bold block text-[10px] uppercase">
+                    1º Leilão {auctionInfo.firstAuctionDate ? `— ${auctionInfo.firstAuctionDate}` : ''}:
+                  </span>
+                  <span className="text-base font-black text-slate-900">
+                    {formatBRL(auctionInfo.firstAuctionValue!)}
+                  </span>
+                </div>
+                <div className="bg-white p-3 rounded-xl border border-emerald-300 shadow-xs">
+                  <span className="text-emerald-700 font-bold block text-[10px] uppercase">
+                    2º Leilão {auctionInfo.secondAuctionDate ? `— ${auctionInfo.secondAuctionDate}` : ''}:
+                  </span>
+                  <span className="text-base font-black text-emerald-600">
+                    {formatBRL(auctionInfo.secondAuctionValue!)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-3 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
             <div>
               <span className="text-slate-400 font-bold block text-[10px]">PREÇO MÍNIMO {p.source}:</span>
@@ -370,8 +476,72 @@ const BankPropertyDetailModal: React.FC<{
             </div>
             <div className="bg-slate-100 p-3 rounded-xl border border-slate-200">
               <span className="text-slate-500 font-bold block text-[10px]">FINANCIAMENTO:</span>
-              <span className="font-extrabold text-slate-900">Disponível</span>
+              <span className="font-extrabold text-slate-900">
+                {paymentInfo.canFinance ? `Até ${paymentInfo.maxInstallments}x` : 'Somente à Vista'}
+              </span>
             </div>
+          </div>
+
+          {/* CONDIÇÕES DE PAGAMENTO & FINANCIAMENTO BANCÁRIO */}
+          <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2 text-slate-900 font-black text-xs uppercase tracking-wide">
+                <CreditCard className="w-4 h-4 text-emerald-600" />
+                <span>CONDIÇÕES DE PAGAMENTO & FINANCIAMENTO</span>
+              </div>
+              <span className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider ${
+                paymentInfo.canFinance
+                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                  : 'bg-amber-100 text-amber-800 border border-amber-200'
+              }`}>
+                {paymentInfo.canFinance ? `Financiamento até ${paymentInfo.maxInstallments}x` : 'Somente à Vista'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+              <div className="bg-white p-3 rounded-xl border border-slate-200">
+                <span className="text-slate-400 font-bold block text-[9px] uppercase">Entrada Mínima:</span>
+                <span className="font-black text-slate-900 text-sm">
+                  {paymentInfo.minDownPayment ? formatBRL(paymentInfo.minDownPayment) : 'Consulte Edital'}
+                </span>
+                <span className="text-[9px] text-slate-500 block mt-0.5">Mínimo 20% do valor</span>
+              </div>
+
+              <div className="bg-white p-3 rounded-xl border border-slate-200">
+                <span className="text-slate-400 font-bold block text-[9px] uppercase">Parcelas a partir de:</span>
+                <span className="font-black text-emerald-600 text-sm">
+                  {paymentInfo.minInstallmentValue ? `${formatBRL(paymentInfo.minInstallmentValue)}/mês` : 'Consulte'}
+                </span>
+                <span className="text-[9px] text-slate-500 block mt-0.5">Prazo de até {paymentInfo.maxInstallments} meses</span>
+              </div>
+
+              <div className="bg-white p-3 rounded-xl border border-slate-200">
+                <span className="text-slate-400 font-bold block text-[9px] uppercase">Prazo Máximo:</span>
+                <span className="font-black text-slate-900 text-sm">
+                  Até {paymentInfo.maxInstallments} parcelas
+                </span>
+                <span className="text-[9px] text-slate-500 block mt-0.5">{paymentInfo.maxInstallments === 420 ? '35 anos (Residencial)' : '30 anos'}</span>
+              </div>
+            </div>
+
+            {paymentInfo.isSantander && !paymentInfo.canFinance && (
+              <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl text-amber-900 text-xs flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="font-bold">Regra Santander de Financiamento:</strong>
+                  <p className="text-[11px] mt-0.5">
+                    O Banco Santander somente financia imóveis com valor de venda a partir de R$ 90.000,00. Ofertas abaixo deste valor devem ser quitadas à vista.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {paymentInfo.officialConditionText && (
+              <div className="bg-white p-3 rounded-xl border border-slate-200 text-xs text-slate-700">
+                <span className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Texto do Banco / Edital:</span>
+                <p className="font-medium text-slate-800">{paymentInfo.officialConditionText}</p>
+              </div>
+            )}
           </div>
 
           <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl space-y-3">
@@ -527,10 +697,10 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
         return getDisc(b) - getDisc(a);
       }
       if (sortBy === 'preco_asc') {
-        return (a.sale_value || 0) - (b.sale_value || 0);
+        return getPropertyFilterPrice(a as any) - getPropertyFilterPrice(b as any);
       }
       if (sortBy === 'preco_desc') {
-        return (b.sale_value || 0) - (a.sale_value || 0);
+        return getPropertyFilterPrice(b as any) - getPropertyFilterPrice(a as any);
       }
       return 0;
     });
@@ -544,6 +714,8 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
       const payloads: PropertyUpsertPayload[] = properties.map(p => {
         const isSobConsulta = !p.sale_value || p.sale_value <= 0;
         const cleanDiscount = isSobConsulta || !p.discount_percentage || p.discount_percentage >= 100 || p.discount_percentage <= 0 ? null : p.discount_percentage;
+        const auctionInfo = getAuctionValues(p as any);
+        const paymentInfo = getPaymentConditions(p as any);
 
         return {
           source: 'SANTANDER',
@@ -558,28 +730,36 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
           sale_value: p.sale_value,
           current_minimum_value: p.sale_value,
           appraisal_value: p.appraisal_value,
+          first_auction_value: p.first_auction_value ?? auctionInfo.firstAuctionValue,
+          second_auction_value: p.second_auction_value ?? auctionInfo.secondAuctionValue,
+          first_auction_date: p.first_auction_date ?? auctionInfo.firstAuctionDate,
+          second_auction_date: p.second_auction_date ?? auctionInfo.secondAuctionDate,
+          payment_conditions: p.payment_conditions || paymentInfo.officialConditionText,
+          max_installments: p.max_installments ?? paymentInfo.maxInstallments,
+          min_down_payment: p.min_down_payment ?? paymentInfo.minDownPayment,
+          min_installment_value: p.min_installment_value ?? paymentInfo.minInstallmentValue,
+          accepts_financing: paymentInfo.canFinance,
           discount_percentage: cleanDiscount,
           calculated_discount_percentage: cleanDiscount,
-        accepts_financing: true,
-        occupancy_status: 'UNKNOWN',
-        description: `Leilão Santander Oficial — ${p.sale_modality}`,
-        total_area: p.area_m2 || 70,
-        private_area: p.area_m2 || 70,
-        land_area: null,
-        bedrooms: p.bedrooms || 2,
-        parking_spaces: 1,
-        main_photo_url: p.main_photo_url || null,
-        source_url: p.link || 'https://www.santanderimoveis.com.br',
-        source_generated_at: new Date().toISOString().split('T')[0],
-        source_fetched_at: new Date().toISOString(),
-        source_file_url: 'https://www.santanderimoveis.com.br',
-        source_file_hash: 'santander_auto_sync',
-        source_hash: `${p.id}_${Date.now()}`,
-        enrichment_status: 'PENDING',
-        status: 'ACTIVE',
-        raw_list_data: {},
-      };
-    });
+          occupancy_status: 'UNKNOWN',
+          description: `Leilão Santander Oficial — ${p.sale_modality}`,
+          total_area: p.area_m2 || 70,
+          private_area: p.area_m2 || 70,
+          land_area: null,
+          bedrooms: p.bedrooms || 2,
+          parking_spaces: 1,
+          main_photo_url: p.main_photo_url || null,
+          source_url: p.link || 'https://www.santanderimoveis.com.br',
+          source_generated_at: new Date().toISOString().split('T')[0],
+          source_fetched_at: new Date().toISOString(),
+          source_file_url: 'https://www.santanderimoveis.com.br',
+          source_file_hash: 'santander_auto_sync',
+          source_hash: `${p.id}_${Date.now()}`,
+          enrichment_status: 'PENDING',
+          status: 'ACTIVE',
+          raw_list_data: {},
+        };
+      });
 
       await batchUpsertPropertiesToSupabase(payloads);
       setImportSuccess(`${payloads.length} imóveis do Santander importados com sucesso para o Catálogo!`);
@@ -906,10 +1086,10 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
         return getDisc(b) - getDisc(a);
       }
       if (sortBy === 'preco_asc') {
-        return (a.sale_value || 0) - (b.sale_value || 0);
+        return getPropertyFilterPrice(a as any) - getPropertyFilterPrice(b as any);
       }
       if (sortBy === 'preco_desc') {
-        return (b.sale_value || 0) - (a.sale_value || 0);
+        return getPropertyFilterPrice(b as any) - getPropertyFilterPrice(a as any);
       }
       return 0;
     });
@@ -923,6 +1103,8 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
       const payloads: PropertyUpsertPayload[] = properties.map(p => {
         const isSobConsulta = !p.sale_value || p.sale_value <= 0;
         const cleanDiscount = isSobConsulta || !p.discount_percentage || p.discount_percentage >= 100 || p.discount_percentage <= 0 ? null : p.discount_percentage;
+        const auctionInfo = getAuctionValues(p as any);
+        const paymentInfo = getPaymentConditions(p as any);
 
         return {
           source: 'BRADESCO',
@@ -937,28 +1119,36 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
           sale_value: p.sale_value,
           current_minimum_value: p.sale_value,
           appraisal_value: p.appraisal_value,
+          first_auction_value: p.first_auction_value ?? auctionInfo.firstAuctionValue,
+          second_auction_value: p.second_auction_value ?? auctionInfo.secondAuctionValue,
+          first_auction_date: p.first_auction_date ?? auctionInfo.firstAuctionDate,
+          second_auction_date: p.second_auction_date ?? auctionInfo.secondAuctionDate,
+          payment_conditions: p.payment_conditions || paymentInfo.officialConditionText,
+          max_installments: p.max_installments ?? paymentInfo.maxInstallments,
+          min_down_payment: p.min_down_payment ?? paymentInfo.minDownPayment,
+          min_installment_value: p.min_installment_value ?? paymentInfo.minInstallmentValue,
+          accepts_financing: paymentInfo.canFinance,
           discount_percentage: cleanDiscount,
           calculated_discount_percentage: cleanDiscount,
-        accepts_financing: true,
-        occupancy_status: 'UNKNOWN',
-        description: `Leilão Bradesco Oficial — ${p.sale_modality}`,
-        total_area: p.area_m2 || 74,
-        private_area: p.area_m2 || 74,
-        land_area: null,
-        bedrooms: p.bedrooms || 2,
-        parking_spaces: 1,
-        main_photo_url: p.main_photo_url || null,
-        source_url: p.link || 'https://vitrinebradesco.com.br',
-        source_generated_at: new Date().toISOString().split('T')[0],
-        source_fetched_at: new Date().toISOString(),
-        source_file_url: 'https://vitrinebradesco.com.br',
-        source_file_hash: 'bradesco_auto_sync',
-        source_hash: `${p.id}_${Date.now()}`,
-        enrichment_status: 'PENDING',
-        status: 'ACTIVE',
-        raw_list_data: {},
-      };
-    });
+          occupancy_status: 'UNKNOWN',
+          description: `Leilão Bradesco Oficial — ${p.sale_modality}`,
+          total_area: p.area_m2 || 74,
+          private_area: p.area_m2 || 74,
+          land_area: null,
+          bedrooms: p.bedrooms || 2,
+          parking_spaces: 1,
+          main_photo_url: p.main_photo_url || null,
+          source_url: p.link || 'https://vitrinebradesco.com.br',
+          source_generated_at: new Date().toISOString().split('T')[0],
+          source_fetched_at: new Date().toISOString(),
+          source_file_url: 'https://vitrinebradesco.com.br',
+          source_file_hash: 'bradesco_auto_sync',
+          source_hash: `${p.id}_${Date.now()}`,
+          enrichment_status: 'PENDING',
+          status: 'ACTIVE',
+          raw_list_data: {},
+        };
+      });
 
       await batchUpsertPropertiesToSupabase(payloads);
       setImportSuccess(`${payloads.length} imóveis do Bradesco importados com sucesso para o Catálogo!`);

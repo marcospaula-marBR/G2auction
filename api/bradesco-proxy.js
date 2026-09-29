@@ -84,6 +84,20 @@ export default async function handler(req, res) {
         const photo = Array.isArray(item.images) && item.images.length > 0 ? item.images[0] : '';
         const auctioneerName = item.auctioneer?.name ? `${item.auctioneer.name} (Bradesco Homologado)` : 'Bradesco Leilões';
 
+        const firstAuctionVal = appraisalVal;
+        const secondAuctionVal = saleVal;
+        const canFinanceBradesco = saleVal >= 100000;
+        const maxInstallments = canFinanceBradesco ? 360 : 1;
+        const minDownPayment = canFinanceBradesco ? Math.round(saleVal * 0.20) : saleVal;
+        const financed = Math.max(0, saleVal - minDownPayment);
+        const minInstallmentValue = canFinanceBradesco && financed > 0
+          ? Math.round((financed / maxInstallments) + (financed * 0.0088))
+          : 0;
+
+        const paymentConditions = canFinanceBradesco
+          ? `À vista ou Financiamento Imobiliário Bradesco em até ${maxInstallments} meses (Entrada mínima de 20%: R$ ${minDownPayment.toLocaleString('pt-BR')}, parcelas a partir de R$ ${minInstallmentValue.toLocaleString('pt-BR')}/mês).`
+          : 'Somente à vista (O Banco Bradesco exige valor financiado mínimo a partir de R$ 100 mil).';
+
         return {
           source: 'BRADESCO',
           id: `brd_${item.guid || Math.random().toString(36).substr(2, 9)}`,
@@ -94,6 +108,10 @@ export default async function handler(req, res) {
           address: `${item.neighborhood ? item.neighborhood + ', ' : ''}${item.city || ''} - ${item.state || uf}`,
           sale_value: saleVal,
           appraisal_value: appraisalVal,
+          first_auction_value: firstAuctionVal,
+          second_auction_value: secondAuctionVal,
+          first_auction_date: item.start_auction_1 || item.start_date_1 || null,
+          second_auction_date: item.start_auction_2 || item.start_date_2 || null,
           discount_percentage: discount,
           sale_modality: item.realstate_auction_type === 'convencional' ? 'Leilão Extrajudicial Bradesco' : (item.realstate_auction_type || 'Leilão Bradesco'),
           property_type: item.category || 'Imóvel',
@@ -103,6 +121,11 @@ export default async function handler(req, res) {
           link: item.slug ? `https://vitrinebradesco.com.br/auctions/${item.slug}` : targetSearchUrl,
           auctioneer: auctioneerName,
           description: item.description || '',
+          payment_conditions: paymentConditions,
+          max_installments: maxInstallments,
+          min_down_payment: minDownPayment,
+          min_installment_value: minInstallmentValue,
+          accepts_financing: canFinanceBradesco,
         };
       };
 
