@@ -450,6 +450,8 @@ export async function verifySavedPropertyInSupabase(
 export interface PropertyFilterParams {
   state?: string;
   city?: string;
+  source?: string; // 'ALL' | 'CAIXA' | 'SANTANDER' | 'BRADESCO'
+  sources?: string[]; // Suporte a múltiplos bancos selecionados
   priceMin?: number;
   priceMax?: number;
   appraisalMin?: number;
@@ -495,8 +497,14 @@ export async function queryPropertiesFromSupabase(
       let query = supabase
         .from('properties')
         .select('*', { count: 'exact' })
-        .eq('source', 'CAIXA')
         .eq('status', 'ACTIVE');
+
+      // Filtro de Múltiplos Bancos / Origens
+      if (filters.sources && filters.sources.length > 0) {
+        query = query.in('source', filters.sources);
+      } else if (filters.source && filters.source !== 'ALL') {
+        query = query.eq('source', filters.source);
+      }
 
       if (filters.state) query = query.eq('state', filters.state.toUpperCase());
       if (filters.city) query = query.ilike('city', `%${filters.city.trim()}%`);
@@ -567,8 +575,14 @@ export async function queryPropertiesFromSupabase(
     }
   }
 
-  // Fallback para memory store
-  let filtered = Array.from(memoryStore.properties.values()).filter((p) => p.source === 'CAIXA' && p.status === 'ACTIVE');
+  // Fallback para memory store (Múltiplos Bancos)
+  let filtered = Array.from(memoryStore.properties.values()).filter((p) => p.status === 'ACTIVE');
+
+  if (filters.sources && filters.sources.length > 0) {
+    filtered = filtered.filter((p) => filters.sources!.includes(p.source));
+  } else if (filters.source && filters.source !== 'ALL') {
+    filtered = filtered.filter((p) => p.source === filters.source);
+  }
 
   if (filters.state) filtered = filtered.filter((p) => (p.state || '').toUpperCase() === filters.state?.toUpperCase());
   if (filters.city) {
@@ -631,7 +645,6 @@ export async function fetchDistinctStatesFromSupabase(): Promise<string[]> {
       const { data } = await supabase
         .from('properties')
         .select('state')
-        .eq('source', 'CAIXA')
         .eq('status', 'ACTIVE');
 
       if (data) {
@@ -676,7 +689,6 @@ export async function fetchDistinctCitiesByStateFromSupabase(uf: string): Promis
       const { data } = await supabase
         .from('properties')
         .select('city')
-        .eq('source', 'CAIXA')
         .eq('state', ufUpper)
         .eq('status', 'ACTIVE')
         .limit(10000);
@@ -722,7 +734,6 @@ export async function fetchDistinctPropertyTypesFromSupabase(): Promise<string[]
       const { data } = await supabase
         .from('properties')
         .select('property_type')
-        .eq('source', 'CAIXA')
         .eq('status', 'ACTIVE');
 
       if (data) {
@@ -744,7 +755,15 @@ export async function fetchDistinctPropertyTypesFromSupabase(): Promise<string[]
  * BUSCAR MODALIDADES DE VENDA
  */
 export async function fetchDistinctSaleModalitiesFromSupabase(): Promise<string[]> {
-  const defaultMods = ['Leilão SFI - Edital Único', '1º Leilão Caixa', '2º Leilão Caixa', 'Venda Direta Online', 'Licitação Aberta'];
+  const defaultMods = [
+    'Leilão SFI - Edital Único',
+    '1º Leilão Caixa',
+    '2º Leilão Caixa',
+    'Venda Direta Online',
+    'Licitação Aberta',
+    'Leilão Santander Oficial',
+    'Leilão Bradesco Oficial',
+  ];
   const modSet = new Set<string>(defaultMods);
 
   if (supabase) {
@@ -752,7 +771,6 @@ export async function fetchDistinctSaleModalitiesFromSupabase(): Promise<string[
       const { data } = await supabase
         .from('properties')
         .select('sale_modality')
-        .eq('source', 'CAIXA')
         .eq('status', 'ACTIVE');
 
       if (data) {
@@ -787,7 +805,6 @@ export async function fetchCatalogSummaryStatsFromSupabase(): Promise<{
       const { count } = await supabase
         .from('properties')
         .select('id', { count: 'exact', head: true })
-        .eq('source', 'CAIXA')
         .eq('status', 'ACTIVE');
 
       const { data: lastLog } = await supabase

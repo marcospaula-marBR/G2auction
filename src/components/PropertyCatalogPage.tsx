@@ -58,6 +58,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
   // Estados dos Filtros (Seção 18 a 30)
   const [selectedState, setSelectedState] = useState<string>('SP');
   const [selectedCity, setSelectedCity] = useState<string>('');
+  const [selectedBank, setSelectedBank] = useState<string>('ALL');
   const [priceMinInput, setPriceMinInput] = useState<string>('');
   const [priceMaxInput, setPriceMaxInput] = useState<string>('');
   const [appraisalMinInput, setAppraisalMinInput] = useState<string>('');
@@ -141,6 +142,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
     const params: PropertyFilterParams = {
       state: selectedState || undefined,
       city: selectedCity || undefined,
+      source: selectedBank !== 'ALL' ? selectedBank : undefined,
       priceMin: priceMinInput ? Number(priceMinInput) : undefined,
       priceMax: priceMaxInput ? Number(priceMaxInput) : undefined,
       appraisalMin: appraisalMinInput ? Number(appraisalMinInput) : undefined,
@@ -168,6 +170,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
   }, [
     selectedState,
     selectedCity,
+    selectedBank,
     priceMinInput,
     priceMaxInput,
     appraisalMinInput,
@@ -184,14 +187,15 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
     pageSize,
   ]);
 
-  // Executar busca inicial e quando mudar a ordenação
+  // Executar busca inicial e quando mudar a ordenação ou banco
   useEffect(() => {
     executeSearch(1);
-  }, [sortBy, executeSearch]);
+  }, [sortBy, selectedBank, executeSearch]);
 
   const handleClearFilters = () => {
     setSelectedState('SP');
     setSelectedCity('');
+    setSelectedBank('ALL');
     setPriceMinInput('');
     setPriceMaxInput('');
     setAppraisalMinInput('');
@@ -218,7 +222,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
               <Sparkles className="w-3.5 h-3.5" /> IMÓVEIS EM OPORTUNIDADE
             </span>
             <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5" /> Base Oficial CAIXA
+              <ShieldCheck className="w-3.5 h-3.5" /> Base Oficial Multi-Bancos
             </span>
           </div>
 
@@ -228,7 +232,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
               className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold px-4 py-2 rounded-2xl transition-colors flex items-center gap-2"
             >
               <RefreshCw className="w-3.5 h-3.5 text-orange-400" />
-              <span>Atualizar Base CAIXA</span>
+              <span>Gerenciar & Importar Bancos</span>
             </button>
           )}
         </div>
@@ -236,11 +240,33 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              Catálogo de Imóveis CAIXA
+              Catálogo de Imóveis dos Bancos
             </h1>
             <p className="text-xs text-slate-300 font-medium mt-1">
-              Pesquise diretamente em nosso banco de dados. Filtros instantâneos sem dependência do site da CAIXA durante a busca.
+              Oportunidades oficiais da Caixa Econômica Federal, Banco Santander e Banco Bradesco.
             </p>
+
+            {/* Quick Pills de Bancos */}
+            <div className="flex flex-wrap items-center gap-2 mt-3">
+              {[
+                { id: 'ALL', label: 'Todos os Bancos' },
+                { id: 'CAIXA', label: '🏛️ Caixa Econômica' },
+                { id: 'SANTANDER', label: '🔴 Santander' },
+                { id: 'BRADESCO', label: '🟥 Bradesco' },
+              ].map((b) => (
+                <button
+                  key={b.id}
+                  onClick={() => setSelectedBank(b.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    selectedBank === b.id
+                      ? 'bg-orange-500 text-slate-950 font-black shadow-md'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                  }`}
+                >
+                  {b.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-4 text-xs font-mono bg-slate-950/60 p-3 rounded-2xl border border-slate-800">
@@ -250,11 +276,20 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
             </div>
             <div className="h-6 w-px bg-slate-800 hidden sm:block" />
             <div>
-              <span className="text-slate-400 block text-[10px] uppercase font-bold">Atualização CAIXA:</span>
-              <span className="text-orange-400 font-bold">
-                {summaryStats.lastImportGeneratedAt ? new Date(summaryStats.lastImportGeneratedAt).toLocaleDateString('pt-BR') : 'DD/MM/YYYY'}
+              <span className="text-slate-400 block text-[10px] uppercase font-bold">Banco Selecionado:</span>
+              <span className="text-orange-400 font-bold uppercase">
+                {selectedBank === 'ALL' ? 'Todos os Bancos' : selectedBank}
               </span>
             </div>
+            {summaryStats.totalActiveCount > 0 && (
+              <>
+                <div className="h-6 w-px bg-slate-800 hidden sm:block" />
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Base Ativa:</span>
+                  <span className="text-cyan-400 font-bold">{summaryStats.totalActiveCount.toLocaleString()}</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -280,7 +315,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
         
         <div className="flex items-center justify-between border-b border-slate-100 pb-4">
           <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-2">
-            <Filter className="w-4 h-4 text-orange-500" /> FILTRAR IMÓVEIS CAIXA
+            <Filter className="w-4 h-4 text-orange-500" /> FILTRAR IMÓVEIS
           </h2>
 
           <button
@@ -293,6 +328,21 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 text-xs">
+
+          {/* 0. BANCO / ORIGEM */}
+          <div className="space-y-1.5">
+            <label className="font-bold text-slate-700 uppercase text-[10px]">BANCO / INSTITUIÇÃO:</label>
+            <select
+              value={selectedBank}
+              onChange={(e) => setSelectedBank(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 font-bold text-slate-800 focus:ring-2 focus:ring-orange-500"
+            >
+              <option value="ALL">🏦 Todos os Bancos (Caixa, Santander, Bradesco)</option>
+              <option value="CAIXA">🏛️ Caixa Econômica Federal</option>
+              <option value="SANTANDER">🔴 Banco Santander</option>
+              <option value="BRADESCO">🟥 Banco Bradesco</option>
+            </select>
+          </div>
           
           {/* 1. ESTADO (UF) (Seção 19) */}
           <div className="space-y-1.5">
@@ -576,6 +626,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
 
             const isOccupied = prop.occupancy_status === 'OCCUPIED';
             const isVacant = prop.occupancy_status === 'VACANT';
+            const isCaixa = !prop.source || prop.source === 'CAIXA';
 
             return (
               <div
@@ -636,16 +687,31 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                   <div className="p-5 space-y-4">
                     {/* Cabeçalho do Card */}
                     <div>
-                      <div className="flex items-center space-x-2 text-[11px] font-black text-orange-600 uppercase tracking-wider mb-1">
-                        <span>{prop.property_type || 'Imóvel CAIXA'}</span>
-                        <span>•</span>
-                        <span className="flex items-center gap-0.5">
-                          <MapPin className="w-3 h-3" /> {prop.city} / {prop.state}
+                      <div className="flex items-center space-x-2 text-[11px] font-black uppercase tracking-wider mb-1">
+                        {prop.source === 'SANTANDER' && (
+                          <span className="bg-red-600 text-white font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            Santander
+                          </span>
+                        )}
+                        {prop.source === 'BRADESCO' && (
+                          <span className="bg-red-800 text-white font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            Bradesco
+                          </span>
+                        )}
+                        {(!prop.source || prop.source === 'CAIXA') && (
+                          <span className="bg-blue-600 text-white font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            Caixa
+                          </span>
+                        )}
+                        <span className="text-orange-600">{prop.property_type || 'Imóvel'}</span>
+                        <span className="text-slate-400">•</span>
+                        <span className="flex items-center gap-0.5 text-slate-500 font-bold">
+                          <MapPin className="w-3 h-3 text-orange-500" /> {prop.city} / {prop.state}
                         </span>
                       </div>
 
                       <h3 className="text-sm font-black text-slate-900 line-clamp-2 leading-snug">
-                        {prop.address || `Imóvel CAIXA em ${prop.city} / ${prop.state}`}
+                        {prop.address || `${prop.title || 'Imóvel'} em ${prop.city} / ${prop.state}`}
                       </h3>
 
                       {prop.neighborhood && (
@@ -658,7 +724,9 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                     {/* Valoração Financeira (Seção 5, 34) */}
                     <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 grid grid-cols-2 gap-2 text-xs">
                       <div>
-                        <span className="text-slate-400 font-bold block text-[9px] uppercase">PREÇO MÍNIMO CAIXA:</span>
+                        <span className="text-slate-400 font-bold block text-[9px] uppercase">
+                          PREÇO MÍNIMO {prop.source || 'CAIXA'}:
+                        </span>
                         <span className="text-base font-black text-emerald-600">
                           {prop.current_minimum_value || prop.sale_value ? formatCurrencyBRL(prop.current_minimum_value || prop.sale_value) : 'Sob Consulta'}
                         </span>
@@ -705,12 +773,12 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                     </button>
 
                     <a
-                      href={getCaixaPropertyPageUrl(prop)}
+                      href={prop.source_url || (isCaixa ? getCaixaPropertyPageUrl(prop) : 'https://www.santanderimoveis.com.br')}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold text-xs py-3 rounded-2xl transition-colors flex items-center justify-center space-x-1 text-center"
                     >
-                      <span>[ 🔗 PÁGINA CAIXA ]</span>
+                      <span>[ 🔗 PÁGINA {prop.source || 'CAIXA'} ]</span>
                       <ExternalLink className="w-3 h-3 text-slate-500" />
                     </a>
                   </div>
@@ -794,7 +862,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
             <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
               <div>
                 <span className="text-[10px] font-black uppercase text-orange-400 font-mono">
-                  CAIXA ID TEXT: {selectedDetailProperty.source_property_id}
+                  {selectedDetailProperty.source || 'CAIXA'} ID: {selectedDetailProperty.source_property_id}
                 </span>
                 <h2 className="text-lg font-black text-white leading-snug">
                   {selectedDetailProperty.property_type || 'Imóvel'} — {selectedDetailProperty.city} / {selectedDetailProperty.state}
@@ -814,7 +882,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
               {/* Valoração Financeira */}
               <div className="grid grid-cols-3 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
                 <div>
-                  <span className="text-slate-400 font-bold block text-[10px]">PREÇO MÍNIMO CAIXA:</span>
+                  <span className="text-slate-400 font-bold block text-[10px]">PREÇO MÍNIMO {selectedDetailProperty.source || 'CAIXA'}:</span>
                   <span className="text-lg font-black text-emerald-600">
                     {selectedDetailProperty.current_minimum_value || selectedDetailProperty.sale_value ? formatCurrencyBRL(selectedDetailProperty.current_minimum_value || selectedDetailProperty.sale_value) : 'Sob Consulta'}
                   </span>
@@ -929,7 +997,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
 
               {/* Informações da Fonte */}
               <div className="p-3 bg-slate-100 rounded-xl text-[11px] font-mono text-slate-600 space-y-1">
-                <div>Fonte Oficial: <strong>CAIXA</strong></div>
+                <div>Fonte Oficial: <strong>{selectedDetailProperty.source || 'CAIXA'}</strong></div>
                 <div>Modalidade: <strong>{selectedDetailProperty.sale_modality || 'Venda Direta'}</strong></div>
                 <div>Status da Ocupação: <strong>{selectedDetailProperty.occupancy_status || 'UNKNOWN'}</strong></div>
               </div>

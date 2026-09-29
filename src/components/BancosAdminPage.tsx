@@ -3,10 +3,15 @@ import {
   Building2, RefreshCw, AlertTriangle,
   ExternalLink, Loader2, Wifi, WifiOff,
   Search, Globe, Landmark, CheckCircle2,
-  Info, DownloadCloud, ArrowUpDown,
+  Info, DownloadCloud, ArrowUpDown, BadgePercent,
+  MapPin, Calculator, Sparkles, X, ShieldCheck,
 } from 'lucide-react';
 import { CaixaFeedAdminTestPage } from './CaixaFeedAdminTestPage';
 import { batchUpsertPropertiesToSupabase, type PropertyUpsertPayload } from '../lib/supabaseClient';
+import { cleanCaixaAddressForMaps } from '../utils/addressSanitizer';
+import { FinanciamentoCaixaModal } from './FinanciamentoCaixaModal';
+import { EditalAnalysisModal } from './EditalAnalysisModal';
+import { batchVerifyNeighborhoods, type NeighborhoodVerificationResult } from '../utils/neighborhoodEnricher';
 
 // ── Tipos compartilhados ──────────────────────────────────────────────────
 interface BankStatus {
@@ -34,6 +39,7 @@ interface BankProperty {
   link?: string;
   auctioneer?: string;
   main_photo_url?: string | null;
+  neighborhoodVerification?: NeighborhoodVerificationResult;
 }
 
 const ALL_UFS = [
@@ -64,6 +70,348 @@ const StatusBadge: React.FC<{ status: BankStatus | null; loading: boolean }> = (
   );
 };
 
+// ── Card de Imóvel de Banco (Padrão Idêntico aos Cards da Caixa) ─────────────
+interface BankPropertyCardProps {
+  property: BankProperty;
+  onSelectDetail: (p: BankProperty) => void;
+  onSelectFinancing: (p: BankProperty) => void;
+  onSelectEdital: (p: BankProperty) => void;
+}
+
+const BankPropertyCard: React.FC<BankPropertyCardProps> = ({
+  property,
+  onSelectDetail,
+  onSelectFinancing,
+  onSelectEdital,
+}) => {
+  const p = property;
+  const isSantander = p.source === 'SANTANDER';
+  const isBradesco = p.source === 'BRADESCO';
+
+  const type = (p.property_type || '').toLowerCase();
+  const houseFallbacks = [
+    'https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1518780664697-55e3ad937233?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=800&q=80',
+  ];
+  const hashIdx = Math.abs(String(p.id).split('').reduce((acc, char) => acc + char.charCodeAt(0), 0));
+  const defaultPlaceholder = type.includes('casa')
+    ? houseFallbacks[hashIdx % houseFallbacks.length]
+    : type.includes('terreno')
+    ? 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=800&q=80'
+    : type.includes('comercial') || type.includes('sala') || type.includes('loja')
+    ? 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=800&q=80'
+    : 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80';
+
+  const photoUrl = p.main_photo_url || defaultPlaceholder;
+  const mapsInfo = cleanCaixaAddressForMaps(p.address || p.title, p.city, p.state);
+
+  return (
+    <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between">
+      <div>
+        {/* Foto Principal com Fallback Inteligente */}
+        <div className="relative h-48 w-full bg-slate-900 overflow-hidden border-b border-slate-100 flex flex-col items-center justify-center">
+          <img
+            src={photoUrl}
+            alt={p.title}
+            className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
+            referrerPolicy="no-referrer"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).src = defaultPlaceholder;
+            }}
+          />
+
+          {/* Destaque do Desconto (Vermelho com BadgePercent, conforme foto oficial) */}
+          {p.discount_percentage !== null && p.discount_percentage > 0 && (
+            <div className="absolute top-3 left-3 bg-red-600 text-white font-black text-xs px-3 py-1 rounded-full shadow-md flex items-center gap-1">
+              <BadgePercent className="w-3.5 h-3.5" />
+              <span>
+                {(p.discount_percentage > 100 ? p.discount_percentage / 100 : p.discount_percentage).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}% abaixo da avaliação
+              </span>
+            </div>
+          )}
+
+          {/* ID do Imóvel */}
+          <div className="absolute bottom-2 right-2 bg-slate-900/80 text-white text-[10px] font-mono px-2 py-0.5 rounded-lg backdrop-blur-xs">
+            ID: {p.id}
+          </div>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Cabeçalho do Card */}
+          <div>
+            <div className="flex items-center space-x-2 text-[11px] font-black uppercase tracking-wider mb-1">
+              {isSantander && (
+                <span className="bg-red-600 text-white font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  Santander
+                </span>
+              )}
+              {isBradesco && (
+                <span className="bg-red-800 text-white font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  Bradesco
+                </span>
+              )}
+              <span className="text-orange-600">{p.property_type || 'Imóvel'}</span>
+              <span className="text-slate-400">•</span>
+              <span className="flex items-center gap-0.5 text-slate-500 font-bold">
+                <MapPin className="w-3 h-3 text-orange-500" /> {p.city} / {p.state}
+              </span>
+            </div>
+
+            <h3 className="text-sm font-black text-slate-900 line-clamp-2 leading-snug">
+              {p.address || p.title}
+            </h3>
+
+            <div className="flex items-center flex-wrap gap-1.5 mt-1">
+              <p className="text-[11px] font-bold text-slate-500 truncate">
+                Bairro: {p.neighborhood || 'Centro'}
+              </p>
+              {p.neighborhoodVerification?.verified && (
+                <span
+                  className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md flex items-center gap-0.5"
+                  title={p.neighborhoodVerification.note || 'Conferido com base oficial dos Correios'}
+                >
+                  <ShieldCheck className="w-3 h-3 text-emerald-600" /> Correios ViaCEP
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Valoração Financeira */}
+          <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 grid grid-cols-2 gap-2 text-xs">
+            <div>
+              <span className="text-slate-400 font-bold block text-[9px] uppercase">
+                PREÇO MÍNIMO {p.source}:
+              </span>
+              <span className="text-base font-black text-emerald-600">
+                {p.sale_value ? formatBRL(p.sale_value) : 'Sob Consulta'}
+              </span>
+            </div>
+
+            <div>
+              <span className="text-slate-400 font-bold block text-[9px] uppercase">AVALIAÇÃO:</span>
+              <span className="text-xs font-extrabold text-slate-700 line-through">
+                {p.appraisal_value ? formatBRL(p.appraisal_value) : 'N/I'}
+              </span>
+            </div>
+          </div>
+
+          {/* Atributos Básicos */}
+          <div className="grid grid-cols-2 gap-2 text-[11px]">
+            {p.area_m2 ? (
+              <div className="bg-slate-100 p-2 rounded-xl border border-slate-200/60 font-bold text-slate-800 truncate">
+                📐 {p.area_m2} m² totais
+              </div>
+            ) : null}
+
+            {/* Financiamento */}
+            <div className="bg-slate-100 p-2 rounded-xl border border-slate-200/60 font-bold text-slate-800 truncate">
+              💰 Financiável
+            </div>
+
+            {/* Ocupação */}
+            <div className="bg-slate-100 p-2 rounded-xl border border-slate-200/60 font-bold text-slate-800 truncate col-span-2">
+              🏠 Ocupação: Não informada
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* BOTÕES DO CARD (Conforme foto) */}
+      <div className="p-5 pt-0 space-y-2">
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => onSelectDetail(p)}
+            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black text-xs py-3 rounded-2xl transition-colors flex items-center justify-center space-x-1"
+          >
+            <span>[ VER OPORTUNIDADE ]</span>
+          </button>
+
+          <a
+            href={p.link || (isSantander ? 'https://www.santanderimoveis.com.br' : 'https://vitrinebradesco.com.br')}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold text-xs py-3 rounded-2xl transition-colors flex items-center justify-center space-x-1 text-center"
+          >
+            <span>[ 🔗 PÁGINA {p.source} ]</span>
+            <ExternalLink className="w-3 h-3 text-slate-500" />
+          </a>
+        </div>
+
+        {/* BOTÃO GOOGLE MAPS 360° */}
+        <a
+          href={mapsInfo.googleMapsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-2.5 rounded-2xl shadow-xs transition-colors flex items-center justify-center space-x-1 text-center"
+        >
+          <MapPin className="w-3.5 h-3.5 text-emerald-200" />
+          <span>[ 📍 MAPA & STREET VIEW 360° ]</span>
+        </a>
+
+        {/* BOTÕES DE FINANCIAMENTO E ANÁLISE G2 AI */}
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          <button
+            onClick={() => onSelectFinancing(p)}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black text-[11px] py-2.5 rounded-2xl shadow-xs transition-colors flex items-center justify-center space-x-1"
+          >
+            <Calculator className="w-3.5 h-3.5 text-blue-100" />
+            <span>[ 🏦 FINANCIAMENTO ]</span>
+          </button>
+
+          <button
+            onClick={() => onSelectEdital(p)}
+            className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black text-[11px] py-2.5 rounded-2xl shadow-xs transition-colors flex items-center justify-center space-x-1"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-orange-100" />
+            <span>[ 🤖 G2 AI EDITAL ]</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Modal de Detalhes do Imóvel de Banco ────────────────────────────────────
+const BankPropertyDetailModal: React.FC<{
+  property: BankProperty | null;
+  onClose: () => void;
+  onSelectFinancing: (p: BankProperty) => void;
+  onSelectEdital: (p: BankProperty) => void;
+}> = ({ property, onClose, onSelectFinancing, onSelectEdital }) => {
+  if (!property) return null;
+  const p = property;
+  const mapsInfo = cleanCaixaAddressForMaps(p.address || p.title, p.city, p.state);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm p-4 flex items-center justify-center overflow-y-auto">
+      <div className="bg-white w-full max-w-3xl rounded-3xl border border-slate-200 overflow-hidden shadow-2xl space-y-6 max-h-[90vh] flex flex-col justify-between">
+        <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-black uppercase text-orange-400 font-mono">
+              {p.source} ID: {p.id}
+            </span>
+            <h2 className="text-lg font-black text-white leading-snug">
+              {p.property_type || 'Imóvel'} — {p.city} / {p.state}
+            </h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-6 overflow-y-auto space-y-6 text-xs font-sans">
+          <div className="grid grid-cols-3 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+            <div>
+              <span className="text-slate-400 font-bold block text-[10px]">PREÇO MÍNIMO {p.source}:</span>
+              <span className="text-lg font-black text-emerald-600">{formatBRL(p.sale_value)}</span>
+            </div>
+            <div>
+              <span className="text-slate-400 font-bold block text-[10px]">AVALIAÇÃO:</span>
+              <span className="text-sm font-extrabold text-slate-700 line-through">
+                {p.appraisal_value ? formatBRL(p.appraisal_value) : 'N/I'}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-400 font-bold block text-[10px]">DESCONTO:</span>
+              <span className="text-sm font-extrabold text-orange-600">
+                {p.discount_percentage}%
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <span className="text-slate-400 font-bold text-[10px] uppercase">Endereço Completo:</span>
+            <p className="text-slate-900 font-bold text-sm">{p.address || p.title}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-slate-500 font-medium">Bairro: {p.neighborhood || 'Centro'}</p>
+              {p.neighborhoodVerification?.verified && (
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
+                  <ShieldCheck className="w-3 h-3 text-emerald-600" /> Bairro Validado ViaCEP
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-slate-100 p-3 rounded-xl border border-slate-200">
+              <span className="text-slate-500 font-bold block text-[10px]">ÁREA:</span>
+              <span className="font-extrabold text-slate-900">{p.area_m2 ? `${p.area_m2} m²` : 'Ver edital'}</span>
+            </div>
+            <div className="bg-slate-100 p-3 rounded-xl border border-slate-200">
+              <span className="text-slate-500 font-bold block text-[10px]">QUARTOS:</span>
+              <span className="font-extrabold text-slate-900">{p.bedrooms ? p.bedrooms : 'Ver edital'}</span>
+            </div>
+            <div className="bg-slate-100 p-3 rounded-xl border border-slate-200">
+              <span className="text-slate-500 font-bold block text-[10px]">MODALIDADE:</span>
+              <span className="font-extrabold text-slate-900">{p.sale_modality}</span>
+            </div>
+            <div className="bg-slate-100 p-3 rounded-xl border border-slate-200">
+              <span className="text-slate-500 font-bold block text-[10px]">FINANCIAMENTO:</span>
+              <span className="font-extrabold text-slate-900">Disponível</span>
+            </div>
+          </div>
+
+          <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl space-y-3">
+            <div className="flex items-center space-x-2 text-emerald-900 font-bold text-xs">
+              <MapPin className="w-4 h-4 text-emerald-600" />
+              <span>LOCALIZAÇÃO E NAVEGAÇÃO 360° (GOOGLE MAPS & WAZE)</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <a
+                href={mapsInfo.googleMapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-4 py-3 rounded-xl transition-colors flex items-center justify-center space-x-2 text-center shadow-xs"
+              >
+                <MapPin className="w-4 h-4" />
+                <span>[ 🗺️ VER NO GOOGLE MAPS ]</span>
+              </a>
+              <a
+                href={mapsInfo.wazeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-sky-500 hover:bg-sky-600 text-white font-black text-xs px-4 py-3 rounded-xl transition-colors flex items-center justify-center space-x-2 text-center shadow-xs"
+              >
+                <ExternalLink className="w-4 h-4 text-white" />
+                <span>[ 🚙 NAVEGAR VIA WAZE ]</span>
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+          <button
+            onClick={onClose}
+            className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs px-6 py-3 rounded-2xl"
+          >
+            Fechar
+          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => { onClose(); onSelectEdital(p); }}
+              className="bg-orange-500 hover:bg-orange-600 text-white font-black text-xs px-5 py-3 rounded-2xl transition-colors flex items-center space-x-1.5 shadow-md"
+            >
+              <Sparkles className="w-4 h-4 text-orange-100" />
+              <span>[ 🤖 ANALISAR EDITAL (G2 AI) ]</span>
+            </button>
+            <button
+              onClick={() => { onClose(); onSelectFinancing(p); }}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-black text-xs px-5 py-3 rounded-2xl transition-colors flex items-center space-x-1.5 shadow-md"
+            >
+              <Calculator className="w-4 h-4 text-blue-100" />
+              <span>[ 🏦 SIMULAR FINANCIAMENTO ]</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── Painel Santander ──────────────────────────────────────────────────────
 const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuccess }) => {
   const [uf, setUf] = useState('SP');
@@ -78,6 +426,11 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
 
   const [filterText, setFilterText] = useState('');
   const [sortBy, setSortBy] = useState<'bairro' | 'rua' | 'desconto' | 'preco_asc' | 'preco_desc'>('bairro');
+  const [selectedDetailProperty, setSelectedDetailProperty] = useState<BankProperty | null>(null);
+  const [selectedFinancingProperty, setSelectedFinancingProperty] = useState<BankProperty | null>(null);
+  const [selectedEditalProperty, setSelectedEditalProperty] = useState<BankProperty | null>(null);
+  const [verifyingNeighborhoods, setVerifyingNeighborhoods] = useState(false);
+  const [verificationProgress, setVerificationProgress] = useState<{ done: number; total: number } | null>(null);
 
   const diagnose = async () => {
     setDiagLoading(true); setError(null);
@@ -106,6 +459,24 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
     } catch (e: any) {
       setError(e.message);
     } finally { setLoading(false); }
+  };
+
+  const handleVerifyNeighborhoods = async () => {
+    if (properties.length === 0) return;
+    setVerifyingNeighborhoods(true);
+    try {
+      const verifiedList = await batchVerifyNeighborhoods(properties, (done, total) => {
+        setVerificationProgress({ done, total });
+      });
+      setProperties(verifiedList);
+      const correctedCount = verifiedList.filter(p => p.neighborhoodVerification?.corrected).length;
+      setImportSuccess(`Robô Postal: ${verifiedList.length} bairros conferidos via ViaCEP / Correios (${correctedCount} corrigidos automaticamente)!`);
+    } catch (e: any) {
+      setError(`Erro na conferência postal: ${e.message}`);
+    } finally {
+      setVerifyingNeighborhoods(false);
+      setVerificationProgress(null);
+    }
   };
 
   const filteredAndSortedProperties = useMemo(() => {
@@ -182,7 +553,7 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
       }));
 
       await batchUpsertPropertiesToSupabase(payloads);
-      setImportSuccess(`${payloads.length} imóveis do Santander importados com sucesso para a base!`);
+      setImportSuccess(`${payloads.length} imóveis do Santander importados com sucesso para o Catálogo!`);
       onImportSuccess?.();
     } catch (e: any) {
       setError(`Erro ao importar: ${e.message}`);
@@ -253,14 +624,35 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
         </div>
 
         {properties.length > 0 && (
-          <button
-            onClick={handleImportToDatabase}
-            disabled={importing}
-            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition-all disabled:opacity-50"
-          >
-            {importing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <DownloadCloud className="w-3.5 h-3.5" />}
-            Importar {properties.length} Imóveis para o Catálogo
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handleVerifyNeighborhoods}
+              disabled={verifyingNeighborhoods}
+              className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all disabled:opacity-50"
+              title="Conferir e enriquecer bairros na base oficial dos Correios (ViaCEP)"
+            >
+              {verifyingNeighborhoods ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Conferindo Bairros ({verificationProgress ? `${verificationProgress.done}/${verificationProgress.total}` : '...'})</span>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="w-3.5 h-3.5 text-indigo-200" />
+                  <span>Robô: Conferir Bairros (ViaCEP)</span>
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handleImportToDatabase}
+              disabled={importing}
+              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition-all disabled:opacity-50"
+            >
+              {importing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <DownloadCloud className="w-3.5 h-3.5" />}
+              Importar {properties.length} Imóveis para o Catálogo
+            </button>
+          </div>
         )}
       </div>
 
@@ -278,7 +670,7 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
         </div>
       )}
 
-      {/* Lista de Imóveis Encontrados */}
+      {/* Lista de Imóveis Encontrados (Cards Padrão Caixa) */}
       {properties.length > 0 && (
         <div className="space-y-3">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
@@ -312,56 +704,48 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
           <p className="text-xs font-black text-slate-600 uppercase tracking-wider">
             {filteredAndSortedProperties.length} de {properties.length} imóveis Santander encontrados em {uf}
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredAndSortedProperties.map(p => (
-              <div key={p.id} className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col justify-between shadow-2xs hover:shadow-md transition-shadow">
-                <div className="flex gap-3 items-start">
-                  {p.main_photo_url ? (
-                    <img
-                      src={p.main_photo_url}
-                      alt={p.title}
-                      referrerPolicy="no-referrer"
-                      className="w-16 h-16 rounded-xl object-cover flex-shrink-0 border border-slate-100"
-                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                    />
-                  ) : null}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 truncate">
-                        {p.sale_modality}
-                      </span>
-                      <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full flex-shrink-0">
-                        {p.discount_percentage}% OFF
-                      </span>
-                    </div>
-                    <h4 className="font-bold text-sm text-slate-900 leading-tight mb-1 line-clamp-2">{p.title}</h4>
-                    <p className="text-xs text-slate-500 mb-2 truncate">
-                      {p.neighborhood ? <strong className="text-slate-700">{p.neighborhood}</strong> : null}
-                      {p.neighborhood && p.address ? ' • ' : ''}
-                      {p.address && p.address !== p.neighborhood ? <span>{p.address} • </span> : ''}
-                      {p.city}/{p.state} • {p.area_m2 ? `${p.area_m2}m² • ` : ''}{p.bedrooms ? `${p.bedrooms} quartos` : 'Ver edital'}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between pt-2 border-t border-slate-100 mt-2">
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">Valor Mínimo</span>
-                    <span className="font-black text-emerald-700 text-sm">{formatBRL(p.sale_value)}</span>
-                  </div>
-                  <a
-                    href={p.link || 'https://www.santanderimoveis.com.br'}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-xs font-bold text-red-600 hover:text-red-700 transition-colors"
-                  >
-                    <span>Ver Edital</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-              </div>
+              <BankPropertyCard
+                key={p.id}
+                property={p}
+                onSelectDetail={setSelectedDetailProperty}
+                onSelectFinancing={setSelectedFinancingProperty}
+                onSelectEdital={setSelectedEditalProperty}
+              />
             ))}
           </div>
         </div>
+      )}
+
+      {/* Modais de Funcionalidades */}
+      <BankPropertyDetailModal
+        property={selectedDetailProperty}
+        onClose={() => setSelectedDetailProperty(null)}
+        onSelectFinancing={setSelectedFinancingProperty}
+        onSelectEdital={setSelectedEditalProperty}
+      />
+
+      {selectedFinancingProperty && (
+        <FinanciamentoCaixaModal
+          property={{
+            ...selectedFinancingProperty,
+            current_minimum_value: selectedFinancingProperty.sale_value,
+            source_property_id: selectedFinancingProperty.id,
+          }}
+          onClose={() => setSelectedFinancingProperty(null)}
+        />
+      )}
+
+      {selectedEditalProperty && (
+        <EditalAnalysisModal
+          property={{
+            ...selectedEditalProperty,
+            current_minimum_value: selectedEditalProperty.sale_value,
+            source_property_id: selectedEditalProperty.id,
+          }}
+          onClose={() => setSelectedEditalProperty(null)}
+        />
       )}
 
       {/* Leiloeiros Homologados */}
@@ -411,6 +795,11 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
 
   const [filterText, setFilterText] = useState('');
   const [sortBy, setSortBy] = useState<'bairro' | 'rua' | 'desconto' | 'preco_asc' | 'preco_desc'>('bairro');
+  const [selectedDetailProperty, setSelectedDetailProperty] = useState<BankProperty | null>(null);
+  const [selectedFinancingProperty, setSelectedFinancingProperty] = useState<BankProperty | null>(null);
+  const [selectedEditalProperty, setSelectedEditalProperty] = useState<BankProperty | null>(null);
+  const [verifyingNeighborhoods, setVerifyingNeighborhoods] = useState(false);
+  const [verificationProgress, setVerificationProgress] = useState<{ done: number; total: number } | null>(null);
 
   const diagnose = async () => {
     setDiagLoading(true); setError(null);
@@ -439,6 +828,24 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
     } catch (e: any) {
       setError(e.message);
     } finally { setLoading(false); }
+  };
+
+  const handleVerifyNeighborhoods = async () => {
+    if (properties.length === 0) return;
+    setVerifyingNeighborhoods(true);
+    try {
+      const verifiedList = await batchVerifyNeighborhoods(properties, (done, total) => {
+        setVerificationProgress({ done, total });
+      });
+      setProperties(verifiedList);
+      const correctedCount = verifiedList.filter(p => p.neighborhoodVerification?.corrected).length;
+      setImportSuccess(`Robô Postal: ${verifiedList.length} bairros conferidos via ViaCEP / Correios (${correctedCount} corrigidos automaticamente)!`);
+    } catch (e: any) {
+      setError(`Erro na conferência postal: ${e.message}`);
+    } finally {
+      setVerifyingNeighborhoods(false);
+      setVerificationProgress(null);
+    }
   };
 
   const filteredAndSortedProperties = useMemo(() => {
@@ -515,7 +922,7 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
       }));
 
       await batchUpsertPropertiesToSupabase(payloads);
-      setImportSuccess(`${payloads.length} imóveis do Bradesco importados com sucesso para a base!`);
+      setImportSuccess(`${payloads.length} imóveis do Bradesco importados com sucesso para o Catálogo!`);
       onImportSuccess?.();
     } catch (e: any) {
       setError(`Erro ao importar: ${e.message}`);
@@ -586,14 +993,35 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
         </div>
 
         {properties.length > 0 && (
-          <button
-            onClick={handleImportToDatabase}
-            disabled={importing}
-            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition-all disabled:opacity-50"
-          >
-            {importing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <DownloadCloud className="w-3.5 h-3.5" />}
-            Importar {properties.length} Imóveis para o Catálogo
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handleVerifyNeighborhoods}
+              disabled={verifyingNeighborhoods}
+              className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all disabled:opacity-50"
+              title="Conferir e enriquecer bairros na base oficial dos Correios (ViaCEP)"
+            >
+              {verifyingNeighborhoods ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Conferindo Bairros ({verificationProgress ? `${verificationProgress.done}/${verificationProgress.total}` : '...'})</span>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="w-3.5 h-3.5 text-indigo-200" />
+                  <span>Robô: Conferir Bairros (ViaCEP)</span>
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handleImportToDatabase}
+              disabled={importing}
+              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition-all disabled:opacity-50"
+            >
+              {importing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <DownloadCloud className="w-3.5 h-3.5" />}
+              Importar {properties.length} Imóveis para o Catálogo
+            </button>
+          </div>
         )}
       </div>
 
@@ -611,7 +1039,7 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
         </div>
       )}
 
-      {/* Lista de Imóveis Encontrados */}
+      {/* Lista de Imóveis Encontrados (Cards Padrão Caixa) */}
       {properties.length > 0 && (
         <div className="space-y-3">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
@@ -645,56 +1073,48 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
           <p className="text-xs font-black text-slate-600 uppercase tracking-wider">
             {filteredAndSortedProperties.length} de {properties.length} imóveis Bradesco encontrados em {uf}
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredAndSortedProperties.map(p => (
-              <div key={p.id} className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col justify-between shadow-2xs hover:shadow-md transition-shadow">
-                <div className="flex gap-3 items-start">
-                  {p.main_photo_url ? (
-                    <img
-                      src={p.main_photo_url}
-                      alt={p.title}
-                      referrerPolicy="no-referrer"
-                      className="w-16 h-16 rounded-xl object-cover flex-shrink-0 border border-slate-100"
-                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                    />
-                  ) : null}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-red-800 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 truncate">
-                        {p.sale_modality}
-                      </span>
-                      <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full flex-shrink-0">
-                        {p.discount_percentage}% OFF
-                      </span>
-                    </div>
-                    <h4 className="font-bold text-sm text-slate-900 leading-tight mb-1 line-clamp-2">{p.title}</h4>
-                    <p className="text-xs text-slate-500 mb-2 truncate">
-                      {p.neighborhood ? <strong className="text-slate-700">{p.neighborhood}</strong> : null}
-                      {p.neighborhood && p.address ? ' • ' : ''}
-                      {p.address && p.address !== p.neighborhood ? <span>{p.address} • </span> : ''}
-                      {p.city}/{p.state} • {p.auctioneer || 'Leilão Oficial'}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between pt-2 border-t border-slate-100 mt-2">
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">Valor Mínimo</span>
-                    <span className="font-black text-emerald-700 text-sm">{formatBRL(p.sale_value)}</span>
-                  </div>
-                  <a
-                    href={p.link || 'https://vitrinebradesco.com.br'}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-xs font-bold text-red-800 hover:text-red-900 transition-colors"
-                  >
-                    <span>Ver Edital</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-              </div>
+              <BankPropertyCard
+                key={p.id}
+                property={p}
+                onSelectDetail={setSelectedDetailProperty}
+                onSelectFinancing={setSelectedFinancingProperty}
+                onSelectEdital={setSelectedEditalProperty}
+              />
             ))}
           </div>
         </div>
+      )}
+
+      {/* Modais de Funcionalidades */}
+      <BankPropertyDetailModal
+        property={selectedDetailProperty}
+        onClose={() => setSelectedDetailProperty(null)}
+        onSelectFinancing={setSelectedFinancingProperty}
+        onSelectEdital={setSelectedEditalProperty}
+      />
+
+      {selectedFinancingProperty && (
+        <FinanciamentoCaixaModal
+          property={{
+            ...selectedFinancingProperty,
+            current_minimum_value: selectedFinancingProperty.sale_value,
+            source_property_id: selectedFinancingProperty.id,
+          }}
+          onClose={() => setSelectedFinancingProperty(null)}
+        />
+      )}
+
+      {selectedEditalProperty && (
+        <EditalAnalysisModal
+          property={{
+            ...selectedEditalProperty,
+            current_minimum_value: selectedEditalProperty.sale_value,
+            source_property_id: selectedEditalProperty.id,
+          }}
+          onClose={() => setSelectedEditalProperty(null)}
+        />
       )}
 
       {/* Leiloeiros Homologados */}
