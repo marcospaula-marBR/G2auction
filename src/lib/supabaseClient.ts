@@ -77,7 +77,16 @@ export async function loadMemoryStoreFromLocalStorage() {
   // 1. Tenta carregar do IndexedDB primeiro
   const idbMap = await loadPropertiesFromIndexedDB();
   if (idbMap.size > 0) {
-    idbMap.forEach((v, k) => memoryStore.properties.set(k, v));
+    const sanitizeProperty = (p: any) => {
+      const minVal = p.current_minimum_value || p.sale_value || 0;
+      if (minVal <= 0 || (p.discount_percentage && p.discount_percentage >= 100)) {
+        p.discount_percentage = null;
+        p.calculated_discount_percentage = null;
+      }
+      return p;
+    };
+
+    idbMap.forEach((v, k) => memoryStore.properties.set(k, sanitizeProperty(v)));
     console.log(`[IndexedDB Load] ${idbMap.size} imóveis carregados com sucesso.`);
     return;
   }
@@ -89,6 +98,11 @@ export async function loadMemoryStoreFromLocalStorage() {
       const entries = JSON.parse(raw);
       if (Array.isArray(entries)) {
         entries.forEach(([k, v]: [string, any]) => {
+          const minVal = v.current_minimum_value || v.sale_value || 0;
+          if (minVal <= 0 || (v.discount_percentage && v.discount_percentage >= 100)) {
+            v.discount_percentage = null;
+            v.calculated_discount_percentage = null;
+          }
           memoryStore.properties.set(k, v);
         });
       }
@@ -256,6 +270,12 @@ export async function batchUpsertPropertiesToSupabase(
 
   // 1. Gravação obrigatória no MemoryStore local (garante que os filtros nunca fiquem vazios no frontend)
   propertiesPayload.forEach((p) => {
+    const minVal = p.current_minimum_value || p.sale_value || 0;
+    if (minVal <= 0 || (p.discount_percentage !== null && p.discount_percentage !== undefined && p.discount_percentage >= 100)) {
+      p.discount_percentage = null;
+      p.calculated_discount_percentage = null;
+    }
+
     const compositeKey = `${p.source}_${p.source_property_id}`;
     const existing = memoryStore.properties.get(compositeKey);
     const internalId = existing?.id || `sb-mem-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
@@ -515,7 +535,9 @@ export async function queryPropertiesFromSupabase(
       if (filters.appraisalMin !== undefined && filters.appraisalMin !== null) query = query.gte('appraisal_value', filters.appraisalMin);
       if (filters.appraisalMax !== undefined && filters.appraisalMax !== null) query = query.lte('appraisal_value', filters.appraisalMax);
 
-      if (filters.discountMin !== undefined && filters.discountMin !== null) query = query.gte('discount_percentage', filters.discountMin);
+      if (filters.discountMin !== undefined && filters.discountMin !== null) {
+        query = query.gte('discount_percentage', filters.discountMin).lt('discount_percentage', 100);
+      }
 
       if (filters.financing !== undefined && filters.financing !== null) query = query.eq('accepts_financing', filters.financing);
 
@@ -551,7 +573,7 @@ export async function queryPropertiesFromSupabase(
           break;
         case 'discount_desc':
         default:
-          query = query.order('discount_percentage', { ascending: false, nullsFirst: false });
+          query = query.lt('discount_percentage', 100).order('discount_percentage', { ascending: false, nullsFirst: false });
           break;
       }
 
@@ -596,7 +618,14 @@ export async function queryPropertiesFromSupabase(
   if (filters.appraisalMin !== undefined && filters.appraisalMin !== null) filtered = filtered.filter((p) => (p.appraisal_value || 0) >= filters.appraisalMin!);
   if (filters.appraisalMax !== undefined && filters.appraisalMax !== null) filtered = filtered.filter((p) => (p.appraisal_value || 0) <= filters.appraisalMax!);
 
-  if (filters.discountMin !== undefined && filters.discountMin !== null) filtered = filtered.filter((p) => (p.discount_percentage || 0) >= filters.discountMin!);
+  if (filters.discountMin !== undefined && filters.discountMin !== null) {
+    filtered = filtered.filter((p) => {
+      const minVal = p.current_minimum_value || p.sale_value || 0;
+      if (minVal <= 0) return false;
+      const d = p.discount_percentage || 0;
+      return d > 0 && d < 100 && d >= filters.discountMin!;
+    });
+  }
 
   if (filters.financing !== undefined && filters.financing !== null) filtered = filtered.filter((p) => p.accepts_financing === filters.financing);
   if (filters.occupancy) filtered = filtered.filter((p) => (p.occupancy_status || 'UNKNOWN') === filters.occupancy);
@@ -618,7 +647,13 @@ export async function queryPropertiesFromSupabase(
     if (filters.sortBy === 'address_asc') {
       return (a.address || '').localeCompare(b.address || '', 'pt-BR');
     }
-    return (b.discount_percentage || 0) - (a.discount_percentage || 0);
+    const getDisc = (p: any) => {
+      const minVal = p.current_minimum_value || p.sale_value || 0;
+      if (minVal <= 0) return -1;
+      const d = p.discount_percentage || 0;
+      return d > 0 && d < 100 ? d : -1;
+    };
+    return getDisc(b) - getDisc(a);
   });
 
   const total = filtered.length;

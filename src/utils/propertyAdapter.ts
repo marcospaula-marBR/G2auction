@@ -106,9 +106,13 @@ export function adaptCatalogItemToProperty(raw: any, index: number = 0): Propert
     || parseBrazilianNumber(raw.raw_list_data?.['Valor de avaliação'])
     || Math.round(saleValue * 1.45);
 
-  const discount = raw.discount_percentage 
-    || raw.calculated_discount_percentage 
-    || (appraisalValue > 0 ? Math.round(((appraisalValue - saleValue) / appraisalValue) * 100) : 35);
+  const hasValidPrice = (saleValue > 0) && (Boolean(raw.sale_value) || Boolean(raw.current_minimum_value) || Boolean(raw.raw_list_data?.['Preço']));
+  let discount = hasValidPrice 
+    ? (raw.discount_percentage 
+      || raw.calculated_discount_percentage 
+      || (appraisalValue > 0 && saleValue > 0 ? Math.round(((appraisalValue - saleValue) / appraisalValue) * 100) : 0))
+    : 0;
+  if (discount >= 100 || discount < 0) discount = 0;
 
   // Modalidade de Venda
   let acqType: AcquisitionType = 'Leilão Extrajudicial';

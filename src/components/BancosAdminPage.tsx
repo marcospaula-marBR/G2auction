@@ -121,15 +121,24 @@ const BankPropertyCard: React.FC<BankPropertyCardProps> = ({
             }}
           />
 
-          {/* Destaque do Desconto (Vermelho com BadgePercent, conforme foto oficial) */}
-          {p.discount_percentage !== null && p.discount_percentage > 0 && (
-            <div className="absolute top-3 left-3 bg-red-600 text-white font-black text-xs px-3 py-1 rounded-full shadow-md flex items-center gap-1">
-              <BadgePercent className="w-3.5 h-3.5" />
-              <span>
-                {(p.discount_percentage > 100 ? p.discount_percentage / 100 : p.discount_percentage).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}% abaixo da avaliação
-              </span>
-            </div>
-          )}
+          {/* Destaque do Desconto (Não exibir se estiver Sob Consulta ou >= 100%) */}
+          {(() => {
+            const minPrice = p.sale_value || 0;
+            const isSobConsulta = !minPrice || minPrice <= 0;
+            const rawDiscount = p.discount_percentage;
+            if (isSobConsulta || rawDiscount === null || rawDiscount === undefined) return null;
+            const discount = rawDiscount > 100 ? rawDiscount / 100 : rawDiscount;
+            if (discount <= 0 || discount >= 100) return null;
+
+            return (
+              <div className="absolute top-3 left-3 bg-red-600 text-white font-black text-xs px-3 py-1 rounded-full shadow-md flex items-center gap-1">
+                <BadgePercent className="w-3.5 h-3.5" />
+                <span>
+                  {discount.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}% abaixo da avaliação
+                </span>
+              </div>
+            );
+          })()}
 
           {/* ID do Imóvel */}
           <div className="absolute bottom-2 right-2 bg-slate-900/80 text-white text-[10px] font-mono px-2 py-0.5 rounded-lg backdrop-blur-xs">
@@ -307,18 +316,28 @@ const BankPropertyDetailModal: React.FC<{
           <div className="grid grid-cols-3 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
             <div>
               <span className="text-slate-400 font-bold block text-[10px]">PREÇO MÍNIMO {p.source}:</span>
-              <span className="text-lg font-black text-emerald-600">{formatBRL(p.sale_value)}</span>
+              <span className="text-lg font-black text-emerald-600">
+                {p.sale_value && p.sale_value > 0 ? formatBRL(p.sale_value) : 'Sob Consulta'}
+              </span>
             </div>
             <div>
               <span className="text-slate-400 font-bold block text-[10px]">AVALIAÇÃO:</span>
               <span className="text-sm font-extrabold text-slate-700 line-through">
-                {p.appraisal_value ? formatBRL(p.appraisal_value) : 'N/I'}
+                {p.appraisal_value && p.appraisal_value > 0 ? formatBRL(p.appraisal_value) : 'N/I'}
               </span>
             </div>
             <div>
               <span className="text-slate-400 font-bold block text-[10px]">DESCONTO:</span>
               <span className="text-sm font-extrabold text-orange-600">
-                {p.discount_percentage}%
+                {(() => {
+                  const minPrice = p.sale_value || 0;
+                  const isSobConsulta = !minPrice || minPrice <= 0;
+                  const rawDiscount = p.discount_percentage;
+                  if (isSobConsulta || rawDiscount === null || rawDiscount === undefined) return 'Sob Consulta';
+                  const discount = rawDiscount > 100 ? rawDiscount / 100 : rawDiscount;
+                  if (discount <= 0 || discount >= 100) return 'Sob Consulta';
+                  return `${discount.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`;
+                })()}
               </span>
             </div>
           </div>
@@ -500,7 +519,12 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
         return (a.address || '').localeCompare(b.address || '', 'pt-BR');
       }
       if (sortBy === 'desconto') {
-        return (b.discount_percentage || 0) - (a.discount_percentage || 0);
+        const getDisc = (item: BankProperty) => {
+          if (!item.sale_value || item.sale_value <= 0) return -1;
+          const d = item.discount_percentage || 0;
+          return d > 0 && d < 100 ? d : -1;
+        };
+        return getDisc(b) - getDisc(a);
       }
       if (sortBy === 'preco_asc') {
         return (a.sale_value || 0) - (b.sale_value || 0);
@@ -517,21 +541,25 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
     if (properties.length === 0) return;
     setImporting(true);
     try {
-      const payloads: PropertyUpsertPayload[] = properties.map(p => ({
-        source: 'SANTANDER',
-        source_property_id: p.id,
-        title: p.title,
-        property_type: p.property_type || 'Imóvel',
-        sale_modality: p.sale_modality,
-        state: p.state,
-        city: p.city,
-        neighborhood: p.neighborhood || 'Centro',
-        address: p.address || `${p.city} - ${p.state}`,
-        sale_value: p.sale_value,
-        current_minimum_value: p.sale_value,
-        appraisal_value: p.appraisal_value,
-        discount_percentage: p.discount_percentage,
-        calculated_discount_percentage: p.discount_percentage,
+      const payloads: PropertyUpsertPayload[] = properties.map(p => {
+        const isSobConsulta = !p.sale_value || p.sale_value <= 0;
+        const cleanDiscount = isSobConsulta || !p.discount_percentage || p.discount_percentage >= 100 || p.discount_percentage <= 0 ? null : p.discount_percentage;
+
+        return {
+          source: 'SANTANDER',
+          source_property_id: p.id,
+          title: p.title,
+          property_type: p.property_type || 'Imóvel',
+          sale_modality: p.sale_modality,
+          state: p.state,
+          city: p.city,
+          neighborhood: p.neighborhood || 'Centro',
+          address: p.address || `${p.city} - ${p.state}`,
+          sale_value: p.sale_value,
+          current_minimum_value: p.sale_value,
+          appraisal_value: p.appraisal_value,
+          discount_percentage: cleanDiscount,
+          calculated_discount_percentage: cleanDiscount,
         accepts_financing: true,
         occupancy_status: 'UNKNOWN',
         description: `Leilão Santander Oficial — ${p.sale_modality}`,
@@ -550,7 +578,8 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
         enrichment_status: 'PENDING',
         status: 'ACTIVE',
         raw_list_data: {},
-      }));
+      };
+    });
 
       await batchUpsertPropertiesToSupabase(payloads);
       setImportSuccess(`${payloads.length} imóveis do Santander importados com sucesso para o Catálogo!`);
@@ -869,7 +898,12 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
         return (a.address || '').localeCompare(b.address || '', 'pt-BR');
       }
       if (sortBy === 'desconto') {
-        return (b.discount_percentage || 0) - (a.discount_percentage || 0);
+        const getDisc = (item: BankProperty) => {
+          if (!item.sale_value || item.sale_value <= 0) return -1;
+          const d = item.discount_percentage || 0;
+          return d > 0 && d < 100 ? d : -1;
+        };
+        return getDisc(b) - getDisc(a);
       }
       if (sortBy === 'preco_asc') {
         return (a.sale_value || 0) - (b.sale_value || 0);
@@ -886,21 +920,25 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
     if (properties.length === 0) return;
     setImporting(true);
     try {
-      const payloads: PropertyUpsertPayload[] = properties.map(p => ({
-        source: 'BRADESCO',
-        source_property_id: p.id,
-        title: p.title,
-        property_type: p.property_type || 'Imóvel',
-        sale_modality: p.sale_modality,
-        state: p.state,
-        city: p.city,
-        neighborhood: p.neighborhood || 'Centro',
-        address: p.address || `${p.city} - ${p.state}`,
-        sale_value: p.sale_value,
-        current_minimum_value: p.sale_value,
-        appraisal_value: p.appraisal_value,
-        discount_percentage: p.discount_percentage,
-        calculated_discount_percentage: p.discount_percentage,
+      const payloads: PropertyUpsertPayload[] = properties.map(p => {
+        const isSobConsulta = !p.sale_value || p.sale_value <= 0;
+        const cleanDiscount = isSobConsulta || !p.discount_percentage || p.discount_percentage >= 100 || p.discount_percentage <= 0 ? null : p.discount_percentage;
+
+        return {
+          source: 'BRADESCO',
+          source_property_id: p.id,
+          title: p.title,
+          property_type: p.property_type || 'Imóvel',
+          sale_modality: p.sale_modality,
+          state: p.state,
+          city: p.city,
+          neighborhood: p.neighborhood || 'Centro',
+          address: p.address || `${p.city} - ${p.state}`,
+          sale_value: p.sale_value,
+          current_minimum_value: p.sale_value,
+          appraisal_value: p.appraisal_value,
+          discount_percentage: cleanDiscount,
+          calculated_discount_percentage: cleanDiscount,
         accepts_financing: true,
         occupancy_status: 'UNKNOWN',
         description: `Leilão Bradesco Oficial — ${p.sale_modality}`,
@@ -919,7 +957,8 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
         enrichment_status: 'PENDING',
         status: 'ACTIVE',
         raw_list_data: {},
-      }));
+      };
+    });
 
       await batchUpsertPropertiesToSupabase(payloads);
       setImportSuccess(`${payloads.length} imóveis do Bradesco importados com sucesso para o Catálogo!`);

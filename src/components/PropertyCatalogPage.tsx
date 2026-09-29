@@ -670,13 +670,23 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                       );
                     })()}
 
-                    {/* Destaque do Desconto (Seção 35) */}
-                    {prop.discount_percentage !== null && prop.discount_percentage > 0 && (
-                      <div className="absolute top-3 left-3 bg-red-600 text-white font-black text-xs px-3 py-1 rounded-full shadow-md flex items-center gap-1">
-                        <BadgePercent className="w-3.5 h-3.5" />
-                        <span>{(prop.discount_percentage > 100 ? prop.discount_percentage / 100 : prop.discount_percentage).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}% abaixo da avaliação</span>
-                      </div>
-                    )}
+                    {/* Destaque do Desconto (Seção 35) - Não exibir se imóvel estiver Sob Consulta ou >= 100% */}
+                    {(() => {
+                      const minPrice = prop.current_minimum_value || prop.sale_value || 0;
+                      const isSobConsulta = !minPrice || minPrice <= 0;
+                      const rawDiscount = prop.discount_percentage;
+                      
+                      if (isSobConsulta || rawDiscount === null || rawDiscount === undefined) return null;
+                      const discount = rawDiscount > 100 ? rawDiscount / 100 : rawDiscount;
+                      if (discount <= 0 || discount >= 100) return null;
+
+                      return (
+                        <div className="absolute top-3 left-3 bg-red-600 text-white font-black text-xs px-3 py-1 rounded-full shadow-md flex items-center gap-1">
+                          <BadgePercent className="w-3.5 h-3.5" />
+                          <span>{discount.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}% abaixo da avaliação</span>
+                        </div>
+                      );
+                    })()}
 
                     {/* ID do Imóvel */}
                     <div className="absolute bottom-2 right-2 bg-slate-900/80 text-white text-[10px] font-mono px-2 py-0.5 rounded-lg backdrop-blur-xs">
@@ -898,9 +908,15 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                 <div>
                   <span className="text-slate-400 font-bold block text-[10px]">DESCONTO:</span>
                   <span className="text-sm font-extrabold text-orange-600">
-                    {selectedDetailProperty.discount_percentage !== null 
-                      ? `${(selectedDetailProperty.discount_percentage > 100 ? selectedDetailProperty.discount_percentage / 100 : selectedDetailProperty.discount_percentage).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%` 
-                      : 'N/I'}
+                    {(() => {
+                      const minPrice = selectedDetailProperty.current_minimum_value || selectedDetailProperty.sale_value || 0;
+                      const isSobConsulta = !minPrice || minPrice <= 0;
+                      const rawDiscount = selectedDetailProperty.discount_percentage;
+                      if (isSobConsulta || rawDiscount === null || rawDiscount === undefined) return 'Sob Consulta';
+                      const discount = rawDiscount > 100 ? rawDiscount / 100 : rawDiscount;
+                      if (discount <= 0 || discount >= 100) return 'Sob Consulta';
+                      return `${discount.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`;
+                    })()}
                   </span>
                 </div>
               </div>

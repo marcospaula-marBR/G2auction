@@ -78,8 +78,16 @@ export default async function handler(req, res) {
             const saleVal = parseFloat(item.valorVenda) || 0;
             const appraisalVal = parseFloat(item.valorAvaliado) || saleVal;
             let discount = parseFloat(item.desagio) || 0;
-            if (discount === 0 && appraisalVal > saleVal && appraisalVal > 0) {
-              discount = Math.round(((appraisalVal - saleVal) / appraisalVal) * 100);
+            // Se imóvel estiver "Sob Consulta" (valor de venda não informado ou zero), o desconto não deve ser calculado nem exibido
+            if (saleVal > 0 && appraisalVal > saleVal && appraisalVal > 0) {
+              if (discount === 0) {
+                discount = Math.round(((appraisalVal - saleVal) / appraisalVal) * 100);
+              }
+            } else if (saleVal <= 0) {
+              discount = 0;
+            }
+            if (discount >= 100 || discount < 0) {
+              discount = 0;
             }
 
             const addr = `${item.logradrouro || ''} ${item.numeroResidencia || ''}`.trim() || `${item.bairroDeclarado || ''}, ${item.descCidade || ''} - ${item.uf || ''}`;

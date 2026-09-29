@@ -73,8 +73,12 @@ export default async function handler(req, res) {
         const saleVal = item.price || 0;
         const appraisalVal = item.min_auction_value_1 || item.final_auction_value || saleVal;
         let discount = 0;
-        if (appraisalVal > saleVal && appraisalVal > 0) {
+        // Não calcular desconto se imóvel estiver Sob Consulta (preço zero ou indefinido)
+        if (saleVal > 0 && appraisalVal > saleVal && appraisalVal > 0) {
           discount = Math.round(((appraisalVal - saleVal) / appraisalVal) * 100);
+        }
+        if (saleVal <= 0 || discount >= 100 || discount < 0) {
+          discount = 0;
         }
 
         const photo = Array.isArray(item.images) && item.images.length > 0 ? item.images[0] : '';

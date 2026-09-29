@@ -104,10 +104,13 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
 
   // ── GERA HTML DO CARD RICO AO PASSAR O MOUSE (HOVER) ─────────────────────
   const renderRichHoverCardHtml = (p: Property): string => {
-    const price = (p.secondAuctionPrice || p.estimatedMarketPrice || (p as any).sale_value || 0).toLocaleString('pt-BR');
+    const rawPrice = p.secondAuctionPrice || p.estimatedMarketPrice || (p as any).sale_value || 0;
+    const isSobConsulta = !rawPrice || rawPrice <= 0;
+    const price = isSobConsulta ? 'Sob Consulta' : (rawPrice).toLocaleString('pt-BR');
     const appraisal = (p.appraisalValue || (p as any).appraisal_value || 0).toLocaleString('pt-BR');
     const rawDiscount = p.apparentDiscountPercentage || (p as any).discount_percentage || 0;
     const discount = Math.round(Number(rawDiscount));
+    const showDiscount = !isSobConsulta && discount > 0 && discount < 100;
     const title = p.title || p.address?.street || 'Imóvel em Leilão';
     const city = p.address?.city || (p as any).city || 'SP';
     const state = p.address?.state || (p as any).state || 'SP';
@@ -138,9 +141,13 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
           <span class="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md shadow-2xs ${bankBadgeColor}">
             🏦 ${bankName}
           </span>
+          ${showDiscount ? `
           <span class="text-[11px] font-black text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300">
             -${discount}% desc.
-          </span>
+          </span>` : `
+          <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+            Sob Consulta
+          </span>`}
         </div>
 
         <!-- Modalidade e Ocupação -->
@@ -275,8 +282,11 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
       const coords = getPropertyCoords(p);
       bounds.extend([coords.lat, coords.lng]);
       const isSelected = selectedProperty?.id === p.id;
+      const rawPrice = p.secondAuctionPrice || p.estimatedMarketPrice || (p as any).sale_value || 0;
+      const isSobConsulta = !rawPrice || rawPrice <= 0;
       const rawDiscount = p.apparentDiscountPercentage || (p as any).discount_percentage || 0;
       const discount = Math.round(Number(rawDiscount));
+      const hasDiscount = !isSobConsulta && discount > 0 && discount < 100;
       const bankName = p.bankName || p.originBank || 'CAIXA';
       const bankAbbr = bankName.includes('SANTANDER') ? 'SNT' : bankName.includes('BRADESCO') ? 'BRD' : 'CEF';
 
@@ -287,18 +297,17 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
             <div class="${
               isSelected
                 ? 'bg-slate-950 text-orange-400 ring-4 ring-orange-500 scale-110 shadow-2xl'
-                : discount >= 50
+                : hasDiscount && discount >= 50
                 ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg'
-                : discount >= 35
+                : hasDiscount && discount >= 35
                 ? 'bg-orange-600 text-white hover:bg-orange-700 shadow-md'
                 : 'bg-slate-800 text-white hover:bg-slate-900 shadow-md'
             } px-2.5 py-1 rounded-full text-[11px] font-black whitespace-nowrap flex items-center gap-1 border-2 border-white transition-all transform group-hover:scale-115">
               <span class="text-[9px] font-black opacity-80">${bankAbbr}</span>
-              <span>-${discount}%</span>
-              <span class="text-[8px] font-extrabold uppercase opacity-90">desc.</span>
+              ${hasDiscount ? `<span>-${discount}%</span><span class="text-[8px] font-extrabold uppercase opacity-90">desc.</span>` : `<span class="text-[9px] font-bold">Sob Consulta</span>`}
             </div>
             <div class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-0 h-0 border-x-4 border-x-transparent border-t-6 ${
-              isSelected ? 'border-t-slate-950' : discount >= 50 ? 'border-t-emerald-600' : discount >= 35 ? 'border-t-orange-600' : 'border-t-slate-800'
+              isSelected ? 'border-t-slate-950' : hasDiscount && discount >= 50 ? 'border-t-emerald-600' : hasDiscount && discount >= 35 ? 'border-t-orange-600' : 'border-t-slate-800'
             }"></div>
           </div>
         `,
@@ -463,12 +472,14 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
           // Adiciona Marcadores Flutuantes 3D
           properties.forEach((p) => {
             const coords = getPropertyCoords(p);
-            const price = (p.secondAuctionPrice || p.estimatedMarketPrice || (p as any).sale_value || 0).toLocaleString(
-              'pt-BR',
-              { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }
-            );
+            const rawP = p.secondAuctionPrice || p.estimatedMarketPrice || (p as any).sale_value || 0;
+            const isSobConsulta = !rawP || rawP <= 0;
+            const price = isSobConsulta
+              ? 'Sob Consulta'
+              : rawP.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
             const rawDiscount = p.apparentDiscountPercentage || (p as any).discount_percentage || 0;
             const discount = Math.round(Number(rawDiscount));
+            const hasDiscount = !isSobConsulta && discount > 0 && discount < 100;
             const area = p.area || (p as any).private_area || (p as any).total_area || 72;
             const title = p.title || p.address?.neighborhood || 'Imóvel';
             const isSelected = selectedProperty?.id === p.id;
@@ -508,7 +519,7 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
                   ${price}
                 </div>
                 <div style="display:flex; justify-content:space-between; font-size:10px;">
-                  <span style="color:#ea580c; font-weight:900;">-${discount}% desc.</span>
+                  ${hasDiscount ? `<span style="color:#ea580c; font-weight:900;">-${discount}% desc.</span>` : `<span style="opacity:0.75; font-weight:700;">Sob Consulta</span>`}
                   <span style="opacity:0.75;">${p.address?.city || 'SP'}</span>
                 </div>
                 <div style="
