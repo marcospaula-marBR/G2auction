@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 
 export function App() {
-  const APP_VERSION = 'v3.6.2';
+  const APP_VERSION = 'v3.6.3';
   const [properties, setProperties] = useState<Property[]>(mockProperties);
   const [selectedProperty, setSelectedProperty] = useState<Property | undefined>(mockProperties[0]);
 
@@ -215,13 +215,21 @@ export function App() {
 
         {/* Catálogo Unificado Multi-Bancos */}
         {(activeMainTab === 'imoveis' || activeMainTab === 'banco-admin') && (
-          <PropertyCatalogPage />
+          <PropertyCatalogPage
+            onOpenJourney={(prop) => {
+              const adapted = adaptCatalogItemToProperty(prop);
+              setSelectedProperty(adapted);
+              setActiveMainTab('jornada');
+            }}
+          />
         )}
 
         {/* Jornada do Arrematante */}
         {activeMainTab === 'jornada' && selectedProperty && (
           <JourneyPage
             property={selectedProperty}
+            availableProperties={properties}
+            onSelectProperty={setSelectedProperty}
             onOpenMaxBid={(p) => { setSelectedProperty(p); setIsMaxBidOpen(true); }}
           />
         )}

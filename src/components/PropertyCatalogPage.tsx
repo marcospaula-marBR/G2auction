@@ -16,6 +16,7 @@ import {
   Calculator,
   CreditCard,
   AlertCircle,
+  Route,
 } from 'lucide-react';
 
 import {
@@ -39,9 +40,13 @@ import { BancosAdminPage } from './BancosAdminPage';
 
 interface PropertyCatalogPageProps {
   onOpenAdmin?: () => void;
+  onOpenJourney?: (property: any) => void;
 }
 
-export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = () => {
+export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
+  onOpenAdmin: _onOpenAdmin,
+  onOpenJourney,
+}) => {
   const [activeTab, setActiveTab] = useState<'catalog' | 'sync'>('catalog');
   // Estatísticas Resumidas da Base (Seção 17)
   const [summaryStats, setSummaryStats] = useState<{
@@ -965,6 +970,17 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = () => {
                     );
                   })()}
 
+                  {/* BOTÃO MINHA JORNADA */}
+                  {onOpenJourney && (
+                    <button
+                      onClick={() => onOpenJourney(prop)}
+                      className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs py-2.5 rounded-2xl shadow-sm transition-all flex items-center justify-center space-x-1.5"
+                    >
+                      <Route className="w-3.5 h-3.5 text-emerald-100" />
+                      <span>[ 🗺️ MINHA JORNADA ]</span>
+                    </button>
+                  )}
+
                   {/* BOTÕES DE FINANCIAMENTO E ANÁLISE G2 AI */}
                   <div className="grid grid-cols-2 gap-2 pt-1">
                     <button
@@ -1335,6 +1351,19 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = () => {
               </button>
 
               <div className="flex flex-wrap items-center gap-2">
+                {onOpenJourney && (
+                  <button
+                    onClick={() => {
+                      onOpenJourney(selectedDetailProperty);
+                      setSelectedDetailProperty(null);
+                    }}
+                    className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs px-5 py-3 rounded-2xl transition-all flex items-center space-x-1.5 shadow-md"
+                  >
+                    <Route className="w-4 h-4 text-emerald-100" />
+                    <span>[ 🗺️ INICIAR MINHA JORNADA ]</span>
+                  </button>
+                )}
+
                 <button
                   onClick={() => setSelectedEditalProperty(selectedDetailProperty)}
                   className="bg-orange-500 hover:bg-orange-600 text-white font-black text-xs px-5 py-3 rounded-2xl transition-colors flex items-center space-x-1.5 shadow-md"
