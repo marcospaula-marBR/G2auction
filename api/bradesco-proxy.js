@@ -126,14 +126,62 @@ export default async function handler(req, res) {
           ? 'Leilão Extrajudicial Bradesco'
           : (item.realstate_auction_type || 'Leilão Bradesco');
 
+        // Extração de código oficial do imóvel no Bradesco para varreduras/auditorias
+        let brdCode = '';
+        const descText = item.description || '';
+        const codMatch = descText.match(/c[oó]d(?:\.|igo)?(?:\s+do\s+im[oó]vel)?\s*:?\s*(\d{3,8})/i);
+        if (codMatch) {
+          brdCode = codMatch[1];
+        }
+        if (!brdCode && Array.isArray(item.images)) {
+          for (const img of item.images) {
+            const imgMatch = typeof img === 'string' && img.match(/\/([a-z0-9_-]+)\/(\d{4,8})\//i);
+            if (imgMatch && imgMatch[2]) {
+              brdCode = imgMatch[2];
+              break;
+            }
+          }
+        }
+        if (!brdCode && item.slug) {
+          const slugMatch = item.slug.match(/-(\d{4,8})(?:_\d+)?$/);
+          if (slugMatch) brdCode = slugMatch[1];
+        }
+        if (!brdCode && item.guid) {
+          brdCode = item.guid.split('-')[0].toUpperCase();
+        }
+        const standardPropertyId = `BRD-${brdCode || 'IMOVEL'}`;
+
+        // Extração do Endereço Completo real (Logradouro, Número, Bairro)
+        let realAddress = '';
+        const rawName = item.name || '';
+        const nameParts = rawName.split(/\s*-\s*/);
+        if (nameParts.length >= 3) {
+          realAddress = nameParts.slice(2).join(' - ').trim();
+        }
+        if (!realAddress && descText) {
+          const cleanDesc = descText.replace(/<[^>]*>/g, ' ');
+          const streetMatch = cleanDesc.match(/(?:Rua|Avenida|Av\.|Alameda|Al\.|Travessa|Praça|Rodovia|Estrada)[^.,;]+(?:,\s*(?:n[°ºo]\s*)?\d+[^.,;]*)?/i);
+          if (streetMatch) {
+            realAddress = streetMatch[0].trim();
+          }
+        }
+        const neigh = item.neighborhood || '';
+        if (realAddress) {
+          if (neigh && !realAddress.toLowerCase().includes(neigh.toLowerCase())) {
+            realAddress = `${realAddress}, ${neigh}`;
+          }
+        } else {
+          realAddress = [neigh, item.city, item.state || uf].filter(Boolean).join(', ');
+        }
+
         return {
           source: 'BRADESCO',
-          id: `brd_${item.guid || Math.random().toString(36).substr(2, 9)}`,
+          id: standardPropertyId,
           title: item.name || `Imóvel Bradesco — ${item.city}/${item.state}`,
           city: item.city || '',
           state: item.state || uf,
           neighborhood: item.neighborhood || '',
-          address: `${item.neighborhood ? item.neighborhood + ', ' : ''}${item.city || ''} - ${item.state || uf}`,
+          address: realAddress,
           sale_value: saleVal,
           appraisal_value: appraisalVal,
           first_auction_value: firstAuctionVal,

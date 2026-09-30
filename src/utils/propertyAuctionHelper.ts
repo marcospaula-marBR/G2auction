@@ -455,3 +455,153 @@ export function getPaymentConditions(prop: any): PaymentConditionsResult {
     ruleNote: acceptsFinancing ? 'Financiável CAIXA: até 420x parcelas' : 'CAIXA: Somente à vista',
   };
 }
+
+/**
+ * Cria um ID Padrão para Auditoria e Varredura Rastreável:
+ * Identifica o banco e utiliza o código real dele no banco.
+ * Exemplos:
+ * - Santander: SAN-436833
+ * - Bradesco: BRD-484406 ou BRD-27019
+ * - Caixa: CXA-844440012345
+ */
+export function formatStandardPropertyId(source?: string | null, rawId?: string | number | null, prop?: any): string {
+  const bank = String(source || prop?.source || prop?.bankName || 'CAIXA').toUpperCase();
+  const idStr = String(rawId || prop?.id || prop?.source_property_id || '').trim();
+
+  // 1. SANTANDER
+  if (bank.includes('SANTANDER')) {
+    let code = prop?.codigo || prop?.raw_list_data?.codigo || '';
+    if (!code) {
+      const match = idStr.match(/(?:snt_|san_|santander_)?(\d{4,10})/i);
+      if (match) code = match[1];
+    }
+    if (!code && prop?.idExterno) code = String(prop.idExterno).replace(/[^a-zA-Z0-9]/g, '');
+    if (!code) code = idStr.replace(/^snt_/i, '').replace(/^san-/i, '');
+    return `SAN-${code || 'IMOVEL'}`;
+  }
+
+  // 2. BRADESCO
+  if (bank.includes('BRADESCO')) {
+    let code = '';
+    const desc = String(prop?.description || prop?.raw_list_data?.description || '');
+    // Tenta pegar "Cód. do imóvel 27019" ou "Cód. 27019"
+    const codMatch = desc.match(/c[oó]d(?:\.|igo)?(?:\s+do\s+im[oó]vel)?\s*:?\s*(\d{3,8})/i);
+    if (codMatch) {
+      code = codMatch[1];
+    }
+
+    // Tenta pegar lote na URL da imagem oficial (ex: milan_leiloes/484406/)
+    if (!code) {
+      const images = prop?.images || prop?.raw_list_data?.images || (prop?.main_photo_url ? [prop.main_photo_url] : []);
+      if (Array.isArray(images)) {
+        for (const img of images) {
+          const imgMatch = typeof img === 'string' && img.match(/\/([a-z0-9_-]+)\/(\d{4,8})\//i);
+          if (imgMatch && imgMatch[2]) {
+            code = imgMatch[2];
+            break;
+          }
+        }
+      }
+    }
+
+    // Tenta pegar código do slug (ex: ...-5_2 ou ...-27019)
+    if (!code && (prop?.slug || prop?.raw_list_data?.slug)) {
+      const slug = String(prop?.slug || prop?.raw_list_data?.slug);
+      const slugMatch = slug.match(/-(\d{4,8})(?:_\d+)?$/);
+      if (slugMatch) code = slugMatch[1];
+    }
+
+    // Se ainda não achou, se for UUID longo (ex: brd_7bdbc6e7-dbfb-49e4...)
+    if (!code && idStr) {
+      const clean = idStr.replace(/^brd_/i, '').replace(/^bradesco_/i, '');
+      const parts = clean.split('-');
+      code = parts[0].toUpperCase();
+    }
+
+    return `BRD-${code || 'IMOVEL'}`;
+  }
+
+  // 3. CAIXA
+  if (bank.includes('CAIXA')) {
+    let code = idStr.replace(/^cxa_/i, '').replace(/^cx_/i, '').replace(/^caixa_/i, '');
+    const numMatch = code.match(/\d{5,16}/);
+    if (numMatch) code = numMatch[0];
+    return `CXA-${code || 'IMOVEL'}`;
+  }
+
+  // 4. BANCO DO BRASIL
+  if (bank.includes('BRASIL') || bank.includes('BB')) {
+    const code = idStr.replace(/^bb_/i, '').replace(/^brasil_/i, '');
+    return `BB-${code || 'IMOVEL'}`;
+  }
+
+  // 5. ITAU
+  if (bank.includes('ITAU') || bank.includes('ITAÚ')) {
+    const code = idStr.replace(/^itau_/i, '');
+    return `ITAU-${code || 'IMOVEL'}`;
+  }
+
+  // Genérico padrão: BANCO-CODIGO
+  const prefix = bank.slice(0, 3).toUpperCase();
+  const cleanId = idStr.replace(/^[a-z]+_/i, '');
+  return `${prefix}-${cleanId || 'IMOVEL'}`;
+}
+
+/**
+ * Extrai o Endereço Completo do imóvel (Logradouro, Número, Bairro)
+ * padronizando todos os bancos para seguir o mesmo padrão do primeiro card (Santander).
+ */
+export function extractCleanPropertyAddress(prop: any): string {
+  if (!prop) return '';
+
+  const rawAddress = (prop.address || '').trim();
+  const rawTitle = (prop.title || prop.name || '').trim();
+  const rawDesc = (prop.description || '').replace(/<[^>]*>/g, ' ').trim();
+  const neighborhood = (prop.neighborhood || '').trim();
+  const city = (prop.city || '').trim();
+  const state = (prop.state || '').trim();
+
+  // Verifica se rawAddress já contém logradouro explícito ou número
+  const hasStreetIndicator = /\b(rua|r\.|avenida|av\.|alameda|al\.|travessa|trav\.|pra[çc]a|pc\.|rodovia|rod\.|estrada|est\.|quadra|qd\.|lote|lt\.|condom[ií]nio|cond\.)\b/i.test(rawAddress) ||
+    /\b\d+\b/.test(rawAddress);
+
+  const isGenericAddress = !hasStreetIndicator ||
+    rawAddress === `${city} - ${state}` ||
+    rawAddress === `${neighborhood}, ${city} - ${state}` ||
+    rawAddress === `${neighborhood} - ${city}` ||
+    rawAddress === `${city}/${state}`;
+
+  // Se o endereço for genérico mas o título contiver a rua (padrão Bradesco: "Tipo - Cidade/UF - Rua...")
+  if (isGenericAddress && rawTitle) {
+    const parts = rawTitle.split(/\s*-\s*/);
+    if (parts.length >= 3) {
+      const streetPart = parts.slice(2).join(' - ').trim();
+      if (streetPart && /\b(rua|r\.|avenida|av\.|alameda|al\.|travessa|pra[çc]a|rodovia|estrada|\d+)\b/i.test(streetPart)) {
+        if (neighborhood && !streetPart.toLowerCase().includes(neighborhood.toLowerCase())) {
+          return `${streetPart}, ${neighborhood}`;
+        }
+        return streetPart;
+      }
+    }
+  }
+
+  // Se ainda for genérico, tenta extrair da descrição
+  if (isGenericAddress && rawDesc) {
+    const streetMatch = rawDesc.match(/(?:Rua|Avenida|Av\.|Alameda|Al\.|Travessa|Praça|Rodovia|Estrada)[^.,;]+(?:,\s*(?:n[°ºo]\s*)?\d+[^.,;]*)?/i);
+    if (streetMatch) {
+      const street = streetMatch[0].trim();
+      if (neighborhood && !street.toLowerCase().includes(neighborhood.toLowerCase())) {
+        return `${street}, ${neighborhood}`;
+      }
+      return street;
+    }
+  }
+
+  // Se rawAddress já for completo e detalhado, utiliza ele
+  if (rawAddress && !isGenericAddress) {
+    return rawAddress;
+  }
+
+  return rawAddress || rawTitle || `${city} - ${state}`;
+}
+

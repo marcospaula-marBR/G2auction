@@ -32,7 +32,7 @@ import { formatCurrencyBRL } from '../utils/financial';
 import { cleanCaixaAddressForMaps } from '../utils/addressSanitizer';
 import { getCaixaPropertyPageUrl } from '../utils/caixaEditalHelper';
 import { extractHdnImovelFromUrl } from '../utils/caixaListImporter';
-import { getAuctionValues, getPaymentConditions } from '../utils/propertyAuctionHelper';
+import { getAuctionValues, getPaymentConditions, formatStandardPropertyId, extractCleanPropertyAddress } from '../utils/propertyAuctionHelper';
 import { EditalAnalysisModal } from './EditalAnalysisModal';
 import { FinanciamentoCaixaModal } from './FinanciamentoCaixaModal';
 import { BancosAdminPage } from './BancosAdminPage';
@@ -748,9 +748,9 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = () => {
                       return null;
                     })()}
 
-                    {/* ID do Imóvel */}
-                    <div className="absolute bottom-2 right-2 bg-slate-900/80 text-white text-[10px] font-mono px-2 py-0.5 rounded-lg backdrop-blur-xs">
-                      ID: {prop.source_property_id}
+                    {/* ID do Imóvel Padrão de Auditoria */}
+                    <div className="absolute bottom-2 right-2 bg-slate-900/85 text-orange-400 text-[10px] font-mono font-bold px-2 py-0.5 rounded-lg backdrop-blur-xs border border-slate-700/50">
+                      ID: {formatStandardPropertyId(prop.source, prop.source_property_id || prop.id, prop)}
                     </div>
                   </div>
 
@@ -760,9 +760,9 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = () => {
 
                     return (
                       <div className="p-5 space-y-4">
-                        {/* Cabeçalho do Card */}
+                        {/* Cabeçalho do Card - Padronizado igual ao 1º Card */}
                         <div>
-                          <div className="flex items-center flex-wrap gap-1.5 text-[11px] font-black uppercase tracking-wider mb-1">
+                          <div className="flex items-center space-x-2 text-[11px] font-black uppercase tracking-wider mb-1">
                             {prop.source === 'SANTANDER' && (
                               <span className="bg-red-600 text-white font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider">
                                 Santander
@@ -779,12 +779,6 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = () => {
                               </span>
                             )}
 
-                            {auctionInfo.hasBothAuctions && (
-                              <span className="bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shadow-2xs">
-                                ⚡ 1º e 2º Leilão
-                              </span>
-                            )}
-
                             <span className="text-orange-600">{prop.property_type || 'Imóvel'}</span>
                             <span className="text-slate-400">•</span>
                             <span className="flex items-center gap-0.5 text-slate-500 font-bold">
@@ -793,7 +787,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = () => {
                           </div>
 
                           <h3 className="text-sm font-black text-slate-900 line-clamp-2 leading-snug">
-                            {prop.address || `${prop.title || 'Imóvel'} em ${prop.city} / ${prop.state}`}
+                            {extractCleanPropertyAddress(prop)}
                           </h3>
 
                           {prop.neighborhood && (
@@ -1036,7 +1030,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = () => {
             <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
               <div>
                 <span className="text-[10px] font-black uppercase text-orange-400 font-mono">
-                  {selectedDetailProperty.source || 'CAIXA'} ID: {selectedDetailProperty.source_property_id}
+                  ID: {formatStandardPropertyId(selectedDetailProperty.source, selectedDetailProperty.source_property_id || selectedDetailProperty.id, selectedDetailProperty)}
                 </span>
                 <h2 className="text-lg font-black text-white leading-snug">
                   {selectedDetailProperty.property_type || 'Imóvel'} — {selectedDetailProperty.city} / {selectedDetailProperty.state}
@@ -1170,7 +1164,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = () => {
               {/* Endereço Completo */}
               <div className="space-y-1">
                 <span className="text-slate-400 font-bold text-[10px] uppercase">Endereço Completo:</span>
-                <p className="text-slate-900 font-bold text-sm">{selectedDetailProperty.address || 'Endereço não detalhado'}</p>
+                <p className="text-slate-900 font-bold text-sm">{extractCleanPropertyAddress(selectedDetailProperty)}</p>
                 {selectedDetailProperty.neighborhood && (
                   <p className="text-slate-500 font-medium">Bairro: {selectedDetailProperty.neighborhood}</p>
                 )}

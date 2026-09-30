@@ -13,7 +13,7 @@ import { cleanCaixaAddressForMaps } from '../utils/addressSanitizer';
 import { FinanciamentoCaixaModal } from './FinanciamentoCaixaModal';
 import { EditalAnalysisModal } from './EditalAnalysisModal';
 import { batchVerifyNeighborhoods, type NeighborhoodVerificationResult } from '../utils/neighborhoodEnricher';
-import { getAuctionValues, getPaymentConditions, getPropertyFilterPrice } from '../utils/propertyAuctionHelper';
+import { getAuctionValues, getPaymentConditions, getPropertyFilterPrice, formatStandardPropertyId, extractCleanPropertyAddress } from '../utils/propertyAuctionHelper';
 
 // ── Tipos compartilhados ──────────────────────────────────────────────────
 interface BankStatus {
@@ -171,9 +171,9 @@ const BankPropertyCard: React.FC<BankPropertyCardProps> = ({
             </div>
           ) : null}
 
-          {/* ID do Imóvel */}
-          <div className="absolute bottom-2 right-2 bg-slate-900/80 text-white text-[10px] font-mono px-2 py-0.5 rounded-lg backdrop-blur-xs">
-            ID: {p.id}
+          {/* ID do Imóvel Padrão de Auditoria */}
+          <div className="absolute bottom-2 right-2 bg-slate-900/85 text-orange-400 text-[10px] font-mono font-bold px-2 py-0.5 rounded-lg backdrop-blur-xs border border-slate-700/50">
+            ID: {formatStandardPropertyId(p.source, p.id, p)}
           </div>
         </div>
 
@@ -199,7 +199,7 @@ const BankPropertyCard: React.FC<BankPropertyCardProps> = ({
             </div>
 
             <h3 className="text-sm font-black text-slate-900 line-clamp-2 leading-snug">
-              {p.address || p.title}
+              {extractCleanPropertyAddress(p)}
             </h3>
 
             <div className="flex items-center flex-wrap gap-1.5 mt-1">
@@ -424,7 +424,7 @@ const BankPropertyDetailModal: React.FC<{
         <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
           <div>
             <span className="text-[10px] font-black uppercase text-orange-400 font-mono">
-              {p.source} ID: {p.id}
+              ID: {formatStandardPropertyId(p.source, p.id, p)}
             </span>
             <h2 className="text-lg font-black text-white leading-snug">
               {p.property_type || 'Imóvel'} — {p.city} / {p.state}
@@ -542,7 +542,7 @@ const BankPropertyDetailModal: React.FC<{
 
           <div className="space-y-1">
             <span className="text-slate-400 font-bold text-[10px] uppercase">Endereço Completo:</span>
-            <p className="text-slate-900 font-bold text-sm">{p.address || p.title}</p>
+            <p className="text-slate-900 font-bold text-sm">{extractCleanPropertyAddress(p)}</p>
             <div className="flex items-center gap-2">
               <p className="text-slate-500 font-medium">Bairro: {p.neighborhood || 'Centro'}</p>
               {p.neighborhoodVerification?.verified && (

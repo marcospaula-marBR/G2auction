@@ -116,7 +116,7 @@ export default async function handler(req, res) {
 
             return {
               source: 'SANTANDER',
-              id: `snt_${item.codigo || item.idWpShi || Math.random().toString(36).substr(2, 9)}`,
+              id: `SAN-${item.codigo || item.idWpShi || Math.random().toString(36).substr(2, 9)}`,
               title: item.seoH1 || `${item.descTipoImovel || 'Imóvel'} Santander — ${item.descCidade}/${item.uf}`,
               city: item.descCidade || city || '',
               state: item.uf || uf || '',
