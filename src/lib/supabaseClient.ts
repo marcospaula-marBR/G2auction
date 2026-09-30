@@ -25,7 +25,8 @@ const memoryStore = {
 let seedPromise: Promise<void> | null = null;
 
 export async function autoSeedDefaultCsvFromPublic(): Promise<void> {
-  if (memoryStore.properties.size > 0) return;
+  const hasCaixaProperties = Array.from(memoryStore.properties.keys()).some(k => k.startsWith('CAIXA_'));
+  if (hasCaixaProperties && memoryStore.properties.size >= 1000) return;
   if (seedPromise) return seedPromise;
 
   seedPromise = (async () => {
@@ -112,7 +113,8 @@ export async function loadMemoryStoreFromLocalStorage() {
     console.warn('[LocalStorage Load Error]', e);
   }
 
-  if (memoryStore.properties.size === 0) {
+  const hasCaixa = Array.from(memoryStore.properties.keys()).some(k => k.startsWith('CAIXA_'));
+  if (!hasCaixa || memoryStore.properties.size < 1000) {
     await autoSeedDefaultCsvFromPublic();
   }
 }
@@ -509,7 +511,8 @@ export async function queryPropertiesFromSupabase(
   totalPages: number;
   isMemoryFallback: boolean;
 }> {
-  if (memoryStore.properties.size === 0) {
+  const hasCaixa = Array.from(memoryStore.properties.keys()).some(k => k.startsWith('CAIXA_'));
+  if (!hasCaixa || memoryStore.properties.size < 1000) {
     await autoSeedDefaultCsvFromPublic();
   }
 
@@ -724,7 +727,8 @@ export async function fetchDistinctCitiesByStateFromSupabase(uf: string): Promis
   const ufUpper = (uf || '').trim().toUpperCase();
   if (!ufUpper) return [];
 
-  if (memoryStore.properties.size === 0) {
+  const hasCaixa = Array.from(memoryStore.properties.keys()).some(k => k.startsWith('CAIXA_'));
+  if (!hasCaixa || memoryStore.properties.size < 1000) {
     await autoSeedDefaultCsvFromPublic();
   }
 

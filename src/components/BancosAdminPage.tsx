@@ -101,6 +101,7 @@ const BankPropertyCard: React.FC<BankPropertyCardProps> = ({
   const p = property;
   const isSantander = p.source === 'SANTANDER';
   const isBradesco = p.source === 'BRADESCO';
+  const isBB = p.source === 'BB';
 
   const type = (p.property_type || '').toLowerCase();
   const houseFallbacks = [
@@ -189,6 +190,11 @@ const BankPropertyCard: React.FC<BankPropertyCardProps> = ({
               {isBradesco && (
                 <span className="bg-red-800 text-white font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider">
                   Bradesco
+                </span>
+              )}
+              {isBB && (
+                <span className="bg-yellow-400 text-blue-950 font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider border border-yellow-500 shadow-2xs">
+                  Banco do Brasil
                 </span>
               )}
               <span className="text-orange-600">{p.property_type || 'Imóvel'}</span>

@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 
 export function App() {
-  const APP_VERSION = 'v3.6.4';
+  const APP_VERSION = 'v3.6.5';
   const [properties, setProperties] = useState<Property[]>(mockProperties);
   const [selectedProperty, setSelectedProperty] = useState<Property | undefined>(mockProperties[0]);
 
@@ -34,7 +34,7 @@ export function App() {
     async function loadRealPropertiesForMap() {
       try {
         await autoSeedDefaultCsvFromPublic();
-        const res = await queryPropertiesFromSupabase({ pageSize: 1000, state: 'SP' });
+        const res = await queryPropertiesFromSupabase({ pageSize: 10000, state: 'SP' });
         if (res && res.data && res.data.length > 0) {
           const adapted = res.data.map((p: any, idx: number) => adaptCatalogItemToProperty(p, idx));
           setProperties(adapted);
@@ -231,6 +231,8 @@ export function App() {
             availableProperties={properties}
             onSelectProperty={setSelectedProperty}
             onOpenMaxBid={(p) => { setSelectedProperty(p); setIsMaxBidOpen(true); }}
+            onNavigateToCatalog={() => setActiveMainTab('imoveis')}
+            onNavigateToMap={() => setActiveMainTab('discovery')}
           />
         )}
         {activeMainTab === 'jornada' && !selectedProperty && (

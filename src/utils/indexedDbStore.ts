@@ -38,13 +38,7 @@ export async function savePropertiesToIndexedDB(propertiesMap: Map<string, any>)
     const tx = db.transaction(STORE_PROPERTIES, 'readwrite');
     const store = tx.objectStore(STORE_PROPERTIES);
 
-    // Limpa registros antigos e insere os atuais
-    await new Promise<void>((resolve, reject) => {
-      const clearReq = store.clear();
-      clearReq.onsuccess = () => resolve();
-      clearReq.onerror = () => reject(clearReq.error);
-    });
-
+    // Gravação segura via UPSERT (preserva imóveis de outros bancos e do CSV)
     propertiesMap.forEach((val, key) => {
       store.put({ compositeKey: key, ...val });
     });

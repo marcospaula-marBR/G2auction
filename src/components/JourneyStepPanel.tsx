@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   X,
+  Search,
   CheckSquare,
   Square,
   Upload,
@@ -53,6 +54,8 @@ interface JourneyStepPanelProps {
   onOpenReportModal?: () => void;
   onOpenWhatsAppSimulator?: () => void;
   onOpenPartnerNetwork?: () => void;
+  onNavigateToCatalog?: () => void;
+  onNavigateToMap?: () => void;
 }
 
 const STATUS_CONFIG = {
@@ -84,6 +87,8 @@ export const JourneyStepPanel: React.FC<JourneyStepPanelProps> = ({
   onOpenReportModal,
   onOpenWhatsAppSimulator,
   onOpenPartnerNetwork,
+  onNavigateToCatalog,
+  onNavigateToMap,
 }) => {
   const [checkedItems, setCheckedItems] = useState<Record<number, boolean>>({});
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
@@ -119,14 +124,38 @@ export const JourneyStepPanel: React.FC<JourneyStepPanelProps> = ({
       case 1: // Pesquisa do Imóvel
         return (
           <div className="flex flex-wrap gap-2">
+            {onNavigateToCatalog && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onNavigateToCatalog();
+                }}
+                className="px-4 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black text-xs rounded-xl shadow-md hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-1.5"
+              >
+                <Search className="w-4 h-4" />
+                <span>[ 🔍 Explorar Catálogo Multi-Bancos Completo ]</span>
+              </button>
+            )}
+            {onNavigateToMap && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onNavigateToMap();
+                }}
+                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md flex items-center gap-1.5 transition-all"
+              >
+                <MapPin className="w-4 h-4" />
+                <span>[ 🗺️ Ver no Mapa Interativo 3D ]</span>
+              </button>
+            )}
             <a
               href={streetViewUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-4 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black text-xs rounded-xl shadow-md hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-1.5"
+              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-black text-xs rounded-xl shadow-md flex items-center gap-1.5 transition-all"
             >
-              <MapPin className="w-4 h-4" />
-              <span>[ 🗺️ Vistoria Virtual 360° (Google Maps) ]</span>
+              <Globe className="w-4 h-4 text-orange-400" />
+              <span>[ 🌐 Vistoria Virtual 360° (Google Maps) ]</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>

@@ -36,6 +36,8 @@ interface JourneyPageProps {
   availableProperties?: Property[];
   onSelectProperty?: (p: Property) => void;
   onOpenMaxBid?: (p: Property) => void;
+  onNavigateToCatalog?: () => void;
+  onNavigateToMap?: () => void;
 }
 
 // Persiste estado da jornada por imóvel em localStorage
@@ -73,6 +75,8 @@ export const JourneyPage: React.FC<JourneyPageProps> = ({
   availableProperties = [],
   onSelectProperty,
   onOpenMaxBid: _onOpenMaxBid,
+  onNavigateToCatalog,
+  onNavigateToMap,
 }) => {
   const [stepStatuses, setStepStatuses] = useState<Record<number, JourneyStepStatus>>(
     () => loadJourneyState(property.id)
@@ -466,6 +470,8 @@ export const JourneyPage: React.FC<JourneyPageProps> = ({
           onOpenReportModal={() => setShowReport(true)}
           onOpenWhatsAppSimulator={() => setShowWhatsApp(true)}
           onOpenPartnerNetwork={() => setShowPartnerNetwork(true)}
+          onNavigateToCatalog={onNavigateToCatalog}
+          onNavigateToMap={onNavigateToMap}
         />
       )}
 
