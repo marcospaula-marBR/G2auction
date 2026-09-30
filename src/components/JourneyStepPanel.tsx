@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import type { JourneyStep, JourneyStepStatus } from './JourneyTimeline';
 import { getIptuPortalLink } from '../utils/journeyEngine';
+import { PropertyHeaderSummary } from './PropertyHeaderSummary';
 
 interface JourneyStepPanelProps {
   step: JourneyStep;
@@ -533,22 +534,17 @@ export const JourneyStepPanel: React.FC<JourneyStepPanelProps> = ({
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/65 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in">
       <div className="bg-white w-full sm:max-w-2xl rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 flex flex-col max-h-[92vh]">
 
-        {/* Header */}
-        <div className="p-5 border-b border-slate-100 flex items-start justify-between flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl ${cfg.bg} ${cfg.border} border`}>
-              {step.emoji}
-            </div>
-            <div>
-              <div className="flex items-center gap-2 mb-0.5">
-                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${cfg.dot}`} />
-                <span className={`text-[10px] font-bold uppercase tracking-wider ${cfg.color}`}>{cfg.label}</span>
-                <span className="text-[10px] text-slate-400">· Etapa {step.number} de 21</span>
-              </div>
-              <h2 className="font-black text-slate-900 text-base leading-tight">{step.label}</h2>
-            </div>
+        {/* Header com Informações do Banco e Resumo do Imóvel */}
+        <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white rounded-t-3xl border-b border-slate-800 flex items-start justify-between gap-3 flex-shrink-0">
+          <div className="flex-1 pr-2">
+            <PropertyHeaderSummary
+              property={property}
+              contextTitle={`Etapa ${step.number}: ${step.label}`}
+              contextBadge={`Fase ${step.phase} · ${cfg.label}`}
+              showKpis={true}
+            />
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-2 rounded-xl hover:bg-slate-100 transition-colors ml-2">
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-white/10 transition-colors ml-2 flex-shrink-0">
             <X className="w-5 h-5" />
           </button>
         </div>

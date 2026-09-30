@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import {
-  Gavel,
   X,
   CheckCircle2,
   Percent,
 } from 'lucide-react';
 import { formatCurrencyBRL } from '../utils/financial';
+import { PropertyHeaderSummary } from './PropertyHeaderSummary';
 
 interface WinningBidModalProps {
   property: any;
@@ -45,26 +45,21 @@ export const WinningBidModal: React.FC<WinningBidModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in">
-      <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden">
+      <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden">
         
-        {/* Header */}
-        <div className="p-5 bg-gradient-to-r from-orange-600 to-amber-600 text-white flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center text-white">
-              <Gavel className="w-5 h-5" />
-            </div>
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-wider bg-white/20 text-white px-2 py-0.5 rounded-full">
-                Etapa 10 · Arrematação
-              </span>
-              <h2 className="text-base font-black text-white mt-0.5">
-                Registrar Lance Vencedor
-              </h2>
-            </div>
+        {/* Header com Informações do Banco e Resumo do Imóvel */}
+        <div className="p-5 bg-gradient-to-r from-orange-600 via-amber-600 to-slate-900 text-white flex items-start justify-between gap-4 border-b border-orange-700">
+          <div className="flex-1 pr-2">
+            <PropertyHeaderSummary
+              property={property}
+              contextTitle="Registrar Lance Vencedor"
+              contextBadge="Etapa 10 · Arrematação"
+              showKpis={true}
+            />
           </div>
           <button
             onClick={onClose}
-            className="text-white/80 hover:text-white p-2 rounded-xl hover:bg-white/10"
+            className="text-white/80 hover:text-white p-2 rounded-xl hover:bg-white/10 transition-colors flex-shrink-0"
           >
             <X className="w-5 h-5" />
           </button>

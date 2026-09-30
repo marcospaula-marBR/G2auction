@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import {
   X,
-  Calculator,
   Home,
   TrendingDown,
   DollarSign,
@@ -9,21 +8,75 @@ import {
   Info,
   CheckCircle,
   AlertCircle,
-  ChevronDown,
-  ChevronUp,
-  ExternalLink,
+  Building2,
 } from 'lucide-react';
+import { PropertyHeaderSummary, getBankBadgeConfig } from './PropertyHeaderSummary';
 
 interface FinanciamentoCaixaModalProps {
   property: any;
   onClose: () => void;
 }
 
-// Taxas referenciais CAIXA (setembro 2026)
-const TAXA_POUPANCA = 0.0695;    // 6.95% a.a. (SFH com poupança)
-const TAXA_SFI      = 0.1199;    // 11.99% a.a. (SFI – acima do limite SFH)
-const LIMITE_SFH    = 1_500_000; // Limite avaliação SFH
+// Taxas e parâmetros referenciais por Banco
+const BANK_RATES = {
+  CAIXA: {
+    name: 'CAIXA Habitação',
+    rateSFH: 0.0695, // 6.95% a.a.
+    rateSFI: 0.1199, // 11.99% a.a.
+    maxYears: 35,
+    minDownPct: 20,
+    minDownPctAuction: 5,
+    supportsFGTS: true,
+    minPropertyValue: 0,
+    note: 'Condições oficiais CAIXA Habitação (SFH Poupança / SFI)',
+  },
+  SANTANDER: {
+    name: 'Santander Crédito Imobiliário',
+    rateSFH: 0.1049, // 10.49% a.a.
+    rateSFI: 0.1149, // 11.49% a.a.
+    maxYears: 35,
+    minDownPct: 20,
+    minDownPctAuction: 20,
+    supportsFGTS: false,
+    minPropertyValue: 90000,
+    note: 'O Banco Santander exige valor de venda mínimo de R$ 90.000 para financiamento.',
+  },
+  BRADESCO: {
+    name: 'Bradesco Crédito Imobiliário',
+    rateSFH: 0.1050, // 10.50% a.a.
+    rateSFI: 0.1150, // 11.50% a.a.
+    maxYears: 30,
+    minDownPct: 20,
+    minDownPctAuction: 20,
+    supportsFGTS: false,
+    minPropertyValue: 0,
+    note: 'Bradesco Crédito Imobiliário com até 360 meses e taxa balcão.',
+  },
+  BB: {
+    name: 'Banco do Brasil (Seu Imóvel BB)',
+    rateSFH: 0.1020, // 10.20% a.a.
+    rateSFI: 0.1120, // 11.20% a.a.
+    maxYears: 35,
+    minDownPct: 20,
+    minDownPctAuction: 20,
+    supportsFGTS: true,
+    minPropertyValue: 0,
+    note: 'Financiamento Imobiliário BB para imóveis retomados em até 420 meses.',
+  },
+  GERAL: {
+    name: 'Calculadora Geral de Mercado',
+    rateSFH: 0.1050, // 10.50% a.a.
+    rateSFI: 0.1150, // 11.50% a.a.
+    maxYears: 30,
+    minDownPct: 20,
+    minDownPctAuction: 20,
+    supportsFGTS: false,
+    minPropertyValue: 0,
+    note: 'Simulação de referência de mercado. Valores a serem validados no banco selecionado.',
+  },
+};
 
+const LIMITE_SFH = 1_500_000;
 type Sistema = 'SAC' | 'PRICE';
 
 function calcularFinanciamento(
@@ -72,10 +125,6 @@ function fmtPctNumber(v: number): string {
   return v.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
-/**
- * Converte entradas livres de usuário em número válido de moeda:
- * Exemplos aceitos: "40000", "40.000", "40.000,00", "40k", "40 mil", "R$ 40.000"
- */
 function parseCurrencyInput(raw: string): number {
   if (!raw) return NaN;
   let s = raw.trim().toLowerCase().replace(/^r\$\s*/, '').trim();
@@ -91,10 +140,8 @@ function parseCurrencyInput(raw: string): number {
 
   if (s.includes(',') && s.includes('.')) {
     if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
-      // 40.000,00 -> pontos são milhares, vírgula é decimal
       s = s.replace(/\./g, '').replace(',', '.');
     } else {
-      // 40,000.00
       s = s.replace(/,/g, '');
     }
   } else if (s.includes(',')) {
@@ -120,25 +167,48 @@ function parsePctInput(raw: string): number {
 
 // ── Modal principal ────────────────────────────────────────────────────────────
 export function FinanciamentoCaixaModal({ property, onClose }: FinanciamentoCaixaModalProps) {
-  const valorImovel =
+  const valorImovel = Number(
     property?.secondAuctionPrice ||
     property?.current_minimum_value ||
     property?.sale_value ||
     property?.preco_minimo ||
     property?.price ||
-    300_000;
+    300_000
+  );
 
-  const avaliacaoImovel =
+  const avaliacaoImovel = Number(
     property?.appraisalValue ||
     property?.evaluation_value ||
     property?.preco_avaliacao ||
-    valorImovel * 1.5;
+    valorImovel * 1.5
+  );
 
-  // Se o imóvel aceita financiamento do lance, entrada mínima é 5% (regra CEF leilões)
-  const aceitaFinanciamento = property?.isFinancable ?? property?.accepts_financing ?? false;
-  const isSFH               = avaliacaoImovel <= LIMITE_SFH;
-  const entradaPctMin       = aceitaFinanciamento ? 5 : (isSFH ? 20 : 30);
-  const prazoMax            = isSFH ? 35 : 30;
+  // Identificação do Banco Nativo do Imóvel
+  const bankConfig = getBankBadgeConfig(property);
+  const detectedBankKey = useMemo<'CAIXA' | 'SANTANDER' | 'BRADESCO' | 'BB' | 'GERAL'>(() => {
+    const sn = bankConfig.shortName.toUpperCase();
+    if (sn.includes('SANTANDER')) return 'SANTANDER';
+    if (sn.includes('BRADESCO')) return 'BRADESCO';
+    if (sn.includes('BRASIL') || sn.includes('BB')) return 'BB';
+    if (sn.includes('CAIXA')) return 'CAIXA';
+    return 'GERAL';
+  }, [bankConfig.shortName]);
+
+  const [selectedBankKey, setSelectedBankKey] = useState<'CAIXA' | 'SANTANDER' | 'BRADESCO' | 'BB' | 'GERAL'>(detectedBankKey);
+
+  const currentBankRules = BANK_RATES[selectedBankKey];
+
+  // Regra de R$ 90.000 do Santander
+  const isSantanderBelowMin = selectedBankKey === 'SANTANDER' && valorImovel < 90000;
+
+  // Se o imóvel aceita financiamento do lance na Caixa
+  const aceitaFinanciamentoCaixa = (selectedBankKey === 'CAIXA') && (property?.isFinancable ?? property?.accepts_financing ?? false);
+  const isSFH = avaliacaoImovel <= LIMITE_SFH;
+
+  const entradaPctMin = aceitaFinanciamentoCaixa
+    ? currentBankRules.minDownPctAuction
+    : (isSFH ? currentBankRules.minDownPct : 30);
+  const prazoMax = currentBankRules.maxYears;
 
   // Estado da Entrada: o valor em R$ é a fonte de verdade para evitar arredondamento forçado
   const entradaMinReais = Math.round(valorImovel * (entradaPctMin / 100));
@@ -151,7 +221,7 @@ export function FinanciamentoCaixaModal({ property, onClose }: FinanciamentoCaix
   const [pctFocused, setPctFocused]     = useState(false);
 
   // Estados de Prazo
-  const [prazoAnos, setPrazoAnos]         = useState(30);
+  const [prazoAnos, setPrazoAnos]         = useState(Math.min(30, prazoMax));
   const [anosStr, setAnosStr]             = useState('');
   const [anosFocused, setAnosFocused]     = useState(false);
   const [mesesStr, setMesesStr]           = useState('');
@@ -163,16 +233,15 @@ export function FinanciamentoCaixaModal({ property, onClose }: FinanciamentoCaix
   const [fgtsVal, setFgtsVal]   = useState(50_000);
   const [fgtsStr, setFgtsStr]   = useState('');
   const [fgtsFocused, setFgtsFocused] = useState(false);
-  const [showInfo, setShowInfo] = useState(false);
 
-  const taxaAnual  = avaliacaoImovel > LIMITE_SFH ? TAXA_SFI : TAXA_POUPANCA;
-  const prazoMeses = Math.min(prazoAnos * 12, isSFH ? 420 : 360);
+  const taxaAnual = avaliacaoImovel > LIMITE_SFH ? currentBankRules.rateSFI : currentBankRules.rateSFH;
+  const prazoMeses = Math.min(prazoAnos * 12, prazoMax * 12);
 
-  // Percentual exato derivado do valor da entrada (mantém casas decimais se necessário)
+  // Percentual exato derivado do valor da entrada
   const entradaPct = valorImovel > 0 ? (entradaVal / valorImovel) * 100 : entradaPctMin;
   const entradaOk  = entradaVal >= entradaMinReais - 1;
 
-  const fgtsAplicado   = useFGTS && isSFH ? Math.min(fgtsVal, entradaVal * 0.8) : 0;
+  const fgtsAplicado   = useFGTS && currentBankRules.supportsFGTS && isSFH ? Math.min(fgtsVal, entradaVal * 0.8) : 0;
   const entradaEfetiva = Math.max(entradaVal - fgtsAplicado, 0);
 
   const resultado = useMemo(
@@ -180,7 +249,7 @@ export function FinanciamentoCaixaModal({ property, onClose }: FinanciamentoCaix
     [valorImovel, entradaVal, prazoMeses, taxaAnual, sistema]
   );
 
-  // Commit da entrada em R$ (preserva o valor exato digitado pelo usuário, e.g. R$ 40.000)
+  // Commit da entrada em R$
   const commitReais = () => {
     setReaisFocused(false);
     const parsed = parseCurrencyInput(reaisStr);
@@ -189,7 +258,7 @@ export function FinanciamentoCaixaModal({ property, onClose }: FinanciamentoCaix
     }
   };
 
-  // Commit da entrada em % (converte para R$ sem perder a intenção)
+  // Commit da entrada em %
   const commitPct = () => {
     setPctFocused(false);
     const parsed = parsePctInput(pctStr);
@@ -229,38 +298,101 @@ export function FinanciamentoCaixaModal({ property, onClose }: FinanciamentoCaix
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)' }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="relative w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-white rounded-3xl shadow-2xl">
+      <div className="relative w-full max-w-2xl max-h-[94vh] overflow-y-auto bg-white rounded-3xl shadow-2xl flex flex-col">
 
-        {/* ── Header ─────────────────────────────────────────────────────── */}
-        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-gradient-to-r from-blue-700 to-blue-500 rounded-t-3xl">
-          <div className="flex items-center gap-3">
-            <div className="bg-white/20 p-2 rounded-xl">
-              <Calculator className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h2 className="text-white font-black text-base leading-tight">Simulador de Financiamento</h2>
-              <p className="text-blue-100 text-[11px] font-medium">Parâmetros CAIXA Habitação · {isSFH ? 'SFH' : 'SFI'}</p>
-            </div>
+        {/* ── Header com Informações Oficiais do Banco e Resumo do Imóvel ───────────────── */}
+        <div className="sticky top-0 z-20 px-6 py-4 bg-gradient-to-r from-slate-900 via-slate-800 to-blue-950 text-white rounded-t-3xl flex items-start justify-between border-b border-slate-800">
+          <div className="flex-1 pr-4">
+            <PropertyHeaderSummary
+              property={property}
+              contextTitle="Simulador de Financiamento Bancário"
+              contextBadge={currentBankRules.name}
+              showKpis={true}
+            />
           </div>
-          <button onClick={onClose} className="bg-white/20 hover:bg-white/30 text-white p-2 rounded-xl transition-colors">
+          <button onClick={onClose} className="bg-white/10 hover:bg-white/20 text-white p-2 rounded-xl transition-colors flex-shrink-0">
             <X className="w-5 h-5" />
           </button>
         </div>
 
+        {/* ── Seletor de Banco para Simulação ────────────────────────────────────────── */}
+        <div className="px-6 pt-4 pb-2 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-slate-500" />
+            <span className="text-xs font-bold text-slate-700">Regras e Parâmetros Bancários:</span>
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {(['CAIXA', 'SANTANDER', 'BRADESCO', 'BB', 'GERAL'] as const).map((key) => {
+              const isSelected = selectedBankKey === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setSelectedBankKey(key)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${
+                    isSelected
+                      ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-300'
+                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  {key === 'CAIXA' && '🏛️ Caixa'}
+                  {key === 'SANTANDER' && '🔴 Santander'}
+                  {key === 'BRADESCO' && '🟥 Bradesco'}
+                  {key === 'BB' && '🟡 Banco do Brasil'}
+                  {key === 'GERAL' && '🧮 Geral de Mercado'}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── ALERTA OFICIAL: SANTANDER ABAIXO DE R$ 90 MIL ───────────────────────────── */}
+        {isSantanderBelowMin && (
+          <div className="mx-6 mt-4 p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl flex items-start gap-3 animate-in fade-in">
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <h4 className="text-xs font-black text-amber-900 uppercase">
+                ⚠️ Regra Oficial Santander: Financiamento Indisponível para Imóveis abaixo de R$ 90.000
+              </h4>
+              <p className="text-xs text-amber-800 leading-relaxed">
+                O Banco Santander exige valor de venda mínimo de <strong>R$ 90.000,00</strong> para concessão de crédito imobiliário. Para este imóvel (ofertado por <strong>{fmt(valorImovel)}</strong>), a arrematação deve ser realizada à vista ou via consórcio / crédito pessoal.
+              </p>
+              <div className="pt-1 flex items-center gap-2">
+                <button
+                  onClick={() => setSelectedBankKey('GERAL')}
+                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors"
+                >
+                  🧮 Simular na Calculadora Geral de Referência
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── BANNER DE AVISO: CALCULADORA GERAL DE MERCADO ────────────────────────────── */}
+        {selectedBankKey === 'GERAL' && (
+          <div className="mx-6 mt-3 px-4 py-2.5 rounded-xl text-xs font-medium bg-blue-50 text-blue-900 border border-blue-200 flex items-center gap-2">
+            <Info className="w-4 h-4 text-blue-600 shrink-0" />
+            <span>
+              <strong>Simulação de Referência de Mercado:</strong> Taxas, prazos e exigências de entrada são estimativas gerais e devem ser validadas diretamente com o banco emissor ou instituição financeira do arrematante.
+            </span>
+          </div>
+        )}
+
         {/* ── Dados do imóvel ─────────────────────────────────────────────── */}
-        <div className="mx-6 mt-5 p-4 bg-blue-50 border border-blue-200 rounded-2xl flex flex-wrap items-center gap-4">
+        <div className="mx-6 mt-4 p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2 min-w-[150px]">
             <Home className="w-4 h-4 text-blue-600 shrink-0" />
             <div>
-              <p className="text-[10px] text-blue-500 font-semibold uppercase tracking-wide">Preço mínimo</p>
-              <p className="text-blue-900 font-black text-sm">{fmt(valorImovel)}</p>
+              <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Preço Mínimo</p>
+              <p className="text-slate-900 font-black text-sm">{fmt(valorImovel)}</p>
             </div>
           </div>
-          <div className="hidden sm:block w-px h-8 bg-blue-200" />
+          <div className="hidden sm:block w-px h-8 bg-slate-200" />
           <div className="flex items-center gap-2 min-w-[150px]">
             <TrendingDown className="w-4 h-4 text-emerald-600 shrink-0" />
             <div>
@@ -268,448 +400,294 @@ export function FinanciamentoCaixaModal({ property, onClose }: FinanciamentoCaix
               <p className="text-emerald-800 font-black text-sm">{fmt(avaliacaoImovel)}</p>
             </div>
           </div>
-          <div className="hidden sm:block w-px h-8 bg-blue-200" />
+          <div className="hidden sm:block w-px h-8 bg-slate-200" />
           <div className="flex items-center gap-2">
             <DollarSign className="w-4 h-4 text-orange-600 shrink-0" />
             <div>
-              <p className="text-[10px] text-orange-600 font-semibold uppercase tracking-wide">Taxa referencial</p>
+              <p className="text-[10px] text-orange-600 font-semibold uppercase tracking-wide">Taxa Referencial</p>
               <p className="text-orange-800 font-black text-sm">{(taxaAnual * 100).toFixed(2)}% a.a.</p>
             </div>
           </div>
         </div>
 
-        {/* Badge: financiamento do lance */}
-        {aceitaFinanciamento && (
+        {/* Badge: financiamento do lance liberado */}
+        {aceitaFinanciamentoCaixa && (
           <div className="mx-6 mt-3 flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
             <CheckCircle className="w-4 h-4 shrink-0" />
-            <span>Financiamento do lance liberado pela CAIXA — entrada mínima de <b>5% do valor de arrematação</b></span>
+            <span>Financiamento do lance liberado pela CAIXA — entrada mínima especial de <b>5% do valor de arrematação</b></span>
           </div>
         )}
 
-        {/* Badge SFH/SFI */}
+        {/* Badge SFH/SFI & Banco */}
         <div className="mx-6 mt-3">
           <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold ${isSFH ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
             {isSFH ? <CheckCircle className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
-            {isSFH
-              ? 'SFH — Taxa poupança 6,95% a.a. · Prazo até 35 anos · Aceita FGTS'
-              : 'SFI — Avaliação acima de R$ 1,5 mi · 11,99% a.a. · Sem FGTS · Prazo até 30 anos'}
+            <span>
+              {currentBankRules.name} · Taxa {(taxaAnual * 100).toFixed(2)}% a.a. · Prazo até {prazoMax} anos
+              {currentBankRules.supportsFGTS && isSFH ? ' · Permite FGTS' : ''}
+            </span>
           </div>
         </div>
 
-        {/* ── Controles ────────────────────────────────────────────────────── */}
-        <div className="px-6 mt-5 space-y-5">
+        {/* ── Controles de Entrada e Prazo ──────────────────────────────────── */}
+        <div className="px-6 mt-4 space-y-5">
 
-          {/* Bloco 1: Entrada (R$ e % sincronizados com precisão decimal completa) */}
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
+          {/* ENTRADA */}
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black uppercase text-slate-800 flex items-center gap-1.5">
                 <DollarSign className="w-4 h-4 text-blue-600" />
-                <span className="text-xs font-black text-slate-800">Entrada do Financiamento</span>
-              </div>
-              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-lg ${
-                aceitaFinanciamento ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
-              }`}>
-                Mínimo: {entradaPctMin}% ({fmt(entradaMinReais)})
+                Valor da Entrada
+              </span>
+              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${entradaOk ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
+                {entradaOk ? `Mínimo de ${entradaPctMin}% atendido` : `Abaixo do mínimo (${entradaPctMin}%)`}
               </span>
             </div>
 
-            {/* Inputs lado a lado: Valor R$ e Percentual % */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-              {/* Campo R$ */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
-                  Valor em Dinheiro (R$)
-                </label>
-                <div className="relative flex items-center">
-                  <span className="absolute left-3 text-xs font-black text-slate-400 pointer-events-none">R$</span>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Valor em Reais (R$):</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">R$</span>
                   <input
                     type="text"
-                    inputMode="numeric"
                     value={reaisFocused ? reaisStr : fmtNumber(entradaVal)}
-                    onFocus={(e) => {
+                    onFocus={() => {
                       setReaisFocused(true);
                       setReaisStr(String(entradaVal));
-                      e.target.select();
                     }}
                     onChange={(e) => setReaisStr(e.target.value)}
                     onBlur={commitReais}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') commitReais();
-                      if (e.key === 'Escape') setReaisFocused(false);
-                    }}
-                    placeholder="Ex: 40.000"
-                    title="Digite o valor desejado em R$. Pressione Enter ou clique fora para aplicar."
-                    className="w-full text-right text-sm font-black text-blue-900 bg-white border-2 border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-xl py-2 pl-9 pr-3 outline-none transition-all shadow-xs"
+                    onKeyDown={(e) => e.key === 'Enter' && commitReais()}
+                    className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
                   />
                 </div>
               </div>
 
-              {/* Campo % */}
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
-                  Percentual (%)
-                </label>
-                <div className="relative flex items-center">
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Percentual (%):</label>
+                <div className="relative">
                   <input
                     type="text"
-                    inputMode="decimal"
                     value={pctFocused ? pctStr : fmtPctNumber(entradaPct)}
-                    onFocus={(e) => {
+                    onFocus={() => {
                       setPctFocused(true);
-                      setPctStr(Number(entradaPct.toFixed(1)).toString().replace('.', ','));
-                      e.target.select();
+                      setPctStr(fmtPctNumber(entradaPct));
                     }}
                     onChange={(e) => setPctStr(e.target.value)}
                     onBlur={commitPct}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') commitPct();
-                      if (e.key === 'Escape') setPctFocused(false);
-                    }}
-                    placeholder="Ex: 23,4"
-                    title="Digite a porcentagem desejada. Pressione Enter ou clique fora para aplicar."
-                    className="w-full text-right text-sm font-black text-blue-900 bg-white border-2 border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-xl py-2 pl-3 pr-8 outline-none transition-all shadow-xs"
+                    onKeyDown={(e) => e.key === 'Enter' && commitPct()}
+                    className="w-full pr-8 pl-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
                   />
-                  <span className="absolute right-3 text-xs font-black text-slate-400 pointer-events-none">%</span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">%</span>
                 </div>
               </div>
             </div>
 
-            {/* Slider de % */}
-            <div className="pt-1">
-              <input
-                type="range"
-                min={entradaPctMin}
-                max={80}
-                step={0.1}
-                value={Math.min(80, Math.max(entradaPctMin, Number(entradaPct.toFixed(1))))}
-                onChange={(e) => {
-                  const p = parseFloat(e.target.value);
-                  setEntradaVal(Math.round(valorImovel * (p / 100)));
-                }}
-                className="w-full h-2 accent-blue-600 cursor-pointer rounded-full"
-              />
-              <div className="flex justify-between text-[10px] text-slate-400 mt-1">
-                <span>{entradaPctMin}% ({fmt(entradaMinReais)})</span>
-                <span className="font-bold text-blue-600">{fmtPctNumber(entradaPct)}% = {fmt(entradaVal)}</span>
-                <span>80% ({fmt(Math.round(valorImovel * 0.8))})</span>
-              </div>
-            </div>
-
-            {/* Alerta caso esteja abaixo do mínimo */}
-            {!entradaOk && (
-              <div className="mt-3 flex items-center justify-between text-xs font-bold text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">
-                <span>⚠️ Entrada abaixo do mínimo exigido de {entradaPctMin}% ({fmt(entradaMinReais)})</span>
-                <button
-                  type="button"
-                  onClick={() => setEntradaVal(entradaMinReais)}
-                  className="px-2.5 py-1 bg-red-600 text-white rounded-lg text-[10px] font-bold hover:bg-red-700 transition-colors shrink-0 ml-2"
-                >
-                  Ajustar para o mínimo
-                </button>
-              </div>
-            )}
+            {/* Slider de Entrada */}
+            <input
+              type="range"
+              min={entradaPctMin}
+              max={80}
+              step={0.5}
+              value={Math.min(80, Math.max(entradaPctMin, entradaPct))}
+              onChange={(e) => {
+                const p = parseFloat(e.target.value);
+                setEntradaVal(Math.round(valorImovel * (p / 100)));
+              }}
+              className="w-full accent-blue-600 cursor-pointer"
+            />
           </div>
 
-          {/* Bloco 2: FGTS (SFH apenas) */}
-          {isSFH && (
-            <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-4">
-              <label className="flex items-center gap-2.5 cursor-pointer select-none">
+          {/* USO DE FGTS (se suportado pelo banco) */}
+          {currentBankRules.supportsFGTS && isSFH && (
+            <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-emerald-900">
                 <input
                   type="checkbox"
                   checked={useFGTS}
                   onChange={(e) => setUseFGTS(e.target.checked)}
-                  className="accent-emerald-600 w-4 h-4 rounded cursor-pointer"
+                  className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500"
                 />
-                <div>
-                  <span className="text-xs font-black text-emerald-900 block">Usar FGTS na entrada</span>
-                  <span className="text-[10px] text-emerald-700">Permite abater até 80% do valor da entrada com saldo FGTS</span>
-                </div>
+                <span>Utilizar saldo do FGTS para abater a entrada</span>
               </label>
 
               {useFGTS && (
-                <div className="mt-4 pt-3 border-t border-emerald-200/70 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-bold text-emerald-800 uppercase tracking-wide">
-                      Saldo FGTS Disponível
-                    </label>
-                    <span className="text-[11px] font-black text-emerald-700">
-                      {fmt(fgtsVal)}
-                    </span>
-                  </div>
-
-                  {/* Input manual FGTS */}
-                  <div className="relative flex items-center">
-                    <span className="absolute left-3 text-xs font-black text-emerald-500 pointer-events-none">R$</span>
+                <div className="pt-2 flex flex-wrap items-center gap-3">
+                  <div className="relative w-44">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">R$</span>
                     <input
                       type="text"
-                      inputMode="numeric"
                       value={fgtsFocused ? fgtsStr : fmtNumber(fgtsVal)}
-                      onFocus={(e) => {
+                      onFocus={() => {
                         setFgtsFocused(true);
                         setFgtsStr(String(fgtsVal));
-                        e.target.select();
                       }}
                       onChange={(e) => setFgtsStr(e.target.value)}
                       onBlur={commitFgts}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') commitFgts();
-                        if (e.key === 'Escape') setFgtsFocused(false);
-                      }}
-                      placeholder="Ex: 50.000"
-                      className="w-full text-right text-sm font-black text-emerald-900 bg-white border-2 border-emerald-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 rounded-xl py-2 pl-9 pr-3 outline-none transition-all shadow-xs"
+                      onKeyDown={(e) => e.key === 'Enter' && commitFgts()}
+                      className="w-full pl-9 pr-3 py-1.5 bg-white border border-emerald-300 rounded-xl text-xs font-black text-slate-900 focus:outline-none"
                     />
                   </div>
-
-                  {/* Slider FGTS */}
-                  <div>
-                    <input
-                      type="range"
-                      min={1_000}
-                      max={200_000}
-                      step={1_000}
-                      value={fgtsVal}
-                      onChange={(e) => setFgtsVal(Number(e.target.value))}
-                      className="w-full h-2 accent-emerald-600 cursor-pointer rounded-full"
-                    />
-                    <div className="flex justify-between text-[10px] text-emerald-600/80 mt-1">
-                      <span>{fmt(1_000)}</span>
-                      <span>{fmt(100_000)}</span>
-                      <span>{fmt(200_000)}</span>
-                    </div>
-                  </div>
-
-                  {/* Resumo do impacto do FGTS */}
-                  <div className="bg-white/80 border border-emerald-200 rounded-xl p-2.5 text-[11px] space-y-1">
-                    <div className="flex justify-between text-emerald-800">
-                      <span>FGTS aplicado na entrada:</span>
-                      <span className="font-black">{fmt(fgtsAplicado)}</span>
-                    </div>
-                    <div className="flex justify-between text-emerald-900 font-bold">
-                      <span>Entrada em recursos próprios:</span>
-                      <span className="font-black text-emerald-700">{fmt(entradaEfetiva)}</span>
-                    </div>
-                  </div>
+                  <span className="text-[11px] text-emerald-800">
+                    FGTS aplicado: <strong>{fmt(fgtsAplicado)}</strong> (Entrada líquida em dinheiro: <strong>{fmt(entradaEfetiva)}</strong>)
+                  </span>
                 </div>
               )}
             </div>
           )}
 
-          {/* Bloco 3: Prazo de Financiamento */}
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
+          {/* PRAZO */}
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black uppercase text-slate-800 flex items-center gap-1.5">
                 <Calendar className="w-4 h-4 text-blue-600" />
-                <span className="text-xs font-black text-slate-800">Prazo de Financiamento</span>
-              </div>
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-blue-100 text-blue-800">
-                Até {prazoMax} anos ({prazoMax * 12} meses)
+                Prazo de Amortização
+              </span>
+              <span className="text-[11px] font-bold text-slate-500">
+                Máximo permitido: {prazoMax} anos ({prazoMax * 12} meses)
               </span>
             </div>
 
-            {/* Inputs lado a lado: Anos e Meses */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-              {/* Campo Anos */}
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
-                  Prazo em Anos
-                </label>
-                <div className="relative flex items-center">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={anosFocused ? anosStr : `${prazoAnos}`}
-                    onFocus={(e) => {
-                      setAnosFocused(true);
-                      setAnosStr(String(prazoAnos));
-                      e.target.select();
-                    }}
-                    onChange={(e) => setAnosStr(e.target.value)}
-                    onBlur={commitAnos}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') commitAnos();
-                      if (e.key === 'Escape') setAnosFocused(false);
-                    }}
-                    placeholder={`5 a ${prazoMax}`}
-                    className="w-full text-right text-sm font-black text-blue-900 bg-white border-2 border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-xl py-2 pl-3 pr-14 outline-none transition-all shadow-xs"
-                  />
-                  <span className="absolute right-3 text-xs font-black text-slate-400 pointer-events-none">anos</span>
-                </div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Anos:</label>
+                <input
+                  type="text"
+                  value={anosFocused ? anosStr : prazoAnos}
+                  onFocus={() => {
+                    setAnosFocused(true);
+                    setAnosStr(String(prazoAnos));
+                  }}
+                  onChange={(e) => setAnosStr(e.target.value)}
+                  onBlur={commitAnos}
+                  onKeyDown={(e) => e.key === 'Enter' && commitAnos()}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
               </div>
 
-              {/* Campo Meses */}
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
-                  Prazo em Meses
-                </label>
-                <div className="relative flex items-center">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={mesesFocused ? mesesStr : `${prazoMeses}`}
-                    onFocus={(e) => {
-                      setMesesFocused(true);
-                      setMesesStr(String(prazoMeses));
-                      e.target.select();
-                    }}
-                    onChange={(e) => setMesesStr(e.target.value)}
-                    onBlur={commitMeses}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') commitMeses();
-                      if (e.key === 'Escape') setMesesFocused(false);
-                    }}
-                    placeholder={`60 a ${prazoMax * 12}`}
-                    className="w-full text-right text-sm font-black text-blue-900 bg-white border-2 border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-xl py-2 pl-3 pr-16 outline-none transition-all shadow-xs"
-                  />
-                  <span className="absolute right-3 text-xs font-black text-slate-400 pointer-events-none">meses</span>
-                </div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Meses:</label>
+                <input
+                  type="text"
+                  value={mesesFocused ? mesesStr : prazoMeses}
+                  onFocus={() => {
+                    setMesesFocused(true);
+                    setMesesStr(String(prazoMeses));
+                  }}
+                  onChange={(e) => setMesesStr(e.target.value)}
+                  onBlur={commitMeses}
+                  onKeyDown={(e) => e.key === 'Enter' && commitMeses()}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
               </div>
             </div>
 
-            {/* Slider de Anos */}
-            <div className="pt-1">
-              <input
-                type="range"
-                min={5}
-                max={prazoMax}
-                step={1}
-                value={prazoAnos}
-                onChange={(e) => {
-                  const anos = parseInt(e.target.value, 10);
-                  setPrazoAnos(anos);
-                }}
-                className="w-full h-2 accent-blue-600 cursor-pointer rounded-full"
-              />
-              <div className="flex justify-between text-[10px] text-slate-400 mt-1">
-                <span>5 anos (60 meses)</span>
-                <span className="font-bold text-blue-600">{prazoAnos} anos ({prazoMeses} meses)</span>
-                <span>{prazoMax} anos ({prazoMax * 12} meses)</span>
-              </div>
+            <input
+              type="range"
+              min={5}
+              max={prazoMax}
+              value={prazoAnos}
+              onChange={(e) => setPrazoAnos(parseInt(e.target.value, 10))}
+              className="w-full accent-blue-600 cursor-pointer"
+            />
+          </div>
+
+          {/* SISTEMA DE AMORTIZAÇÃO (SAC / PRICE) */}
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-bold text-slate-700">Tabela de Amortização:</span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSistema('SAC')}
+                className={`px-4 py-1.5 rounded-xl text-xs font-black transition-all ${
+                  sistema === 'SAC'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                SAC (Parcelas Decrescentes)
+              </button>
+              <button
+                onClick={() => setSistema('PRICE')}
+                className={`px-4 py-1.5 rounded-xl text-xs font-black transition-all ${
+                  sistema === 'PRICE'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                PRICE (Parcelas Fixas)
+              </button>
             </div>
           </div>
 
-          {/* Bloco 4: Sistema de Amortização */}
-          <div>
-            <p className="text-xs font-black text-slate-700 mb-2">Sistema de Amortização</p>
-            <div className="grid grid-cols-2 gap-2">
-              {(['SAC', 'PRICE'] as Sistema[]).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setSistema(s)}
-                  className={`py-2.5 rounded-xl text-xs font-black transition-all border ${
-                    sistema === s
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-md'
-                      : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'
-                  }`}
-                >
-                  {s === 'SAC' ? '📉 SAC (decrescentes)' : '📊 PRICE (fixas)'}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
-        {/* ── Resultado ────────────────────────────────────────────────────── */}
-        {resultado && entradaOk ? (
-          <div className="mx-6 mt-6 bg-gradient-to-br from-blue-700 to-blue-900 rounded-2xl p-5 text-white">
-            <p className="text-blue-200 text-[10px] font-bold uppercase tracking-widest mb-3">Resultado da Simulação · {sistema}</p>
-            <div className="grid grid-cols-2 gap-4">
+        {/* ── RESULTADOS DO FINANCIAMENTO ──────────────────────────────────── */}
+        {resultado && (
+          <div className="m-6 p-5 bg-gradient-to-br from-slate-900 to-blue-950 text-white rounded-3xl space-y-4 shadow-lg">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <span className="text-[10px] font-black uppercase tracking-wider text-blue-300">
+                Resultado da Simulação · {currentBankRules.name} ({sistema})
+              </span>
+              <span className="text-xs text-slate-400 font-medium">
+                Prazo: {prazoAnos} anos ({prazoMeses} meses)
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
-                <p className="text-blue-200 text-[10px] font-semibold">1ª Parcela</p>
-                <p className="text-white font-black text-xl">{fmt(resultado.parcela1)}</p>
+                <span className="text-[10px] text-slate-400 block uppercase font-bold">1ª Parcela:</span>
+                <span className="text-lg sm:text-xl font-black text-emerald-400">
+                  {fmt(resultado.parcela1)}
+                </span>
               </div>
-              {sistema === 'SAC' && (
-                <div>
-                  <p className="text-blue-200 text-[10px] font-semibold">Última Parcela</p>
-                  <p className="text-white font-black text-xl">{fmt(resultado.parcelaUltima)}</p>
-                </div>
-              )}
+
               <div>
-                <p className="text-blue-200 text-[10px] font-semibold">Saldo Financiado</p>
-                <p className="text-white font-black text-lg">{fmt(resultado.saldoFinanciado)}</p>
+                <span className="text-[10px] text-slate-400 block uppercase font-bold">Última Parcela:</span>
+                <span className="text-lg sm:text-xl font-black text-white">
+                  {fmt(resultado.parcelaUltima)}
+                </span>
               </div>
+
               <div>
-                <p className="text-blue-200 text-[10px] font-semibold">Total de Juros</p>
-                <p className="text-orange-300 font-black text-lg">{fmt(resultado.totalJuros)}</p>
+                <span className="text-[10px] text-slate-400 block uppercase font-bold">Saldo Financiado:</span>
+                <span className="text-sm sm:text-base font-black text-slate-200">
+                  {fmt(resultado.saldoFinanciado)}
+                </span>
               </div>
-              <div className="col-span-2 border-t border-blue-500/40 pt-3">
-                <p className="text-blue-200 text-[10px] font-semibold">Total Pago no Prazo</p>
-                <p className="text-white font-black text-2xl">{fmt(resultado.totalPago)}</p>
+
+              <div>
+                <span className="text-[10px] text-slate-400 block uppercase font-bold">Total de Juros:</span>
+                <span className="text-sm sm:text-base font-black text-amber-400">
+                  {fmt(resultado.totalJuros)}
+                </span>
               </div>
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {[
-                { label: 'Entrada Total', val: fmt(entradaVal), color: 'bg-blue-600/60' },
-                {
-                  label: useFGTS && isSFH ? 'FGTS Usado' : 'Financiado',
-                  val: useFGTS && isSFH ? fmt(fgtsAplicado) : fmt(resultado.saldoFinanciado),
-                  color: 'bg-emerald-600/60',
-                },
-                {
-                  label: 'Custo Juros',
-                  val: `${((resultado.totalJuros / resultado.saldoFinanciado) * 100).toFixed(0)}%`,
-                  color: 'bg-orange-600/60',
-                },
-              ].map(({ label, val, color }) => (
-                <div key={label} className={`${color} rounded-xl p-2 text-center`}>
-                  <p className="text-[9px] text-white/70 font-semibold">{label}</p>
-                  <p className="text-white font-black text-[11px]">{val}</p>
-                </div>
-              ))}
+
+            <div className="pt-2 border-t border-white/10 flex items-center justify-between text-xs text-slate-300">
+              <span>Valor Total a Pagar ao Longo do Financiamento:</span>
+              <span className="font-black text-white">{fmt(resultado.totalPago)}</span>
             </div>
           </div>
-        ) : !entradaOk ? (
-          <div className="mx-6 mt-6 bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
-            <p className="text-red-700 text-xs font-bold">
-              Entrada mínima para {isSFH ? 'SFH' : 'SFI'}: {entradaPctMin}% · {fmt(entradaMinReais)}
-            </p>
-          </div>
-        ) : null}
+        )}
 
-        {/* ── Info colapsável ──────────────────────────────────────────────── */}
-        <div className="px-6 mt-4">
+        {/* ── Footer ──────────────────────────────────────────────────────── */}
+        <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between rounded-b-3xl">
+          <p className="text-[11px] text-slate-500">
+            {currentBankRules.note}
+          </p>
           <button
-            type="button"
-            onClick={() => setShowInfo(!showInfo)}
-            className="w-full flex items-center justify-between text-[11px] text-slate-500 font-semibold py-2 border-t border-slate-100 cursor-pointer"
-          >
-            <span className="flex items-center gap-1.5"><Info className="w-3.5 h-3.5" /> Taxas e regras utilizadas</span>
-            {showInfo ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          </button>
-          {showInfo && (
-            <div className="text-[10px] text-slate-500 leading-relaxed pb-3 space-y-1">
-              <p>• <b>SFH:</b> avaliação ≤ R$ 1,5 mi · Taxa poupança 6,95% a.a. · Prazo até 35 anos · Aceita FGTS</p>
-              <p>• <b>SFI:</b> avaliação {'>'} R$ 1,5 mi · 11,99% a.a. · Prazo até 30 anos · Sem FGTS</p>
-              <p>• <b>SAC:</b> amortização constante, parcelas decrescentes. <b>PRICE:</b> parcelas fixas.</p>
-              <p>• Campos manuais com seleção rápida ao clicar: digite qualquer valor ou use atalhos como "40k" ou "40 mil".</p>
-              <p>• Simulação meramente informativa. Valores sujeitos à análise de crédito da CAIXA.</p>
-              <p>• Taxas referenciais vigentes. Consulte a CAIXA para condições oficiais personalizadas.</p>
-            </div>
-          )}
-        </div>
-
-        {/* ── Rodapé ───────────────────────────────────────────────────────── */}
-        <div className="px-6 pb-6 pt-2 flex flex-wrap gap-3 justify-between items-center border-t border-slate-100 mt-2">
-          <button
-            type="button"
             onClick={onClose}
-            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs px-5 py-2.5 rounded-xl transition-colors cursor-pointer"
+            className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs rounded-xl transition-all shadow-sm"
           >
-            Fechar
+            Fechar Simulador
           </button>
-          <a
-            href="https://simuladorhabitacao.caixa.gov.br/home"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs px-5 py-2.5 rounded-xl transition-colors shadow-md"
-          >
-            <ExternalLink className="w-3.5 h-3.5" />
-            Simulador Oficial CAIXA
-          </a>
         </div>
 
       </div>
     </div>
   );
 }
+
+// Export alternativo para fins semânticos
+export { FinanciamentoCaixaModal as FinanciamentoBancarioModal };

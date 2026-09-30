@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import type { Property } from '../types/auction';
 import { calculateMaxBid, formatCurrencyBRL } from '../utils/financial';
-import { Calculator, X, Sparkles } from 'lucide-react';
+import { X, Sparkles } from 'lucide-react';
+import { PropertyHeaderSummary } from './PropertyHeaderSummary';
 
 interface MaxBidCalculatorProps {
   property: Property;
@@ -26,18 +27,17 @@ export const MaxBidCalculator: React.FC<MaxBidCalculatorProps> = ({ property, on
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
       <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
         
-        {/* Header */}
-        <div className="p-5 bg-gradient-to-r from-slate-900 to-slate-800 text-white flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-2xl bg-orange-500/20 border border-orange-500/30 flex items-center justify-center text-orange-400">
-              <Calculator className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-black text-base text-white">Motor do Lance Máximo Racional</h3>
-              <p className="text-xs text-slate-300 truncate max-w-sm">{property.title}</p>
-            </div>
+        {/* Header com Informações do Banco e Resumo do Imóvel */}
+        <div className="p-5 bg-gradient-to-r from-slate-950 via-slate-900 to-amber-950 text-white flex items-start justify-between gap-4 border-b border-amber-900/60">
+          <div className="flex-1 pr-2">
+            <PropertyHeaderSummary
+              property={property}
+              contextTitle="Motor do Lance Máximo Racional"
+              contextBadge="Etapa 4 · Preço-Teto & ROI"
+              showKpis={true}
+            />
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-white/10">
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-white/10 transition-colors flex-shrink-0">
             <X className="w-5 h-5" />
           </button>
         </div>

@@ -432,7 +432,29 @@ export function getPaymentConditions(prop: any): PaymentConditionsResult {
     };
   }
 
-  // 3. CAIXA ECONÔMICA FEDERAL (PADRÃO)
+  // 3. BANCO DO BRASIL
+  if (bank.includes('BRASIL') || bank.includes('BB')) {
+    const maxInstallments = prop.max_installments || 420;
+    const minDownPayment = prop.min_down_payment || Math.round(saleVal * 0.20);
+    const financed = Math.max(0, saleVal - minDownPayment);
+    const minInstallmentValue = prop.min_installment_value || (financed > 0 ? Math.round((financed / maxInstallments) + (financed * 0.0082)) : 0);
+
+    const paymentText = prop.payment_conditions ||
+      `À vista com recursos próprios ou Financiamento Imobiliário Banco do Brasil em até ${maxInstallments} meses (Entrada mínima de 20%: R$ ${minDownPayment.toLocaleString('pt-BR')}, aceita FGTS conforme regras do SFH).`;
+
+    return {
+      canFinance: saleVal > 0,
+      maxInstallments,
+      minDownPayment,
+      minInstallmentValue,
+      paymentConditionsText: paymentText,
+      officialConditionText: paymentText,
+      isSantander: false,
+      ruleNote: `Financiável BB: Entrada 20% | até ${maxInstallments}x`,
+    };
+  }
+
+  // 4. CAIXA ECONÔMICA FEDERAL (PADRÃO)
   const acceptsFinancing = prop.accepts_financing !== false && prop.acceptsBankFinancing !== false;
   const maxInstallments = acceptsFinancing ? (prop.max_installments || 420) : 1;
   const minDownPayment = acceptsFinancing ? Math.round(saleVal * 0.05) : saleVal;
@@ -464,9 +486,20 @@ export function getPaymentConditions(prop: any): PaymentConditionsResult {
  * - Bradesco: BRD-484406 ou BRD-27019
  * - Caixa: CXA-844440012345
  */
-export function formatStandardPropertyId(source?: string | null, rawId?: string | number | null, prop?: any): string {
-  const bank = String(source || prop?.source || prop?.bankName || 'CAIXA').toUpperCase();
-  const idStr = String(rawId || prop?.id || prop?.source_property_id || '').trim();
+export function formatStandardPropertyId(sourceOrProp?: any, rawId?: string | number | null, propParam?: any): string {
+  let bank = '';
+  let idStr = '';
+  let prop: any = null;
+
+  if (sourceOrProp && typeof sourceOrProp === 'object') {
+    prop = sourceOrProp;
+    bank = String(prop?.source || prop?.bankName || prop?.originBank || 'CAIXA').toUpperCase();
+    idStr = String(prop?.id || prop?.source_property_id || prop?.code || '').trim();
+  } else {
+    prop = propParam;
+    bank = String(sourceOrProp || prop?.source || prop?.bankName || 'CAIXA').toUpperCase();
+    idStr = String(rawId || prop?.id || prop?.source_property_id || '').trim();
+  }
 
   // 1. SANTANDER
   if (bank.includes('SANTANDER')) {

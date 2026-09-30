@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import {
-  Globe,
   ExternalLink,
   ShieldCheck,
   CheckCircle2,
   X,
 } from 'lucide-react';
 import { estimateRegistryFees } from '../utils/journeyEngine';
+import { PropertyHeaderSummary } from './PropertyHeaderSummary';
 
 interface SaecRegistryModalProps {
   property: any;
@@ -25,7 +25,6 @@ export const SaecRegistryModal: React.FC<SaecRegistryModalProps> = ({
   onClose,
   onSaveRegistry,
 }) => {
-  const city = property.address?.city || property.city || 'São Paulo';
   const state = property.address?.state || property.state || 'SP';
   const baseValue = winningBidAmount || Number(property.secondAuctionPrice || property.sale_value || 300000);
 
@@ -48,32 +47,19 @@ export const SaecRegistryModal: React.FC<SaecRegistryModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in">
       <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-slate-200 flex flex-col max-h-[92vh] overflow-hidden">
         
-        {/* Header */}
-        <div className="p-5 bg-gradient-to-r from-blue-900 via-sky-950 to-slate-900 text-white flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-11 h-11 rounded-2xl bg-sky-500/20 border border-sky-500/30 flex items-center justify-center text-sky-300">
-              <Globe className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black uppercase tracking-wider bg-sky-500/30 text-sky-200 px-2 py-0.5 rounded-full border border-sky-400/30">
-                  Etapa 14 · Registro Imobiliário
-                </span>
-                <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                  100% Online via SAEC / ONR
-                </span>
-              </div>
-              <h2 className="text-base sm:text-lg font-black text-white mt-0.5">
-                Protocolo Eletrônico de Registro (RGI)
-              </h2>
-              <p className="text-xs text-slate-300 truncate max-w-md">
-                {property.title || property.address?.street} — {city}/{state}
-              </p>
-            </div>
+        {/* Header com Informações do Banco e Resumo do Imóvel */}
+        <div className="p-5 bg-gradient-to-r from-blue-950 via-sky-950 to-slate-950 text-white flex items-start justify-between gap-4 border-b border-sky-900/60">
+          <div className="flex-1 pr-2">
+            <PropertyHeaderSummary
+              property={property}
+              contextTitle="Protocolo Eletrônico de Registro (RGI)"
+              contextBadge="Etapa 14 · SAEC / ONR"
+              showKpis={true}
+            />
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-white/10 transition-colors"
+            className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-white/10 transition-colors flex-shrink-0"
           >
             <X className="w-5 h-5" />
           </button>

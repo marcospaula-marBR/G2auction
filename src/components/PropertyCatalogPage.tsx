@@ -272,7 +272,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
               Catálogo de Imóveis dos Bancos
             </h1>
             <p className="text-xs text-slate-300 font-medium mt-1">
-              Oportunidades oficiais da Caixa Econômica Federal, Banco Santander e Banco Bradesco.
+              Oportunidades oficiais da Caixa Econômica Federal, Banco Santander, Banco Bradesco e Banco do Brasil.
             </p>
 
             {/* Quick Pills de Bancos */}
@@ -282,6 +282,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
                 { id: 'CAIXA', label: '🏛️ Caixa Econômica' },
                 { id: 'SANTANDER', label: '🔴 Santander' },
                 { id: 'BRADESCO', label: '🟥 Bradesco' },
+                { id: 'BB', label: '🟡 Banco do Brasil' },
               ].map((b) => (
                 <button
                   key={b.id}
@@ -378,10 +379,11 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
               onChange={(e) => setSelectedBank(e.target.value)}
               className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 font-bold text-slate-800 focus:ring-2 focus:ring-orange-500"
             >
-              <option value="ALL">🏦 Todos os Bancos (Caixa, Santander, Bradesco)</option>
+              <option value="ALL">🏦 Todos os Bancos (Caixa, Santander, Bradesco, BB)</option>
               <option value="CAIXA">🏛️ Caixa Econômica Federal</option>
               <option value="SANTANDER">🔴 Banco Santander</option>
               <option value="BRADESCO">🟥 Banco Bradesco</option>
+              <option value="BB">🟡 Banco do Brasil (Seu Imóvel BB)</option>
             </select>
           </div>
           
@@ -778,6 +780,11 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
                                 Bradesco
                               </span>
                             )}
+                            {(prop.source === 'BB' || prop.source === 'BRASIL') && (
+                              <span className="bg-yellow-400 text-blue-950 font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider border border-yellow-500">
+                                🟡 Banco do Brasil
+                              </span>
+                            )}
                             {(!prop.source || prop.source === 'CAIXA') && (
                               <span className="bg-blue-600 text-white font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider">
                                 Caixa
@@ -944,7 +951,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
                     </button>
 
                     <a
-                      href={prop.source_url || (isCaixa ? getCaixaPropertyPageUrl(prop) : 'https://www.santanderimoveis.com.br')}
+                      href={prop.source_url || (isCaixa ? getCaixaPropertyPageUrl(prop) : prop.source === 'BB' ? 'https://www.seuimovelbb.com.br' : prop.source === 'BRADESCO' ? 'https://vitrinebradesco.com.br' : 'https://www.santanderimoveis.com.br')}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold text-xs py-3 rounded-2xl transition-colors flex items-center justify-center space-x-1 text-center"

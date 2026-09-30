@@ -62,7 +62,8 @@ export const PropertyDiscovery: React.FC<PropertyDiscoveryProps> = ({
       const matchesBank = selectedBank === 'Todas' 
         || (selectedBank === 'CAIXA' && bankName.includes('CAIXA'))
         || (selectedBank === 'SANTANDER' && bankName.includes('SANTANDER'))
-        || (selectedBank === 'BRADESCO' && bankName.includes('BRADESCO'));
+        || (selectedBank === 'BRADESCO' && bankName.includes('BRADESCO'))
+        || (selectedBank === 'BB' && (bankName.includes('BRASIL') || bankName.includes('BB')));
 
       const matchesState = selectedState === 'Todos' || p.address.state === selectedState;
       const matchesCity = !selectedCity || p.address.city.toLowerCase().includes(selectedCity.toLowerCase());
@@ -117,7 +118,7 @@ export const PropertyDiscovery: React.FC<PropertyDiscoveryProps> = ({
               <span className="bg-orange-500 text-slate-950 font-black text-[10px] px-2 py-0.5 rounded-md uppercase tracking-wider">
                 Multi-Bancos Oficial
               </span>
-              <span className="text-xs font-bold text-slate-300">CAIXA • Santander • Bradesco</span>
+              <span className="text-xs font-bold text-slate-300">CAIXA • Santander • Bradesco • Banco do Brasil</span>
             </div>
             <h2 className="text-base font-extrabold text-white mt-0.5">
               Mapa e Descoberta Inteligente de Oportunidades
@@ -172,9 +173,10 @@ export const PropertyDiscovery: React.FC<PropertyDiscoveryProps> = ({
             className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5 text-xs font-black text-orange-950 focus:ring-2 focus:ring-orange-500"
           >
             <option value="Todas">🏦 Todos os Bancos</option>
-            <option value="CAIXA">🏦 Caixa Econômica (CEF)</option>
-            <option value="SANTANDER">🏦 Banco Santander</option>
-            <option value="BRADESCO">🏦 Banco Bradesco</option>
+            <option value="CAIXA">🏛️ Caixa Econômica (CEF)</option>
+            <option value="SANTANDER">🔴 Banco Santander</option>
+            <option value="BRADESCO">🟥 Banco Bradesco</option>
+            <option value="BB">🟡 Banco do Brasil</option>
           </select>
 
           {/* Estado UF */}

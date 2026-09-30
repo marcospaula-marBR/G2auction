@@ -21,13 +21,15 @@ import { mockParceiros } from '../data/mockParceiros';
 import {
   MapPin, TrendingUp, CheckCircle2,
   Shield, DollarSign, Sparkles, Building2,
-  Scale, Receipt, Printer, RefreshCw,
+  Scale, Receipt, Printer, RefreshCw, Tag,
 } from 'lucide-react';
 import { formatCurrencyBRL } from '../utils/financial';
 import { analyzePropertyWithG2AI } from '../utils/aiEditalEngine';
 import {
   runJourneyAutoDiagnostic,
 } from '../utils/journeyEngine';
+import { getBankBadgeConfig } from './PropertyHeaderSummary';
+import { formatStandardPropertyId } from '../utils/propertyAuctionHelper';
 
 interface JourneyPageProps {
   property: Property;
@@ -171,6 +173,9 @@ export const JourneyPage: React.FC<JourneyPageProps> = ({
   const completedCount = JOURNEY_STEPS.filter(s => (stepStatuses[s.number] ?? 'not_started') === 'completed').length;
   const progressPct = Math.round((completedCount / 21) * 100);
 
+  const bankInfo = getBankBadgeConfig(property);
+  const standardId = formatStandardPropertyId(property);
+
   return (
     <div className="space-y-4">
 
@@ -179,9 +184,17 @@ export const JourneyPage: React.FC<JourneyPageProps> = ({
         
         {/* Top Switcher & Badges */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             <span className="bg-orange-500 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
               Minha Jornada Ativa
+            </span>
+            <span className={`inline-flex items-center gap-1 text-[10px] font-black px-2.5 py-0.5 rounded-full border ${bankInfo.badgeClass}`}>
+              <span>{bankInfo.emoji}</span>
+              <span>{bankInfo.shortName}</span>
+            </span>
+            <span className="inline-flex items-center gap-1 text-[10px] font-black font-mono px-2 py-0.5 rounded-full bg-slate-900 text-orange-400 border border-slate-700 shadow-2xs">
+              <Tag className="w-3 h-3 text-orange-400" />
+              <span>{standardId}</span>
             </span>
             <span className="bg-orange-100 text-orange-700 text-[10px] font-black px-2 py-0.5 rounded-full border border-orange-200">
               {property.acquisitionType}
@@ -491,6 +504,7 @@ export const JourneyPage: React.FC<JourneyPageProps> = ({
       {/* MODAL 5: Central de Certidões Negativas 100% Gratuitas */}
       {showFreeCertificates && (
         <FreeCertificatesModal
+          property={property}
           propertyTitle={property.title}
           city={property.address.city}
           state={property.address.state}

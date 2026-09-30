@@ -73,11 +73,19 @@ export const PropertyReportModal: React.FC<PropertyReportModalProps> = ({ proper
 
           {/* Resumo do Ativo */}
           <div className="space-y-3">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-orange-600">1. Identificação do Ativo</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-orange-600">1. Identificação do Ativo</span>
+              <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-900 border border-blue-200">
+                🏦 {property.bankName || property.originBank || 'Caixa Econômica Federal'}
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                {property.acquisitionType}
+              </span>
+            </div>
             <h2 className="text-xl font-black text-slate-900">{property.title}</h2>
             <p className="text-xs text-slate-600 leading-relaxed">{property.description}</p>
             <div className="text-xs text-slate-500 font-semibold">
-              Endereço: {property.address.street}, {property.address.number} - {property.address.neighborhood}, {property.address.city}/{property.address.state} (CEP: {property.address.zip})
+              Endereço: {property.address.street}, {property.address.number || ''} - {property.address.neighborhood}, {property.address.city}/{property.address.state} (CEP: {property.address.zip})
             </div>
           </div>
 

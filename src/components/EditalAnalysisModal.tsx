@@ -16,6 +16,7 @@ import {
 import { formatCurrencyBRL } from '../utils/financial';
 import { getCaixaEditalUrl, getCaixaPropertyPageUrl, getCaixaEditaisCentralUrl } from '../utils/caixaEditalHelper';
 import { analyzePropertyWithG2AI } from '../utils/aiEditalEngine';
+import { PropertyHeaderSummary } from './PropertyHeaderSummary';
 
 interface EditalAnalysisModalProps {
   property: any;
@@ -32,7 +33,6 @@ export const EditalAnalysisModal: React.FC<EditalAnalysisModalProps> = ({
   const propertyPageUrl = getCaixaPropertyPageUrl(property);
   const centralEditaisUrl = getCaixaEditaisCentralUrl();
   
-  const title = property.title || property.address || `Imóvel CAIXA #${cleanId}`;
   const city = property.city || property.address?.city || 'São Paulo';
   const state = property.state || property.address?.state || 'SP';
   const saleValue = property.current_minimum_value || property.sale_value || property.secondAuctionPrice || 350000;
@@ -72,30 +72,20 @@ export const EditalAnalysisModal: React.FC<EditalAnalysisModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-md p-3 sm:p-6 animate-in fade-in">
       <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
         
-        {/* Topbar do Modal */}
-        <div className="p-5 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white flex items-center justify-between border-b border-slate-800">
-          <div className="flex items-center space-x-3">
-            <div className="w-11 h-11 rounded-2xl bg-orange-500/20 border border-orange-500/40 flex items-center justify-center text-orange-400 font-black">
-              <Sparkles className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <span className="text-[10px] font-black uppercase tracking-wider bg-orange-500 text-white px-2 py-0.5 rounded-md">
-                  G2 AI — Análise de Edital
-                </span>
-                <span className="text-[10px] font-mono text-slate-300 bg-slate-800 px-2 py-0.5 rounded-md">
-                  ID Caixa: #{cleanId}
-                </span>
-              </div>
-              <h2 className="font-extrabold text-base sm:text-lg text-white leading-tight mt-0.5 truncate max-w-xl">
-                {title}
-              </h2>
-            </div>
+        {/* Topbar do Modal com Informações do Banco e Resumo do Imóvel */}
+        <div className="p-5 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white flex items-start justify-between gap-4 border-b border-slate-800">
+          <div className="flex-1 pr-2">
+            <PropertyHeaderSummary
+              property={property}
+              contextTitle="G2 AI — Análise de Edital & Regulamento"
+              contextBadge="Auditoria Jurídica & Riscos"
+              showKpis={true}
+            />
           </div>
 
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-white/10 transition-colors"
+            className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-white/10 transition-colors flex-shrink-0"
           >
             <X className="w-5 h-5" />
           </button>

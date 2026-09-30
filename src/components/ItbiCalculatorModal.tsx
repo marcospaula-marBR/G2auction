@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Receipt,
   X,
   ExternalLink,
   CheckCircle2,
@@ -13,6 +12,7 @@ import {
   ITBI_MUNICIPAL_RATES,
   getIptuPortalLink,
 } from '../utils/journeyEngine';
+import { PropertyHeaderSummary } from './PropertyHeaderSummary';
 
 interface ItbiCalculatorModalProps {
   property: any;
@@ -82,32 +82,19 @@ export const ItbiCalculatorModal: React.FC<ItbiCalculatorModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in">
       <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-slate-200 flex flex-col max-h-[92vh] overflow-hidden">
         
-        {/* Header */}
-        <div className="p-5 bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-11 h-11 rounded-2xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-300">
-              <Receipt className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black uppercase tracking-wider bg-blue-500/30 text-blue-200 px-2 py-0.5 rounded-full border border-blue-400/30">
-                  Etapa 13 · Tributo Municipal
-                </span>
-                <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                  STJ Tema 1.113
-                </span>
-              </div>
-              <h2 className="text-base sm:text-lg font-black text-white mt-0.5">
-                Calculadora Oficial de ITBI
-              </h2>
-              <p className="text-xs text-slate-300 truncate max-w-md">
-                {property.title || property.address?.street} — {city}/{state}
-              </p>
-            </div>
+        {/* Header com Informações do Banco e Resumo do Imóvel */}
+        <div className="p-5 bg-gradient-to-r from-blue-950 via-indigo-950 to-slate-950 text-white flex items-start justify-between gap-4 border-b border-blue-900/60">
+          <div className="flex-1 pr-2">
+            <PropertyHeaderSummary
+              property={property}
+              contextTitle="Calculadora Oficial de ITBI Municipal"
+              contextBadge="Etapa 13 · STJ Tema 1.113"
+              showKpis={true}
+            />
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-white/10 transition-colors"
+            className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-white/10 transition-colors flex-shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
