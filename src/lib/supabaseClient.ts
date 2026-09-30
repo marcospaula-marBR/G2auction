@@ -166,6 +166,7 @@ export interface PropertyUpsertPayload {
   auctioneer?: string | null;
   first_auction_date?: string | null;
   second_auction_date?: string | null;
+  auction_date?: string | null;
   source_url?: string | null;
   main_photo_url?: string | null;
   status?: string;

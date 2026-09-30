@@ -724,6 +724,30 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = () => {
                       );
                     })()}
 
+                    {/* Badge 1º e 2º Leilão ou Data do Leilão */}
+                    {(() => {
+                      const aInfo = getAuctionValues(prop);
+                      if (aInfo.hasBothAuctions) {
+                        return (
+                          <div className="absolute top-11 left-3 bg-amber-500 text-slate-950 font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-md flex items-center gap-1 border border-amber-300">
+                            {aInfo.firstAuctionExpired
+                              ? `⚡ 2º Leilão: ${aInfo.formattedSecondAuctionDate || aInfo.formattedMainAuctionDate || 'Ativo'}`
+                              : aInfo.formattedFirstAuctionDate
+                              ? `⚡ 1º Leilão: ${aInfo.formattedFirstAuctionDate}`
+                              : '⚡ 1º e 2º Leilão'}
+                          </div>
+                        );
+                      }
+                      if (aInfo.formattedMainAuctionDate) {
+                        return (
+                          <div className="absolute top-11 left-3 bg-orange-600 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-md flex items-center gap-1">
+                            📅 {aInfo.formattedMainAuctionDate}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+
                     {/* ID do Imóvel */}
                     <div className="absolute bottom-2 right-2 bg-slate-900/80 text-white text-[10px] font-mono px-2 py-0.5 rounded-lg backdrop-blur-xs">
                       ID: {prop.source_property_id}
@@ -784,7 +808,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = () => {
                           <div className="bg-amber-50/70 p-3.5 rounded-2xl border border-amber-200 space-y-2 text-xs">
                             <div className="flex items-center justify-between pb-1.5 border-b border-amber-200/80">
                               <span className="text-[10px] font-black text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded-md flex items-center gap-1">
-                                ⚡ LEILÃO EM 2 PRAÇAS
+                                ⚡ {auctionInfo.firstAuctionExpired ? '2º LEILÃO ATIVO (1ª PRAÇA ENCERRADA)' : 'LEILÃO EM 2 PRAÇAS'}
                               </span>
                               <span className="text-[9px] font-bold text-amber-800" title="Para filtros de preço, o sistema considera o maior valor">
                                 Filtro: {formatCurrencyBRL(auctionInfo.higherPriceForFilter)}
@@ -796,24 +820,41 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = () => {
                                 <span className="text-xs font-black text-slate-800">
                                   {formatCurrencyBRL(auctionInfo.firstAuctionValue)}
                                 </span>
-                                {auctionInfo.formattedFirstAuctionDate && (
-                                  <span className="text-[10px] font-bold text-slate-600 block truncate mt-0.5" title={auctionInfo.formattedFirstAuctionDate}>
+                                {auctionInfo.formattedFirstAuctionDate ? (
+                                  <span className="text-[10px] font-bold text-amber-900 bg-amber-100/90 px-1.5 py-0.5 rounded block truncate mt-0.5" title={auctionInfo.formattedFirstAuctionDate}>
                                     📅 {auctionInfo.formattedFirstAuctionDate}
                                   </span>
-                                )}
+                                ) : auctionInfo.firstAuctionExpired ? (
+                                  <span className="text-[9px] font-bold text-slate-400 block truncate mt-0.5">
+                                    ⚠️ 1ª Praça encerrada
+                                  </span>
+                                ) : null}
                               </div>
                               <div>
                                 <span className="text-slate-500 font-bold block text-[9px] uppercase">2º LEILÃO ({prop.source || 'BANCO'}):</span>
                                 <span className="text-sm font-black text-emerald-600">
                                   {formatCurrencyBRL(auctionInfo.secondAuctionValue)}
                                 </span>
-                                {auctionInfo.formattedSecondAuctionDate && (
-                                  <span className="text-[10px] font-bold text-emerald-700 block truncate mt-0.5" title={auctionInfo.formattedSecondAuctionDate}>
+                                {auctionInfo.formattedSecondAuctionDate ? (
+                                  <span className="text-[10px] font-bold text-emerald-900 bg-emerald-100/90 px-1.5 py-0.5 rounded block truncate mt-0.5" title={auctionInfo.formattedSecondAuctionDate}>
                                     📅 {auctionInfo.formattedSecondAuctionDate}
+                                  </span>
+                                ) : null}
+                                {auctionInfo.firstAuctionExpired && (
+                                  <span className="text-[9px] font-black text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded uppercase block mt-1">
+                                    🎯 Praça Ativa
                                   </span>
                                 )}
                               </div>
                             </div>
+                            {auctionInfo.formattedMainAuctionDate && (
+                              <div className="flex items-center justify-between text-[10px] text-orange-900 font-extrabold pt-1.5 border-t border-amber-200/60">
+                                <span className="flex items-center gap-1">📅 Prazo do Leilão Ativo:</span>
+                                <span className="bg-white px-2 py-0.5 rounded border border-amber-300 font-black">
+                                  {auctionInfo.formattedMainAuctionDate}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="space-y-2">
@@ -1020,7 +1061,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = () => {
                     <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200 space-y-3">
                       <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-amber-200">
                         <span className="text-xs font-black text-amber-900 bg-amber-100 px-2.5 py-0.5 rounded-md flex items-center gap-1">
-                          ⚡ LEILÃO EM 2 PRAÇAS (1º E 2º LEILÃO)
+                          ⚡ {aInfo.firstAuctionExpired ? '2º LEILÃO ATIVO (1ª PRAÇA JÁ ENCERRADA)' : 'LEILÃO EM 2 PRAÇAS (1º E 2º LEILÃO)'}
                         </span>
                         <span className="text-[11px] font-bold text-amber-800" title="Para filtros de preço, o sistema utiliza o maior valor">
                           Filtro de busca utiliza o maior valor: {formatCurrencyBRL(aInfo.higherPriceForFilter)}
@@ -1032,11 +1073,15 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = () => {
                           <span className="text-base font-black text-slate-800">
                             {formatCurrencyBRL(aInfo.firstAuctionValue)}
                           </span>
-                          {aInfo.formattedFirstAuctionDate && (
+                          {aInfo.formattedFirstAuctionDate ? (
                             <span className="text-[11px] font-bold text-slate-600 block mt-0.5">
                               📅 {aInfo.formattedFirstAuctionDate}
                             </span>
-                          )}
+                          ) : aInfo.firstAuctionExpired ? (
+                            <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded inline-block mt-1">
+                              ⚠️ 1ª Praça já encerrada
+                            </span>
+                          ) : null}
                         </div>
                         <div className="bg-white p-3 rounded-xl border border-emerald-200">
                           <span className="text-slate-400 font-bold block text-[10px]">2º LEILÃO (LANCE MÍNIMO):</span>
@@ -1048,6 +1093,11 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = () => {
                               📅 {aInfo.formattedSecondAuctionDate}
                             </span>
                           )}
+                          {aInfo.firstAuctionExpired && (
+                            <span className="text-[10px] font-black text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded uppercase inline-block mt-1">
+                              🎯 Praça Ativa
+                            </span>
+                          )}
                         </div>
                         <div className="bg-white p-3 rounded-xl border border-slate-200">
                           <span className="text-slate-400 font-bold block text-[10px]">DESCONTO MÁXIMO:</span>
@@ -1057,6 +1107,16 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = () => {
                           <span className="text-[10px] text-slate-500 block mt-0.5">no 2º Leilão</span>
                         </div>
                       </div>
+                      {aInfo.formattedMainAuctionDate && (
+                        <div className="bg-white border border-amber-300 p-2.5 rounded-xl flex items-center justify-between mt-2">
+                          <span className="text-amber-950 font-black text-xs uppercase flex items-center gap-1.5">
+                            📅 Data do Leilão Ativo:
+                          </span>
+                          <span className="text-amber-950 font-black text-xs bg-amber-100 px-2.5 py-0.5 rounded-lg border border-amber-300 shadow-2xs">
+                            {aInfo.formattedMainAuctionDate}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   );
                 }

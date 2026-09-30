@@ -112,6 +112,7 @@ export default async function handler(req, res) {
 
             const firstAuctionVal = hasBoth ? (parseFloat(item.valorPrimeiroLeilao) || appraisalVal) : null;
             const secondAuctionVal = hasBoth ? (parseFloat(item.valorSegundoLeilao) || saleVal) : null;
+            const addr = [item.logradrouro, item.numeroResidencia, item.bairroDeclarado].filter(Boolean).join(', ') || `${item.descCidade || ''}/${item.uf || ''}`;
 
             return {
               source: 'SANTANDER',
@@ -125,7 +126,7 @@ export default async function handler(req, res) {
               appraisal_value: appraisalVal,
               first_auction_value: firstAuctionVal,
               second_auction_value: secondAuctionVal,
-              first_auction_date: date1,
+              first_auction_date: date1 || mainDate,
               second_auction_date: date2,
               auction_date: mainDate,
               has_both_auctions: hasBoth,
@@ -145,6 +146,7 @@ export default async function handler(req, res) {
               min_down_payment: minDownPayment,
               min_installment_value: minInstallmentValue,
               accepts_financing: canFinanceSantander,
+              raw_list_data: item,
             };
           });
         } catch {

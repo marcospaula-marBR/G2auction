@@ -53,6 +53,7 @@ interface BankProperty {
   accepts_financing?: boolean;
   auction_date?: string | null;
   has_both_auctions?: boolean;
+  raw_list_data?: any;
 }
 
 const ALL_UFS = [
@@ -155,12 +156,20 @@ const BankPropertyCard: React.FC<BankPropertyCardProps> = ({
             );
           })()}
 
-          {/* Badge 1º e 2º Leilão */}
-          {auctionInfo.hasBoth && (
+          {/* Badge 1º e 2º Leilão ou Data do Leilão */}
+          {auctionInfo.hasBoth ? (
             <div className="absolute top-11 left-3 bg-amber-500 text-slate-950 font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-md flex items-center gap-1 border border-amber-300">
-              ⚡ 1º e 2º Leilão
+              {auctionInfo.firstAuctionExpired
+                ? `⚡ 2º Leilão: ${auctionInfo.formattedSecondAuctionDate || auctionInfo.formattedMainAuctionDate || 'Ativo'}`
+                : auctionInfo.formattedFirstAuctionDate
+                ? `⚡ 1º Leilão: ${auctionInfo.formattedFirstAuctionDate}`
+                : '⚡ 1º e 2º Leilão'}
             </div>
-          )}
+          ) : auctionInfo.formattedMainAuctionDate ? (
+            <div className="absolute top-11 left-3 bg-orange-600 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-md flex items-center gap-1">
+              📅 {auctionInfo.formattedMainAuctionDate}
+            </div>
+          ) : null}
 
           {/* ID do Imóvel */}
           <div className="absolute bottom-2 right-2 bg-slate-900/80 text-white text-[10px] font-mono px-2 py-0.5 rounded-lg backdrop-blur-xs">
@@ -213,7 +222,7 @@ const BankPropertyCard: React.FC<BankPropertyCardProps> = ({
             <div className="bg-amber-50/90 p-3.5 rounded-2xl border border-amber-200/80 space-y-2 text-xs">
               <div className="flex items-center justify-between pb-1.5 border-b border-amber-200/80">
                 <span className="text-[10px] font-black text-amber-900 bg-amber-100 px-2 py-0.5 rounded-md flex items-center gap-1">
-                  ⚡ LEILÃO EM 2 PRAÇAS
+                  ⚡ {auctionInfo.firstAuctionExpired ? '2º LEILÃO ATIVO (1ª PRAÇA ENCERRADA)' : 'LEILÃO EM 2 PRAÇAS'}
                 </span>
                 <span className="text-[9px] font-bold text-amber-800" title="Para filtros de preço, o sistema considera o maior valor">
                   Filtro: {formatBRL(auctionInfo.higherPriceForFilter)}
@@ -227,11 +236,15 @@ const BankPropertyCard: React.FC<BankPropertyCardProps> = ({
                   <span className="text-sm font-black text-slate-900 block">
                     {formatBRL(auctionInfo.firstAuctionValue!)}
                   </span>
-                  {auctionInfo.formattedFirstAuctionDate && (
-                    <span className="text-[9px] font-bold text-slate-500 block truncate mt-0.5">
+                  {auctionInfo.formattedFirstAuctionDate ? (
+                    <span className="text-[10px] font-bold text-amber-900 bg-amber-100/90 px-1.5 py-0.5 rounded block truncate mt-1">
                       📅 {auctionInfo.formattedFirstAuctionDate}
                     </span>
-                  )}
+                  ) : auctionInfo.firstAuctionExpired ? (
+                    <span className="text-[9px] font-bold text-slate-400 block truncate mt-1">
+                      ⚠️ 1ª Praça encerrada
+                    </span>
+                  ) : null}
                 </div>
                 <div>
                   <span className="text-emerald-800 font-bold block text-[9px] uppercase">
@@ -240,19 +253,26 @@ const BankPropertyCard: React.FC<BankPropertyCardProps> = ({
                   <span className="text-base font-black text-emerald-600 block">
                     {formatBRL(auctionInfo.secondAuctionValue!)}
                   </span>
-                  {auctionInfo.formattedSecondAuctionDate && (
-                    <span className="text-[9px] font-bold text-emerald-700 block truncate mt-0.5">
+                  {auctionInfo.formattedSecondAuctionDate ? (
+                    <span className="text-[10px] font-bold text-emerald-900 bg-emerald-100/90 px-1.5 py-0.5 rounded block truncate mt-1">
                       📅 {auctionInfo.formattedSecondAuctionDate}
+                    </span>
+                  ) : null}
+                  {auctionInfo.firstAuctionExpired && (
+                    <span className="text-[9px] font-black text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded uppercase block mt-1">
+                      🎯 Praça Ativa
                     </span>
                   )}
                 </div>
               </div>
-              <div className="flex items-center justify-between text-[10px] text-slate-600 pt-1 border-t border-amber-200/60">
-                <span>Maior Valor p/ Filtro: <strong>{formatBRL(auctionInfo.higherPriceForFilter)}</strong></span>
-                {p.appraisal_value ? (
-                  <span>Avaliação: <strong className="line-through">{formatBRL(p.appraisal_value)}</strong></span>
-                ) : null}
-              </div>
+              {auctionInfo.formattedMainAuctionDate && (
+                <div className="flex items-center justify-between text-[10px] text-orange-900 font-extrabold pt-1.5 border-t border-amber-200/60">
+                  <span className="flex items-center gap-1">📅 Prazo do Leilão Ativo:</span>
+                  <span className="bg-white px-2 py-0.5 rounded border border-amber-300 font-black">
+                    {auctionInfo.formattedMainAuctionDate}
+                  </span>
+                </div>
+              )}
             </div>
           ) : (
             <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 space-y-2 text-xs">
@@ -274,11 +294,13 @@ const BankPropertyCard: React.FC<BankPropertyCardProps> = ({
                 </div>
               </div>
               {auctionInfo.formattedMainAuctionDate && (
-                <div className="pt-1.5 border-t border-slate-200/60 flex items-center justify-between text-[10px] text-slate-700 font-bold">
-                  <span className="flex items-center gap-1 text-orange-600">
+                <div className="pt-2 border-t border-orange-200/60 flex items-center justify-between text-[11px] text-orange-950 font-bold bg-orange-50/80 -mx-3.5 -mb-3.5 p-2.5 rounded-b-2xl">
+                  <span className="flex items-center gap-1 text-orange-900 font-black uppercase text-[10px]">
                     📅 Data do Leilão / Prazo:
                   </span>
-                  <span className="text-slate-900 font-extrabold">{auctionInfo.formattedMainAuctionDate}</span>
+                  <span className="text-orange-950 font-black bg-white px-2.5 py-0.5 rounded-lg border border-orange-200 shadow-2xs">
+                    {auctionInfo.formattedMainAuctionDate}
+                  </span>
                 </div>
               )}
             </div>
@@ -422,7 +444,7 @@ const BankPropertyDetailModal: React.FC<{
             <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-amber-900 font-extrabold text-xs uppercase tracking-wide flex items-center gap-1.5">
-                  ⚡ Oportunidade com 1º e 2º Leilões Ativos
+                  ⚡ {auctionInfo.firstAuctionExpired ? '2º Leilão Ativo (1ª Praça já encerrada)' : 'Oportunidade com 1º e 2º Leilões Ativos'}
                 </span>
                 <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-full">
                   Filtro considera o Maior Valor: {formatBRL(auctionInfo.higherPriceForFilter)}
@@ -436,11 +458,15 @@ const BankPropertyDetailModal: React.FC<{
                   <span className="text-base font-black text-slate-900 block">
                     {formatBRL(auctionInfo.firstAuctionValue!)}
                   </span>
-                  {auctionInfo.formattedFirstAuctionDate && (
+                  {auctionInfo.formattedFirstAuctionDate ? (
                     <span className="text-[11px] font-bold text-slate-600 block mt-1">
                       📅 {auctionInfo.formattedFirstAuctionDate}
                     </span>
-                  )}
+                  ) : auctionInfo.firstAuctionExpired ? (
+                    <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded inline-block mt-1">
+                      ⚠️ 1ª Praça já encerrada
+                    </span>
+                  ) : null}
                 </div>
                 <div className="bg-white p-3 rounded-xl border border-emerald-300 shadow-xs">
                   <span className="text-emerald-700 font-bold block text-[10px] uppercase">
@@ -454,8 +480,23 @@ const BankPropertyDetailModal: React.FC<{
                       📅 {auctionInfo.formattedSecondAuctionDate}
                     </span>
                   )}
+                  {auctionInfo.firstAuctionExpired && (
+                    <span className="text-[10px] font-black text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded uppercase inline-block mt-1">
+                      🎯 Praça Ativa
+                    </span>
+                  )}
                 </div>
               </div>
+              {auctionInfo.formattedMainAuctionDate && (
+                <div className="bg-white border border-amber-300 p-2.5 rounded-xl flex items-center justify-between mt-2">
+                  <span className="text-amber-950 font-black text-xs uppercase flex items-center gap-1.5">
+                    📅 Data do Leilão Ativo:
+                  </span>
+                  <span className="text-amber-950 font-black text-xs bg-amber-100 px-2.5 py-0.5 rounded-lg border border-amber-300 shadow-2xs">
+                    {auctionInfo.formattedMainAuctionDate}
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
@@ -783,8 +824,8 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
           appraisal_value: p.appraisal_value,
           first_auction_value: p.first_auction_value ?? auctionInfo.firstAuctionValue,
           second_auction_value: p.second_auction_value ?? auctionInfo.secondAuctionValue,
-          first_auction_date: p.first_auction_date ?? auctionInfo.firstAuctionDate,
-          second_auction_date: p.second_auction_date ?? auctionInfo.secondAuctionDate,
+          first_auction_date: auctionInfo.firstAuctionDate || p.first_auction_date || auctionInfo.mainAuctionDate || p.auction_date || null,
+          second_auction_date: auctionInfo.secondAuctionDate || p.second_auction_date || null,
           payment_conditions: p.payment_conditions || paymentInfo.officialConditionText,
           max_installments: p.max_installments ?? paymentInfo.maxInstallments,
           min_down_payment: p.min_down_payment ?? paymentInfo.minDownPayment,
@@ -808,7 +849,7 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
           source_hash: `${p.id}_${Date.now()}`,
           enrichment_status: 'PENDING',
           status: 'ACTIVE',
-          raw_list_data: {},
+          raw_list_data: p.raw_list_data || p,
         };
       });
 
@@ -1172,8 +1213,8 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
           appraisal_value: p.appraisal_value,
           first_auction_value: p.first_auction_value ?? auctionInfo.firstAuctionValue,
           second_auction_value: p.second_auction_value ?? auctionInfo.secondAuctionValue,
-          first_auction_date: p.first_auction_date ?? auctionInfo.firstAuctionDate,
-          second_auction_date: p.second_auction_date ?? auctionInfo.secondAuctionDate,
+          first_auction_date: auctionInfo.firstAuctionDate || p.first_auction_date || auctionInfo.mainAuctionDate || p.auction_date || null,
+          second_auction_date: auctionInfo.secondAuctionDate || p.second_auction_date || null,
           payment_conditions: p.payment_conditions || paymentInfo.officialConditionText,
           max_installments: p.max_installments ?? paymentInfo.maxInstallments,
           min_down_payment: p.min_down_payment ?? paymentInfo.minDownPayment,
@@ -1197,7 +1238,7 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
           source_hash: `${p.id}_${Date.now()}`,
           enrichment_status: 'PENDING',
           status: 'ACTIVE',
-          raw_list_data: {},
+          raw_list_data: p.raw_list_data || p,
         };
       });
 

@@ -180,7 +180,7 @@ export function adaptCatalogItemToProperty(raw: any, index: number = 0): Propert
     },
     appraisalValue: appraisalValue,
     firstAuctionPrice: raw.first_auction_value || (raw.has_both_auctions ? appraisalValue : 0),
-    firstAuctionDate: raw.first_auction_date || '',
+    firstAuctionDate: raw.first_auction_date || raw.auction_date || '',
     secondAuctionPrice: raw.second_auction_value || saleValue,
     secondAuctionDate: raw.second_auction_date || '',
     hasBothAuctions: Boolean(raw.has_both_auctions || (raw.first_auction_date && raw.second_auction_date)),

@@ -12,8 +12,10 @@ export interface AuctionValuesResult {
   secondAuctionDate?: string | null;
   formattedFirstAuctionDate?: string | null;
   formattedSecondAuctionDate?: string | null;
+  firstAuctionExpired?: boolean;
   mainAuctionDate?: string | null;
   formattedMainAuctionDate?: string | null;
+  activeAuctionNotice?: string | null;
   higherPriceForFilter: number;
   lowestPrice: number;
   singleAuctionPrice: number;
@@ -31,10 +33,74 @@ export interface PaymentConditionsResult {
 }
 
 /**
- * Formata datas de leilões e prazos para o padrão brasileiro (DD/MM/AAAA às HH:mm)
+ * Converte qualquer string de data em um objeto Date local seguro contra desvios de fuso horário.
  */
-export function formatAuctionDate(rawDate?: string | null): string {
+export function parseAuctionDateSafely(rawDate?: string | null): Date | null {
+  if (!rawDate) return null;
+  const cleanStr = String(rawDate).trim();
+  if (!cleanStr) return null;
+
+  // 1. Formato brasileiro DD/MM/AAAA ou DD/MM/AAAA às HH:mm (ou DD/MM/AAAA HH:mm)
+  const brMatch = cleanStr.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s*(?:às|-)?\s*(\d{2}):(\d{2}))?/i);
+  if (brMatch) {
+    const d = parseInt(brMatch[1], 10);
+    const m = parseInt(brMatch[2], 10) - 1;
+    const y = parseInt(brMatch[3], 10);
+    const hh = brMatch[4] ? parseInt(brMatch[4], 10) : 23;
+    const mm = brMatch[5] ? parseInt(brMatch[5], 10) : 59;
+    return new Date(y, m, d, hh, mm, 59);
+  }
+
+  // 2. Formato ISO YYYY-MM-DD com ou sem hora local
+  const isoMatch = cleanStr.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (isoMatch) {
+    // Se explicitamente tiver 'Z' ou offset UTC (+00:00 / -03:00)
+    if (cleanStr.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(cleanStr)) {
+      const d = new Date(cleanStr);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    const y = parseInt(isoMatch[1], 10);
+    const m = parseInt(isoMatch[2], 10) - 1;
+    const d = parseInt(isoMatch[3], 10);
+    const hh = isoMatch[4] ? parseInt(isoMatch[4], 10) : 23;
+    const mm = isoMatch[5] ? parseInt(isoMatch[5], 10) : 59;
+    const ss = isoMatch[6] ? parseInt(isoMatch[6], 10) : 59;
+    return new Date(y, m, d, hh, mm, ss);
+  }
+
+  const fallback = new Date(cleanStr);
+  return isNaN(fallback.getTime()) ? null : fallback;
+}
+
+/**
+ * Valida se uma data de leilão é válida e NÃO é anterior ao dia de hoje (zero horas de hoje).
+ * Qualquer data estritamente anterior ao hoje (ex: ontem ou datas passadas) é sempre desconsiderada.
+ */
+export function isAuctionDateActive(rawDate?: string | null): boolean {
+  if (!rawDate) return false;
+  try {
+    const targetDate = parseAuctionDateSafely(rawDate);
+    if (!targetDate) return false;
+
+    // "Hoje" no início do dia local (00:00:00)
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+
+    return targetDate.getTime() >= todayStart.getTime();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Formata datas de leilões e prazos para o padrão brasileiro (DD/MM/AAAA às HH:mm).
+ * Por padrão, desconsidera e retorna vazio se a data for anterior ao Hoje.
+ */
+export function formatAuctionDate(rawDate?: string | null, allowPast = false): string {
   if (!rawDate) return '';
+  if (!allowPast && !isAuctionDateActive(rawDate)) {
+    return '';
+  }
   try {
     const cleanStr = String(rawDate).trim();
     if (!cleanStr) return '';
@@ -42,6 +108,16 @@ export function formatAuctionDate(rawDate?: string | null): string {
     // Se já estiver formatado como DD/MM/AAAA
     if (/^\d{2}\/\d{2}\/\d{4}/.test(cleanStr)) {
       return cleanStr;
+    }
+
+    // Se for formato ISO local YYYY-MM-DD
+    const isoMatch = cleanStr.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2}))?/);
+    if (isoMatch && !cleanStr.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(cleanStr)) {
+      const [, y, m, d, hh, mm] = isoMatch;
+      if (hh && mm && !(hh === '00' && mm === '00')) {
+        return `${d}/${m}/${y} às ${hh}:${mm}`;
+      }
+      return `${d}/${m}/${y}`;
     }
 
     const d = new Date(cleanStr);
@@ -82,8 +158,8 @@ export function hasBothAuctions(prop: any): boolean {
   }
 
   // 2. Datas distintas de 1º e 2º Leilão explicitamente presentes
-  const date1 = prop.first_auction_date || prop.date_auction_1 || prop.dataPrimeiroLeilao;
-  const date2 = prop.second_auction_date || prop.date_auction_2 || prop.dataSegundoLeilao;
+  const date1 = prop.first_auction_date || prop.firstAuctionDate || prop.date_auction_1 || prop.dataPrimeiroLeilao;
+  const date2 = prop.second_auction_date || prop.secondAuctionDate || prop.date_auction_2 || prop.dataSegundoLeilao;
   if (date1 && date2 && String(date1).trim() !== String(date2).trim()) {
     return true;
   }
@@ -99,7 +175,6 @@ export function hasBothAuctions(prop: any): boolean {
   const firstVal = Number(prop.first_auction_value || prop.firstAuctionPrice || 0);
   const secondVal = Number(prop.second_auction_value || prop.secondAuctionPrice || 0);
   if (firstVal > 0 && secondVal > 0 && firstVal !== secondVal) {
-    // Se há duas datas OU se a modalidade indica Alienação Fiduciária / 1º e 2º Leilão
     const modality = (prop.sale_modality || prop.realstate_auction_type || '').toLowerCase();
     const isExplicitMultiAuction =
       modality.includes('1º e 2º') ||
@@ -121,7 +196,8 @@ export function hasBothAuctions(prop: any): boolean {
 
 /**
  * Extrai os valores e datas do 1º e 2º Leilão,
- * calculando o MAIOR VALOR obrigatório para efeitos de filtros de preço.
+ * calculando o MAIOR VALOR obrigatório para efeitos de filtros de preço
+ * e DESCONSIDERANDO datas de leilões que sejam anteriores ao Hoje (base desatualizada).
  */
 export function getAuctionValues(prop: any): AuctionValuesResult {
   const appraisal = Number(prop.appraisal_value || prop.appraisalValue || 0);
@@ -129,10 +205,78 @@ export function getAuctionValues(prop: any): AuctionValuesResult {
 
   const isBoth = hasBothAuctions(prop);
 
-  // Extrai datas
-  const rawDate1 = prop.first_auction_date || prop.date_auction_1 || prop.dataPrimeiroLeilao || null;
-  const rawDate2 = prop.second_auction_date || prop.date_auction_2 || prop.dataSegundoLeilao || null;
-  const rawMainDate = prop.auction_date || prop.final_date_auction || prop.dataLeilao || prop.dtLeilao || rawDate2 || rawDate1 || null;
+  // Extrai datas de todas as variações de nomes possíveis
+  const rawDate1 =
+    prop.first_auction_date ||
+    prop.firstAuctionDate ||
+    prop.date_auction_1 ||
+    prop.dataPrimeiroLeilao ||
+    prop.data_primeiro_leilao ||
+    prop.raw_list_data?.first_auction_date ||
+    prop.raw_list_data?.dataPrimeiroLeilao ||
+    prop.raw_detail_data?.first_auction_date ||
+    null;
+
+  const rawDate2 =
+    prop.second_auction_date ||
+    prop.secondAuctionDate ||
+    prop.date_auction_2 ||
+    prop.dataSegundoLeilao ||
+    prop.data_segundo_leilao ||
+    prop.raw_list_data?.second_auction_date ||
+    prop.raw_list_data?.dataSegundoLeilao ||
+    prop.raw_detail_data?.second_auction_date ||
+    null;
+
+  const rawMainDate =
+    prop.auction_date ||
+    prop.auctionDate ||
+    prop.main_auction_date ||
+    prop.mainAuctionDate ||
+    prop.dataLeilao ||
+    prop.data_leilao ||
+    prop.dtLeilao ||
+    prop.final_date_auction ||
+    prop.finalDateAuction ||
+    prop.raw_list_data?.auction_date ||
+    prop.raw_list_data?.dataLeilao ||
+    prop.raw_detail_data?.auction_date ||
+    rawDate2 ||
+    rawDate1 ||
+    null;
+
+  // Validação estrita: Desconsiderar datas anteriores ao Hoje
+  const isDate1Active = isAuctionDateActive(rawDate1);
+  const isDate2Active = isAuctionDateActive(rawDate2);
+  const isMainDateActive = isAuctionDateActive(rawMainDate);
+
+  const activeDate1 = isDate1Active ? rawDate1 : null;
+  const activeDate2 = isDate2Active ? rawDate2 : null;
+
+  // Verifica se o 1º leilão é anterior ao hoje mas o 2º leilão é futuro/ativo
+  const firstAuctionExpired = !isDate1Active && Boolean(rawDate1) && isDate2Active;
+
+  // Determina a data do leilão ativo mais próximo (>= Hoje)
+  let activeMainDate: string | null = null;
+  if (isBoth) {
+    if (isDate1Active) {
+      activeMainDate = activeDate1;
+    } else if (isDate2Active) {
+      activeMainDate = activeDate2;
+    } else if (isMainDateActive) {
+      activeMainDate = rawMainDate;
+    }
+  } else {
+    if (isMainDateActive) {
+      activeMainDate = rawMainDate;
+    } else if (isDate1Active) {
+      activeMainDate = activeDate1;
+    } else if (isDate2Active) {
+      activeMainDate = activeDate2;
+    }
+  }
+
+  const formattedMain = formatAuctionDate(activeMainDate);
 
   if (isBoth) {
     const rawFirst = Number(prop.min_auction_value_1 || prop.first_auction_value || prop.firstAuctionPrice || appraisal || 0);
@@ -141,7 +285,6 @@ export function getAuctionValues(prop: any): AuctionValuesResult {
     let firstAuctionValue = rawFirst > 0 ? rawFirst : appraisal > 0 ? appraisal : saleVal;
     let secondAuctionValue = rawSecond > 0 ? rawSecond : saleVal > 0 ? saleVal : appraisal;
 
-    // 1º Leilão é a 1ª praça (maior valor / avaliação), 2º leilão é a 2ª praça (menor valor / deságio)
     if (firstAuctionValue < secondAuctionValue && firstAuctionValue > 0) {
       const temp = firstAuctionValue;
       firstAuctionValue = secondAuctionValue;
@@ -156,12 +299,14 @@ export function getAuctionValues(prop: any): AuctionValuesResult {
       hasBoth: true,
       firstAuctionValue,
       secondAuctionValue,
-      firstAuctionDate: rawDate1,
-      secondAuctionDate: rawDate2,
-      formattedFirstAuctionDate: formatAuctionDate(rawDate1),
-      formattedSecondAuctionDate: formatAuctionDate(rawDate2),
-      mainAuctionDate: rawMainDate,
-      formattedMainAuctionDate: formatAuctionDate(rawMainDate),
+      firstAuctionDate: activeDate1,
+      secondAuctionDate: activeDate2,
+      formattedFirstAuctionDate: formatAuctionDate(activeDate1),
+      formattedSecondAuctionDate: formatAuctionDate(activeDate2),
+      firstAuctionExpired,
+      mainAuctionDate: activeMainDate,
+      formattedMainAuctionDate: formattedMain,
+      activeAuctionNotice: firstAuctionExpired ? '2º Leilão Ativo (1ª Praça já encerrada)' : null,
       higherPriceForFilter,
       lowestPrice,
       singleAuctionPrice: secondAuctionValue,
@@ -179,8 +324,10 @@ export function getAuctionValues(prop: any): AuctionValuesResult {
     secondAuctionDate: null,
     formattedFirstAuctionDate: null,
     formattedSecondAuctionDate: null,
-    mainAuctionDate: rawMainDate,
-    formattedMainAuctionDate: formatAuctionDate(rawMainDate),
+    firstAuctionExpired: false,
+    mainAuctionDate: activeMainDate,
+    formattedMainAuctionDate: formatAuctionDate(activeMainDate),
+    activeAuctionNotice: null,
     higherPriceForFilter: singlePrice,
     lowestPrice: singlePrice,
     singleAuctionPrice: singlePrice,

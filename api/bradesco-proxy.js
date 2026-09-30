@@ -93,7 +93,20 @@ export default async function handler(req, res) {
 
         const firstAuctionVal = hasBoth ? (val1 > 0 ? val1 : appraisalVal) : null;
         const secondAuctionVal = hasBoth ? (val2 > 0 ? val2 : saleVal) : null;
-        const mainAuctionDate = item.auction_date || date2 || date1 || item.final_date_auction || null;
+        const isDateActive = (dStr) => {
+          if (!dStr) return false;
+          try {
+            const dt = new Date(dStr);
+            if (isNaN(dt.getTime())) return false;
+            const now = new Date();
+            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+            return dt.getTime() >= todayStart.getTime();
+          } catch { return false; }
+        };
+
+        const activeDate1 = isDateActive(date1) ? date1 : null;
+        const activeDate2 = isDateActive(date2) ? date2 : null;
+        const mainAuctionDate = (hasBoth ? (activeDate1 || activeDate2) : null) || (isDateActive(item.auction_date) ? item.auction_date : null) || activeDate2 || activeDate1 || null;
 
         const canFinanceBradesco = saleVal >= 100000;
         const maxInstallments = canFinanceBradesco ? 360 : 1;
@@ -125,7 +138,7 @@ export default async function handler(req, res) {
           appraisal_value: appraisalVal,
           first_auction_value: firstAuctionVal,
           second_auction_value: secondAuctionVal,
-          first_auction_date: date1,
+          first_auction_date: date1 || mainAuctionDate,
           second_auction_date: date2,
           auction_date: mainAuctionDate,
           has_both_auctions: hasBoth,
@@ -143,6 +156,7 @@ export default async function handler(req, res) {
           min_down_payment: minDownPayment,
           min_installment_value: minInstallmentValue,
           accepts_financing: canFinanceBradesco,
+          raw_list_data: item,
         };
       };
 
