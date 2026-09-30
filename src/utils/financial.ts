@@ -175,7 +175,8 @@ export function calculateBenchmarkReturns(initialCapital: number, months: number
   ];
 }
 
-export function formatCurrencyBRL(value: number): string {
+export function formatCurrencyBRL(value: number | null | undefined): string {
+  if (value === null || value === undefined || isNaN(value)) return 'N/I';
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',

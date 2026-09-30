@@ -105,10 +105,13 @@ export default async function handler(req, res) {
                 ? `À vista com recursos próprios ou Financiamento Imobiliário Santander em até ${maxInstallments} meses (Entrada mínima de 20% a partir de R$ ${minDownPayment.toLocaleString('pt-BR')}, parcelas estimadas a partir de R$ ${minInstallmentValue.toLocaleString('pt-BR')}/mês).`
                 : 'Somente à vista (O Santander não concede financiamento imobiliário para ofertas com valor abaixo de R$ 90.000,00).');
 
-            const firstAuctionVal = appraisalVal;
-            const secondAuctionVal = saleVal;
-            const firstAuctionDate = item.dataPrimeiroLeilao || item.dataLeilao || item.dtLeilao || null;
-            const secondAuctionDate = item.dataSegundoLeilao || null;
+            const date1 = item.dataPrimeiroLeilao || null;
+            const date2 = item.dataSegundoLeilao || null;
+            const mainDate = item.dataLeilao || item.dtLeilao || date2 || date1 || null;
+            const hasBoth = Boolean(date1 && date2) || Boolean(item.valorPrimeiroLeilao && item.valorSegundoLeilao);
+
+            const firstAuctionVal = hasBoth ? (parseFloat(item.valorPrimeiroLeilao) || appraisalVal) : null;
+            const secondAuctionVal = hasBoth ? (parseFloat(item.valorSegundoLeilao) || saleVal) : null;
 
             return {
               source: 'SANTANDER',
@@ -122,8 +125,10 @@ export default async function handler(req, res) {
               appraisal_value: appraisalVal,
               first_auction_value: firstAuctionVal,
               second_auction_value: secondAuctionVal,
-              first_auction_date: firstAuctionDate,
-              second_auction_date: secondAuctionDate,
+              first_auction_date: date1,
+              second_auction_date: date2,
+              auction_date: mainDate,
+              has_both_auctions: hasBoth,
               discount_percentage: discount,
               sale_modality: item.descProduto ? `Leilão Santander — ${item.descProduto}` : 'Leilão Santander Oficial',
               property_type: item.descTipoImovel || 'Imóvel',
@@ -235,10 +240,12 @@ export default async function handler(req, res) {
             neighborhood: tpl.neigh,
             sale_value: saleVal,
             appraisal_value: appraisalVal,
-            first_auction_value: appraisalVal,
-            second_auction_value: saleVal,
-            first_auction_date: '2026-10-15',
-            second_auction_date: '2026-10-25',
+            first_auction_value: null,
+            second_auction_value: null,
+            first_auction_date: null,
+            second_auction_date: null,
+            auction_date: '2026-10-15T11:00:00',
+            has_both_auctions: false,
             discount_percentage: calcDiscount,
             sale_modality: tpl.mod,
             property_type: tpl.type,

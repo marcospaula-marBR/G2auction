@@ -12,7 +12,6 @@ import { PortfolioDashboard } from './components/PortfolioDashboard';
 import { PropertyReportModal } from './components/PropertyReportModal';
 import { IntroSplash } from './components/IntroSplash';
 import { PropertyCatalogPage } from './components/PropertyCatalogPage';
-import { BancosAdminPage } from './components/BancosAdminPage';
 import { JourneyPage } from './components/JourneyPage';
 
 import { mockProperties } from './data/mockProperties';
@@ -22,11 +21,11 @@ import { queryPropertiesFromSupabase, autoSeedDefaultCsvFromPublic } from './lib
 import { adaptCatalogItemToProperty } from './utils/propertyAdapter';
 import {
   Search, Wallet, Wrench, Users, PieChart, Layers, Bot,
-  Building2, Route, Landmark,
+  Route, Landmark,
 } from 'lucide-react';
 
 export function App() {
-  const APP_VERSION = 'v3.5.9';
+  const APP_VERSION = 'v3.6.0';
   const [properties, setProperties] = useState<Property[]>(mockProperties);
   const [selectedProperty, setSelectedProperty] = useState<Property | undefined>(mockProperties[0]);
 
@@ -129,7 +128,7 @@ export function App() {
   type MainTab = typeof activeMainTab;
 
   const navItems: { id: MainTab; label: string; icon: React.ElementType; iconColor: string; highlight?: boolean }[] = [
-    { id: 'imoveis', label: 'Imóveis CAIXA', icon: Building2, iconColor: 'text-orange-200' },
+    { id: 'imoveis', label: 'Imóveis & Leilões 🏦', icon: Landmark, iconColor: 'text-orange-400' },
     { id: 'jornada', label: 'Minha Jornada 🗺️', icon: Route, iconColor: 'text-emerald-400', highlight: true },
     { id: 'discovery', label: 'Descoberta & Mapa', icon: Search, iconColor: 'text-orange-500' },
     { id: 'detail', label: 'Ficha 360°', icon: Layers, iconColor: 'text-sky-500' },
@@ -137,7 +136,6 @@ export function App() {
     { id: 'renovation', label: 'Campo & Obra', icon: Wrench, iconColor: 'text-amber-500' },
     { id: 'partners', label: 'Parceiros', icon: Users, iconColor: 'text-purple-500' },
     { id: 'portfolio', label: 'Carteira', icon: PieChart, iconColor: 'text-red-500' },
-    { id: 'banco-admin', label: 'Multi-Bancos 🏦', icon: Landmark, iconColor: 'text-orange-400' },
   ];
 
   return (
@@ -215,11 +213,9 @@ export function App() {
       {/* Main Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
 
-        {/* Catálogo CAIXA */}
-        {activeMainTab === 'imoveis' && (
-          <PropertyCatalogPage
-            onOpenAdmin={() => setActiveMainTab('banco-admin')}
-          />
+        {/* Catálogo Unificado Multi-Bancos */}
+        {(activeMainTab === 'imoveis' || activeMainTab === 'banco-admin') && (
+          <PropertyCatalogPage />
         )}
 
         {/* Jornada do Arrematante */}
@@ -233,7 +229,7 @@ export function App() {
           <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center">
             <Route className="w-12 h-12 text-slate-300 mx-auto mb-3" />
             <h3 className="font-black text-slate-700 text-lg mb-1">Selecione um Imóvel</h3>
-            <p className="text-sm text-slate-500">Acesse a aba "Imóveis CAIXA" e selecione um imóvel para iniciar sua jornada.</p>
+            <p className="text-sm text-slate-500">Acesse a aba "Imóveis & Leilões 🏦" e selecione um imóvel para iniciar sua jornada.</p>
             <button
               onClick={() => setActiveMainTab('imoveis')}
               className="mt-4 px-5 py-2.5 bg-orange-500 text-white font-bold text-sm rounded-xl hover:bg-orange-600 transition-colors"
@@ -301,11 +297,6 @@ export function App() {
             properties={properties}
             onSelectProperty={p => { setSelectedProperty(p); setIsDetailModalOpen(true); }}
           />
-        )}
-
-        {/* Multi-Bancos */}
-        {activeMainTab === 'banco-admin' && (
-          <BancosAdminPage onGoToCatalog={() => setActiveMainTab('imoveis')} />
         )}
 
       </main>

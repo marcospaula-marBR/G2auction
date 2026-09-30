@@ -51,6 +51,8 @@ interface BankProperty {
   min_down_payment?: number;
   min_installment_value?: number;
   accepts_financing?: boolean;
+  auction_date?: string | null;
+  has_both_auctions?: boolean;
 }
 
 const ALL_UFS = [
@@ -209,48 +211,76 @@ const BankPropertyCard: React.FC<BankPropertyCardProps> = ({
           {/* Valoração Financeira com suporte a 1º e 2º Leilões */}
           {auctionInfo.hasBoth ? (
             <div className="bg-amber-50/90 p-3.5 rounded-2xl border border-amber-200/80 space-y-2 text-xs">
-              <div className="grid grid-cols-2 gap-2 border-b border-amber-200/60 pb-2">
+              <div className="flex items-center justify-between pb-1.5 border-b border-amber-200/80">
+                <span className="text-[10px] font-black text-amber-900 bg-amber-100 px-2 py-0.5 rounded-md flex items-center gap-1">
+                  ⚡ LEILÃO EM 2 PRAÇAS
+                </span>
+                <span className="text-[9px] font-bold text-amber-800" title="Para filtros de preço, o sistema considera o maior valor">
+                  Filtro: {formatBRL(auctionInfo.higherPriceForFilter)}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
                 <div>
                   <span className="text-amber-800 font-bold block text-[9px] uppercase">
-                    1º LEILÃO {auctionInfo.firstAuctionDate ? `(${auctionInfo.firstAuctionDate})` : ''}:
+                    1º LEILÃO:
                   </span>
-                  <span className="text-sm font-black text-slate-900">
+                  <span className="text-sm font-black text-slate-900 block">
                     {formatBRL(auctionInfo.firstAuctionValue!)}
                   </span>
+                  {auctionInfo.formattedFirstAuctionDate && (
+                    <span className="text-[9px] font-bold text-slate-500 block truncate mt-0.5">
+                      📅 {auctionInfo.formattedFirstAuctionDate}
+                    </span>
+                  )}
                 </div>
                 <div>
                   <span className="text-emerald-800 font-bold block text-[9px] uppercase">
-                    2º LEILÃO {auctionInfo.secondAuctionDate ? `(${auctionInfo.secondAuctionDate})` : ''}:
+                    2º LEILÃO ({p.source}):
                   </span>
-                  <span className="text-base font-black text-emerald-600">
+                  <span className="text-base font-black text-emerald-600 block">
                     {formatBRL(auctionInfo.secondAuctionValue!)}
                   </span>
+                  {auctionInfo.formattedSecondAuctionDate && (
+                    <span className="text-[9px] font-bold text-emerald-700 block truncate mt-0.5">
+                      📅 {auctionInfo.formattedSecondAuctionDate}
+                    </span>
+                  )}
                 </div>
               </div>
-              <div className="flex items-center justify-between text-[10px] text-slate-600 pt-0.5">
-                <span>Filtro de Preço: <strong>{formatBRL(auctionInfo.higherPriceForFilter)}</strong> (Maior)</span>
+              <div className="flex items-center justify-between text-[10px] text-slate-600 pt-1 border-t border-amber-200/60">
+                <span>Maior Valor p/ Filtro: <strong>{formatBRL(auctionInfo.higherPriceForFilter)}</strong></span>
                 {p.appraisal_value ? (
                   <span>Avaliação: <strong className="line-through">{formatBRL(p.appraisal_value)}</strong></span>
                 ) : null}
               </div>
             </div>
           ) : (
-            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 grid grid-cols-2 gap-2 text-xs">
-              <div>
-                <span className="text-slate-400 font-bold block text-[9px] uppercase">
-                  PREÇO MÍNIMO {p.source}:
-                </span>
-                <span className="text-base font-black text-emerald-600">
-                  {p.sale_value ? formatBRL(p.sale_value) : 'Sob Consulta'}
-                </span>
-              </div>
+            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 space-y-2 text-xs">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <span className="text-slate-400 font-bold block text-[9px] uppercase">
+                    PREÇO MÍNIMO {p.source}:
+                  </span>
+                  <span className="text-base font-black text-emerald-600">
+                    {p.sale_value ? formatBRL(p.sale_value) : 'Sob Consulta'}
+                  </span>
+                </div>
 
-              <div>
-                <span className="text-slate-400 font-bold block text-[9px] uppercase">AVALIAÇÃO:</span>
-                <span className="text-xs font-extrabold text-slate-700 line-through">
-                  {p.appraisal_value ? formatBRL(p.appraisal_value) : 'N/I'}
-                </span>
+                <div>
+                  <span className="text-slate-400 font-bold block text-[9px] uppercase">AVALIAÇÃO:</span>
+                  <span className="text-xs font-extrabold text-slate-700 line-through">
+                    {p.appraisal_value ? formatBRL(p.appraisal_value) : 'N/I'}
+                  </span>
+                </div>
               </div>
+              {auctionInfo.formattedMainAuctionDate && (
+                <div className="pt-1.5 border-t border-slate-200/60 flex items-center justify-between text-[10px] text-slate-700 font-bold">
+                  <span className="flex items-center gap-1 text-orange-600">
+                    📅 Data do Leilão / Prazo:
+                  </span>
+                  <span className="text-slate-900 font-extrabold">{auctionInfo.formattedMainAuctionDate}</span>
+                </div>
+              )}
             </div>
           )}
 
@@ -401,21 +431,42 @@ const BankPropertyDetailModal: React.FC<{
               <div className="grid grid-cols-2 gap-3 pt-1">
                 <div className="bg-white p-3 rounded-xl border border-amber-200 shadow-xs">
                   <span className="text-slate-400 font-bold block text-[10px] uppercase">
-                    1º Leilão {auctionInfo.firstAuctionDate ? `— ${auctionInfo.firstAuctionDate}` : ''}:
+                    1º Leilão:
                   </span>
-                  <span className="text-base font-black text-slate-900">
+                  <span className="text-base font-black text-slate-900 block">
                     {formatBRL(auctionInfo.firstAuctionValue!)}
                   </span>
+                  {auctionInfo.formattedFirstAuctionDate && (
+                    <span className="text-[11px] font-bold text-slate-600 block mt-1">
+                      📅 {auctionInfo.formattedFirstAuctionDate}
+                    </span>
+                  )}
                 </div>
                 <div className="bg-white p-3 rounded-xl border border-emerald-300 shadow-xs">
                   <span className="text-emerald-700 font-bold block text-[10px] uppercase">
-                    2º Leilão {auctionInfo.secondAuctionDate ? `— ${auctionInfo.secondAuctionDate}` : ''}:
+                    2º Leilão ({p.source}):
                   </span>
-                  <span className="text-base font-black text-emerald-600">
+                  <span className="text-base font-black text-emerald-600 block">
                     {formatBRL(auctionInfo.secondAuctionValue!)}
                   </span>
+                  {auctionInfo.formattedSecondAuctionDate && (
+                    <span className="text-[11px] font-bold text-emerald-700 block mt-1">
+                      📅 {auctionInfo.formattedSecondAuctionDate}
+                    </span>
+                  )}
                 </div>
               </div>
+            </div>
+          )}
+
+          {!auctionInfo.hasBoth && auctionInfo.formattedMainAuctionDate && (
+            <div className="bg-orange-50 border border-orange-200 p-3.5 rounded-2xl flex items-center justify-between">
+              <span className="text-orange-900 font-black text-xs uppercase flex items-center gap-1.5">
+                📅 Data do Leilão / Prazo para Propostas:
+              </span>
+              <span className="text-orange-950 font-extrabold text-sm bg-white px-3 py-1 rounded-xl border border-orange-200 shadow-2xs">
+                {auctionInfo.formattedMainAuctionDate}
+              </span>
             </div>
           )}
 

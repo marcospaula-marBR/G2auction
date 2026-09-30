@@ -6,12 +6,17 @@
 export interface AuctionValuesResult {
   hasBothAuctions: boolean;
   hasBoth: boolean;
-  firstAuctionValue: number;
-  secondAuctionValue: number;
+  firstAuctionValue: number | null;
+  secondAuctionValue: number | null;
   firstAuctionDate?: string | null;
   secondAuctionDate?: string | null;
+  formattedFirstAuctionDate?: string | null;
+  formattedSecondAuctionDate?: string | null;
+  mainAuctionDate?: string | null;
+  formattedMainAuctionDate?: string | null;
   higherPriceForFilter: number;
   lowestPrice: number;
+  singleAuctionPrice: number;
 }
 
 export interface PaymentConditionsResult {
@@ -26,38 +31,89 @@ export interface PaymentConditionsResult {
 }
 
 /**
- * Verifica se um imóvel ainda possui 1º e 2º leilões constando
+ * Formata datas de leilões e prazos para o padrão brasileiro (DD/MM/AAAA às HH:mm)
+ */
+export function formatAuctionDate(rawDate?: string | null): string {
+  if (!rawDate) return '';
+  try {
+    const cleanStr = String(rawDate).trim();
+    if (!cleanStr) return '';
+
+    // Se já estiver formatado como DD/MM/AAAA
+    if (/^\d{2}\/\d{2}\/\d{4}/.test(cleanStr)) {
+      return cleanStr;
+    }
+
+    const d = new Date(cleanStr);
+    if (isNaN(d.getTime())) {
+      return cleanStr;
+    }
+
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+
+    const hasTime = cleanStr.includes('T') || cleanStr.includes(':');
+    if (hasTime) {
+      const hours = String(d.getHours()).padStart(2, '0');
+      const mins = String(d.getMinutes()).padStart(2, '0');
+      if (hours === '00' && mins === '00' && !cleanStr.includes('00:00:00')) {
+        return `${day}/${month}/${year}`;
+      }
+      return `${day}/${month}/${year} às ${hours}:${mins}`;
+    }
+
+    return `${day}/${month}/${year}`;
+  } catch {
+    return String(rawDate);
+  }
+}
+
+/**
+ * Verifica se um imóvel ainda possui 1º e 2º leilões constando de forma autêntica.
+ * Evita o falso positivo de assumir que toda avaliação é um 1º leilão.
  */
 export function hasBothAuctions(prop: any): boolean {
   if (!prop) return false;
 
+  // 1. Flag explícita do backend/proxy
+  if (prop.has_both_auctions === true || prop.hasBothAuctions === true) {
+    return true;
+  }
+
+  // 2. Datas distintas de 1º e 2º Leilão explicitamente presentes
+  const date1 = prop.first_auction_date || prop.date_auction_1 || prop.dataPrimeiroLeilao;
+  const date2 = prop.second_auction_date || prop.date_auction_2 || prop.dataSegundoLeilao;
+  if (date1 && date2 && String(date1).trim() !== String(date2).trim()) {
+    return true;
+  }
+
+  // 3. Chaves Bradesco Vitrine API (min_auction_value_1 e min_auction_value_2)
+  const brdVal1 = Number(prop.min_auction_value_1 || 0);
+  const brdVal2 = Number(prop.min_auction_value_2 || 0);
+  if (brdVal1 > 0 && brdVal2 > 0 && brdVal1 !== brdVal2) {
+    return true;
+  }
+
+  // 4. Valores de 1º e 2º Leilão explícitos e distintos
   const firstVal = Number(prop.first_auction_value || prop.firstAuctionPrice || 0);
   const secondVal = Number(prop.second_auction_value || prop.secondAuctionPrice || 0);
   if (firstVal > 0 && secondVal > 0 && firstVal !== secondVal) {
-    return true;
-  }
+    // Se há duas datas OU se a modalidade indica Alienação Fiduciária / 1º e 2º Leilão
+    const modality = (prop.sale_modality || prop.realstate_auction_type || '').toLowerCase();
+    const isExplicitMultiAuction =
+      modality.includes('1º e 2º') ||
+      modality.includes('1ª e 2ª') ||
+      modality.includes('alienacao') ||
+      modality.includes('alienação') ||
+      modality.includes('fiduciária') ||
+      modality.includes('fiduciaria') ||
+      modality.includes('sfi') ||
+      Boolean(date1 || date2);
 
-  if (prop.first_auction_date && prop.second_auction_date) {
-    return true;
-  }
-
-  const appraisal = Number(prop.appraisal_value || prop.appraisalValue || 0);
-  const saleVal = Number(prop.sale_value || prop.current_minimum_value || prop.secondAuctionPrice || 0);
-  const modality = (prop.sale_modality || prop.caixaModalidad || '').toLowerCase();
-
-  const isAuctionModality =
-    modality.includes('1º e 2º') ||
-    modality.includes('1º leilão') ||
-    modality.includes('2º leilão') ||
-    modality.includes('1ª e 2ª') ||
-    modality.includes('praça') ||
-    modality.includes('praca') ||
-    modality.includes('sfi') ||
-    modality.includes('leilão') ||
-    modality.includes('leilao');
-
-  if (isAuctionModality && appraisal > 0 && saleVal > 0 && appraisal > saleVal) {
-    return true;
+    if (isExplicitMultiAuction) {
+      return true;
+    }
   }
 
   return false;
@@ -69,37 +125,65 @@ export function hasBothAuctions(prop: any): boolean {
  */
 export function getAuctionValues(prop: any): AuctionValuesResult {
   const appraisal = Number(prop.appraisal_value || prop.appraisalValue || 0);
-  const saleVal = Number(prop.sale_value || prop.current_minimum_value || prop.secondAuctionPrice || 0);
-
-  const rawFirst = Number(prop.first_auction_value || prop.firstAuctionPrice || 0);
-  const rawSecond = Number(prop.second_auction_value || prop.secondAuctionPrice || 0);
-
-  let firstAuctionValue = rawFirst > 0 ? rawFirst : appraisal > 0 ? appraisal : saleVal;
-  let secondAuctionValue = rawSecond > 0 ? rawSecond : saleVal > 0 ? saleVal : appraisal;
-
-  // Garante ordenação lógica se ambos existirem (1º leilão é o valor integral/maior, 2º leilão é o com deságio)
-  if (firstAuctionValue < secondAuctionValue && firstAuctionValue > 0) {
-    const temp = firstAuctionValue;
-    firstAuctionValue = secondAuctionValue;
-    secondAuctionValue = temp;
-  }
+  const saleVal = Number(prop.sale_value || prop.current_minimum_value || prop.price || prop.secondAuctionPrice || 0);
 
   const isBoth = hasBothAuctions(prop);
-  const higherPriceForFilter = isBoth
-    ? Math.max(firstAuctionValue, secondAuctionValue)
-    : (saleVal || appraisal || 0);
 
-  const lowestPrice = secondAuctionValue > 0 ? secondAuctionValue : (saleVal || appraisal || 0);
+  // Extrai datas
+  const rawDate1 = prop.first_auction_date || prop.date_auction_1 || prop.dataPrimeiroLeilao || null;
+  const rawDate2 = prop.second_auction_date || prop.date_auction_2 || prop.dataSegundoLeilao || null;
+  const rawMainDate = prop.auction_date || prop.final_date_auction || prop.dataLeilao || prop.dtLeilao || rawDate2 || rawDate1 || null;
 
+  if (isBoth) {
+    const rawFirst = Number(prop.min_auction_value_1 || prop.first_auction_value || prop.firstAuctionPrice || appraisal || 0);
+    const rawSecond = Number(prop.min_auction_value_2 || prop.second_auction_value || prop.secondAuctionPrice || saleVal || 0);
+
+    let firstAuctionValue = rawFirst > 0 ? rawFirst : appraisal > 0 ? appraisal : saleVal;
+    let secondAuctionValue = rawSecond > 0 ? rawSecond : saleVal > 0 ? saleVal : appraisal;
+
+    // 1º Leilão é a 1ª praça (maior valor / avaliação), 2º leilão é a 2ª praça (menor valor / deságio)
+    if (firstAuctionValue < secondAuctionValue && firstAuctionValue > 0) {
+      const temp = firstAuctionValue;
+      firstAuctionValue = secondAuctionValue;
+      secondAuctionValue = temp;
+    }
+
+    const higherPriceForFilter = Math.max(firstAuctionValue, secondAuctionValue);
+    const lowestPrice = Math.min(firstAuctionValue, secondAuctionValue);
+
+    return {
+      hasBothAuctions: true,
+      hasBoth: true,
+      firstAuctionValue,
+      secondAuctionValue,
+      firstAuctionDate: rawDate1,
+      secondAuctionDate: rawDate2,
+      formattedFirstAuctionDate: formatAuctionDate(rawDate1),
+      formattedSecondAuctionDate: formatAuctionDate(rawDate2),
+      mainAuctionDate: rawMainDate,
+      formattedMainAuctionDate: formatAuctionDate(rawMainDate),
+      higherPriceForFilter,
+      lowestPrice,
+      singleAuctionPrice: secondAuctionValue,
+    };
+  }
+
+  // Apenas 1 Leilão ou Venda Direta com deságio
+  const singlePrice = saleVal > 0 ? saleVal : appraisal;
   return {
-    hasBothAuctions: isBoth,
-    hasBoth: isBoth,
-    firstAuctionValue,
-    secondAuctionValue,
-    firstAuctionDate: prop.first_auction_date || prop.firstAuctionDate || null,
-    secondAuctionDate: prop.second_auction_date || prop.secondAuctionDate || null,
-    higherPriceForFilter,
-    lowestPrice,
+    hasBothAuctions: false,
+    hasBoth: false,
+    firstAuctionValue: null,
+    secondAuctionValue: null,
+    firstAuctionDate: null,
+    secondAuctionDate: null,
+    formattedFirstAuctionDate: null,
+    formattedSecondAuctionDate: null,
+    mainAuctionDate: rawMainDate,
+    formattedMainAuctionDate: formatAuctionDate(rawMainDate),
+    higherPriceForFilter: singlePrice,
+    lowestPrice: singlePrice,
+    singleAuctionPrice: singlePrice,
   };
 }
 
@@ -121,7 +205,7 @@ export function getPropertyFilterPrice(prop: any): number {
  */
 export function getPaymentConditions(prop: any): PaymentConditionsResult {
   const bank = String(prop.source || prop.bankName || prop.originBank || 'CAIXA').toUpperCase();
-  const saleVal = Number(prop.sale_value || prop.current_minimum_value || prop.secondAuctionPrice || 0);
+  const saleVal = Number(prop.sale_value || prop.current_minimum_value || prop.price || prop.secondAuctionPrice || 0);
   const propType = (prop.property_type || prop.category || '').toLowerCase();
   const isSantander = bank.includes('SANTANDER');
 

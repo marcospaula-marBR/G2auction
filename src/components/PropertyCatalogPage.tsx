@@ -35,12 +35,14 @@ import { extractHdnImovelFromUrl } from '../utils/caixaListImporter';
 import { getAuctionValues, getPaymentConditions } from '../utils/propertyAuctionHelper';
 import { EditalAnalysisModal } from './EditalAnalysisModal';
 import { FinanciamentoCaixaModal } from './FinanciamentoCaixaModal';
+import { BancosAdminPage } from './BancosAdminPage';
 
 interface PropertyCatalogPageProps {
   onOpenAdmin?: () => void;
 }
 
-export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpenAdmin }) => {
+export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = () => {
+  const [activeTab, setActiveTab] = useState<'catalog' | 'sync'>('catalog');
   // Estatísticas Resumidas da Base (Seção 17)
   const [summaryStats, setSummaryStats] = useState<{
     totalActiveCount: number;
@@ -229,15 +231,34 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
             </span>
           </div>
 
-          {onOpenAdmin && (
+          {/* SELETOR DE MODO: CATÁLOGO GERAL vs. ROBÔS & SINCRONIZAÇÃO */}
+          <div className="flex items-center bg-slate-950/80 p-1.5 rounded-2xl border border-slate-700/80">
             <button
-              onClick={onOpenAdmin}
-              className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold px-4 py-2 rounded-2xl transition-colors flex items-center gap-2"
+              onClick={() => setActiveTab('catalog')}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                activeTab === 'catalog'
+                  ? 'bg-orange-500 text-slate-950 shadow-md'
+                  : 'text-slate-300 hover:text-white'
+              }`}
             >
-              <RefreshCw className="w-3.5 h-3.5 text-orange-400" />
-              <span>Gerenciar & Importar Bancos</span>
+              <Building2 className="w-3.5 h-3.5" />
+              <span>Catálogo Unificado</span>
+              <span className="text-[10px] bg-slate-900/80 text-white px-2 py-0.5 rounded-full font-bold ml-1">
+                {totalCount.toLocaleString()}
+              </span>
             </button>
-          )}
+            <button
+              onClick={() => setActiveTab('sync')}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                activeTab === 'sync'
+                  ? 'bg-orange-500 text-slate-950 shadow-md'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Robôs & Carga dos Bancos</span>
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
@@ -296,6 +317,18 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
           </div>
         </div>
       </div>
+
+      {activeTab === 'sync' ? (
+        <div className="space-y-6">
+          <BancosAdminPage
+            onGoToCatalog={() => {
+              setActiveTab('catalog');
+              executeSearch(1);
+            }}
+          />
+        </div>
+      ) : (
+        <>
 
       {/* BOTÃO TOGGLE DE FILTROS EM MOBILE */}
       <div className="lg:hidden">
@@ -763,9 +796,9 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                                 <span className="text-xs font-black text-slate-800">
                                   {formatCurrencyBRL(auctionInfo.firstAuctionValue)}
                                 </span>
-                                {auctionInfo.firstAuctionDate && (
-                                  <span className="text-[9px] font-semibold text-slate-500 block truncate">
-                                    📅 {auctionInfo.firstAuctionDate}
+                                {auctionInfo.formattedFirstAuctionDate && (
+                                  <span className="text-[10px] font-bold text-slate-600 block truncate mt-0.5" title={auctionInfo.formattedFirstAuctionDate}>
+                                    📅 {auctionInfo.formattedFirstAuctionDate}
                                   </span>
                                 )}
                               </div>
@@ -774,30 +807,42 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                                 <span className="text-sm font-black text-emerald-600">
                                   {formatCurrencyBRL(auctionInfo.secondAuctionValue)}
                                 </span>
-                                {auctionInfo.secondAuctionDate && (
-                                  <span className="text-[9px] font-semibold text-emerald-700 block truncate">
-                                    📅 {auctionInfo.secondAuctionDate}
+                                {auctionInfo.formattedSecondAuctionDate && (
+                                  <span className="text-[10px] font-bold text-emerald-700 block truncate mt-0.5" title={auctionInfo.formattedSecondAuctionDate}>
+                                    📅 {auctionInfo.formattedSecondAuctionDate}
                                   </span>
                                 )}
                               </div>
                             </div>
                           </div>
                         ) : (
-                          <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 grid grid-cols-2 gap-2 text-xs">
-                            <div>
-                              <span className="text-slate-400 font-bold block text-[9px] uppercase">
-                                PREÇO MÍNIMO {prop.source || 'CAIXA'}:
-                              </span>
-                              <span className="text-base font-black text-emerald-600">
-                                {prop.current_minimum_value || prop.sale_value ? formatCurrencyBRL(prop.current_minimum_value || prop.sale_value) : 'Sob Consulta'}
-                              </span>
-                            </div>
+                          <div className="space-y-2">
+                            {auctionInfo.formattedMainAuctionDate && (
+                              <div className="bg-orange-50 border border-orange-200 px-3 py-1.5 rounded-xl flex items-center justify-between text-[11px]">
+                                <span className="text-orange-900 font-bold text-[10px] uppercase flex items-center gap-1">
+                                  📅 Data do Leilão / Prazo:
+                                </span>
+                                <span className="text-orange-950 font-black text-xs bg-white px-2 py-0.5 rounded-lg border border-orange-200 shadow-2xs">
+                                  {auctionInfo.formattedMainAuctionDate}
+                                </span>
+                              </div>
+                            )}
+                            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 grid grid-cols-2 gap-2 text-xs">
+                              <div>
+                                <span className="text-slate-400 font-bold block text-[9px] uppercase">
+                                  PREÇO MÍNIMO {prop.source || 'CAIXA'}:
+                                </span>
+                                <span className="text-base font-black text-emerald-600">
+                                  {prop.current_minimum_value || prop.sale_value ? formatCurrencyBRL(prop.current_minimum_value || prop.sale_value) : 'Sob Consulta'}
+                                </span>
+                              </div>
 
-                            <div>
-                              <span className="text-slate-400 font-bold block text-[9px] uppercase">AVALIAÇÃO:</span>
-                              <span className="text-xs font-extrabold text-slate-700 line-through">
-                                {prop.appraisal_value ? formatCurrencyBRL(prop.appraisal_value) : 'N/I'}
-                              </span>
+                              <div>
+                                <span className="text-slate-400 font-bold block text-[9px] uppercase">AVALIAÇÃO:</span>
+                                <span className="text-xs font-extrabold text-slate-700 line-through">
+                                  {prop.appraisal_value ? formatCurrencyBRL(prop.appraisal_value) : 'N/I'}
+                                </span>
+                              </div>
                             </div>
                           </div>
                         )}
@@ -939,6 +984,8 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
           </button>
         </div>
       )}
+        </>
+      )}
 
       {/* MODAL DE DETALHES DO IMÓVEL (/imoveis/:id - Seção 38) */}
       {selectedDetailProperty && (
@@ -985,9 +1032,9 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                           <span className="text-base font-black text-slate-800">
                             {formatCurrencyBRL(aInfo.firstAuctionValue)}
                           </span>
-                          {aInfo.firstAuctionDate && (
-                            <span className="text-[10px] font-semibold text-slate-500 block mt-0.5">
-                              📅 {aInfo.firstAuctionDate}
+                          {aInfo.formattedFirstAuctionDate && (
+                            <span className="text-[11px] font-bold text-slate-600 block mt-0.5">
+                              📅 {aInfo.formattedFirstAuctionDate}
                             </span>
                           )}
                         </div>
@@ -996,9 +1043,9 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                           <span className="text-lg font-black text-emerald-600">
                             {formatCurrencyBRL(aInfo.secondAuctionValue)}
                           </span>
-                          {aInfo.secondAuctionDate && (
-                            <span className="text-[10px] font-semibold text-emerald-700 block mt-0.5">
-                              📅 {aInfo.secondAuctionDate}
+                          {aInfo.formattedSecondAuctionDate && (
+                            <span className="text-[11px] font-bold text-emerald-700 block mt-0.5">
+                              📅 {aInfo.formattedSecondAuctionDate}
                             </span>
                           )}
                         </div>
@@ -1015,34 +1062,46 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({ onOpen
                 }
 
                 return (
-                  <div className="grid grid-cols-3 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
-                    <div>
-                      <span className="text-slate-400 font-bold block text-[10px]">PREÇO MÍNIMO {selectedDetailProperty.source || 'CAIXA'}:</span>
-                      <span className="text-lg font-black text-emerald-600">
-                        {selectedDetailProperty.current_minimum_value || selectedDetailProperty.sale_value ? formatCurrencyBRL(selectedDetailProperty.current_minimum_value || selectedDetailProperty.sale_value) : 'Sob Consulta'}
-                      </span>
-                    </div>
+                  <div className="space-y-3">
+                    {aInfo.formattedMainAuctionDate && (
+                      <div className="bg-orange-50 border border-orange-200 p-3 rounded-xl flex items-center justify-between">
+                        <span className="text-orange-900 font-bold text-xs uppercase flex items-center gap-1.5">
+                          📅 Data do Leilão / Prazo para Propostas:
+                        </span>
+                        <span className="text-orange-950 font-black text-xs bg-white px-2.5 py-1 rounded-lg border border-orange-200 shadow-2xs">
+                          {aInfo.formattedMainAuctionDate}
+                        </span>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-3 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                      <div>
+                        <span className="text-slate-400 font-bold block text-[10px]">PREÇO MÍNIMO {selectedDetailProperty.source || 'CAIXA'}:</span>
+                        <span className="text-lg font-black text-emerald-600">
+                          {selectedDetailProperty.current_minimum_value || selectedDetailProperty.sale_value ? formatCurrencyBRL(selectedDetailProperty.current_minimum_value || selectedDetailProperty.sale_value) : 'Sob Consulta'}
+                        </span>
+                      </div>
 
-                    <div>
-                      <span className="text-slate-400 font-bold block text-[10px]">AVALIAÇÃO:</span>
-                      <span className="text-sm font-extrabold text-slate-700 line-through">
-                        {selectedDetailProperty.appraisal_value ? formatCurrencyBRL(selectedDetailProperty.appraisal_value) : 'N/I'}
-                      </span>
-                    </div>
+                      <div>
+                        <span className="text-slate-400 font-bold block text-[10px]">AVALIAÇÃO:</span>
+                        <span className="text-sm font-extrabold text-slate-700 line-through">
+                          {selectedDetailProperty.appraisal_value ? formatCurrencyBRL(selectedDetailProperty.appraisal_value) : 'N/I'}
+                        </span>
+                      </div>
 
-                    <div>
-                      <span className="text-slate-400 font-bold block text-[10px]">DESCONTO:</span>
-                      <span className="text-sm font-extrabold text-orange-600">
-                        {(() => {
-                          const minPrice = selectedDetailProperty.current_minimum_value || selectedDetailProperty.sale_value || 0;
-                          const isSobConsulta = !minPrice || minPrice <= 0;
-                          const rawDiscount = selectedDetailProperty.discount_percentage;
-                          if (isSobConsulta || rawDiscount === null || rawDiscount === undefined) return 'Sob Consulta';
-                          const discount = rawDiscount > 100 ? rawDiscount / 100 : rawDiscount;
-                          if (discount <= 0 || discount >= 100) return 'Sob Consulta';
-                          return `${discount.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`;
-                        })()}
-                      </span>
+                      <div>
+                        <span className="text-slate-400 font-bold block text-[10px]">DESCONTO:</span>
+                        <span className="text-sm font-extrabold text-orange-600">
+                          {(() => {
+                            const minPrice = selectedDetailProperty.current_minimum_value || selectedDetailProperty.sale_value || 0;
+                            const isSobConsulta = !minPrice || minPrice <= 0;
+                            const rawDiscount = selectedDetailProperty.discount_percentage;
+                            if (isSobConsulta || rawDiscount === null || rawDiscount === undefined) return 'Sob Consulta';
+                            const discount = rawDiscount > 100 ? rawDiscount / 100 : rawDiscount;
+                            if (discount <= 0 || discount >= 100) return 'Sob Consulta';
+                            return `${discount.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`;
+                          })()}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 );

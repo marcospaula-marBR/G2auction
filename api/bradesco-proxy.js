@@ -70,10 +70,17 @@ export default async function handler(req, res) {
       let totalPages = 1;
 
       const mapBradescoItem = (item) => {
-        const saleVal = item.price || 0;
-        const appraisalVal = item.min_auction_value_1 || item.final_auction_value || saleVal;
+        const val1 = Number(item.min_auction_value_1 || 0);
+        const val2 = Number(item.min_auction_value_2 || 0);
+        const date1 = item.date_auction_1 || null;
+        const date2 = item.date_auction_2 || null;
+        const isAlienacaoFiduciaria = item.realstate_auction_type === 'alienacao-fiduciaria';
+        const hasBoth = (val1 > 0 && val2 > 0) || Boolean(date1 && date2) || isAlienacaoFiduciaria;
+
+        // No leilão com 2 praças, o valor de venda padrão para arrematação é a 2ª praça (com deságio)
+        const saleVal = val2 > 0 ? val2 : (item.price || val1 || 0);
+        const appraisalVal = val1 > 0 ? val1 : (item.final_auction_value || saleVal);
         let discount = 0;
-        // Não calcular desconto se imóvel estiver Sob Consulta (preço zero ou indefinido)
         if (saleVal > 0 && appraisalVal > saleVal && appraisalVal > 0) {
           discount = Math.round(((appraisalVal - saleVal) / appraisalVal) * 100);
         }
@@ -84,8 +91,10 @@ export default async function handler(req, res) {
         const photo = Array.isArray(item.images) && item.images.length > 0 ? item.images[0] : '';
         const auctioneerName = item.auctioneer?.name ? `${item.auctioneer.name} (Bradesco Homologado)` : 'Bradesco Leilões';
 
-        const firstAuctionVal = appraisalVal;
-        const secondAuctionVal = saleVal;
+        const firstAuctionVal = hasBoth ? (val1 > 0 ? val1 : appraisalVal) : null;
+        const secondAuctionVal = hasBoth ? (val2 > 0 ? val2 : saleVal) : null;
+        const mainAuctionDate = item.auction_date || date2 || date1 || item.final_date_auction || null;
+
         const canFinanceBradesco = saleVal >= 100000;
         const maxInstallments = canFinanceBradesco ? 360 : 1;
         const minDownPayment = canFinanceBradesco ? Math.round(saleVal * 0.20) : saleVal;
@@ -97,6 +106,12 @@ export default async function handler(req, res) {
         const paymentConditions = canFinanceBradesco
           ? `À vista ou Financiamento Imobiliário Bradesco em até ${maxInstallments} meses (Entrada mínima de 20%: R$ ${minDownPayment.toLocaleString('pt-BR')}, parcelas a partir de R$ ${minInstallmentValue.toLocaleString('pt-BR')}/mês).`
           : 'Somente à vista (O Banco Bradesco exige valor financiado mínimo a partir de R$ 100 mil).';
+
+        const modalityLabel = isAlienacaoFiduciaria
+          ? 'Leilão Extrajudicial — Alienação Fiduciária'
+          : item.realstate_auction_type === 'convencional'
+          ? 'Leilão Extrajudicial Bradesco'
+          : (item.realstate_auction_type || 'Leilão Bradesco');
 
         return {
           source: 'BRADESCO',
@@ -110,10 +125,12 @@ export default async function handler(req, res) {
           appraisal_value: appraisalVal,
           first_auction_value: firstAuctionVal,
           second_auction_value: secondAuctionVal,
-          first_auction_date: item.start_auction_1 || item.start_date_1 || null,
-          second_auction_date: item.start_auction_2 || item.start_date_2 || null,
+          first_auction_date: date1,
+          second_auction_date: date2,
+          auction_date: mainAuctionDate,
+          has_both_auctions: hasBoth,
           discount_percentage: discount,
-          sale_modality: item.realstate_auction_type === 'convencional' ? 'Leilão Extrajudicial Bradesco' : (item.realstate_auction_type || 'Leilão Bradesco'),
+          sale_modality: modalityLabel,
           property_type: item.category || 'Imóvel',
           area_m2: 0,
           bedrooms: 0,
