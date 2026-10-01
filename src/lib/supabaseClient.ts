@@ -38,15 +38,13 @@ export async function autoSeedDefaultCsvFromPublic(): Promise<void> {
         if (parseResult.rows && parseResult.rows.length > 0) {
           parseResult.rows.forEach((p) => {
             const compositeKey = `${p.source}_${p.source_property_id}`;
-            if (!memoryStore.properties.has(compositeKey)) {
-              memoryStore.properties.set(compositeKey, {
-                id: `sb-seed-${p.source_property_id}`,
-                ...p,
-                status: 'ACTIVE',
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              });
-            }
+            memoryStore.properties.set(compositeKey, {
+              id: `sb-seed-${p.source_property_id}`,
+              ...p,
+              status: 'ACTIVE',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            });
           });
           saveMemoryStoreToLocalStorage();
           console.log(`[Auto-Seed SP] ${parseResult.rows.length} imóveis e cidades populados de /Lista_imoveis_SP.csv.`);
@@ -54,6 +52,8 @@ export async function autoSeedDefaultCsvFromPublic(): Promise<void> {
       }
     } catch (err: any) {
       console.warn('[Auto-Seed SP Error]', err.message);
+    } finally {
+      seedPromise = null;
     }
   })();
 
@@ -90,7 +90,6 @@ export async function loadMemoryStoreFromLocalStorage() {
 
     idbMap.forEach((v, k) => memoryStore.properties.set(k, sanitizeProperty(v)));
     console.log(`[IndexedDB Load] ${idbMap.size} imóveis carregados com sucesso.`);
-    return;
   }
 
   // 2. Fallback para localStorage
@@ -607,7 +606,7 @@ export async function queryPropertiesFromSupabase(
   }
 
   // Fallback para memory store (Múltiplos Bancos)
-  let filtered = Array.from(memoryStore.properties.values()).filter((p) => p.status === 'ACTIVE');
+  let filtered = Array.from(memoryStore.properties.values()).filter((p) => !p.status || p.status === 'ACTIVE' || p.status === 'active');
 
   if (filters.sources && filters.sources.length > 0) {
     filtered = filtered.filter((p) => filters.sources!.includes(p.source));

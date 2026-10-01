@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 
 export function App() {
-  const APP_VERSION = 'v3.6.5';
+  const APP_VERSION = 'v3.6.6';
   const [properties, setProperties] = useState<Property[]>(mockProperties);
   const [selectedProperty, setSelectedProperty] = useState<Property | undefined>(mockProperties[0]);
 

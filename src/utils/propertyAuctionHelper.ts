@@ -587,12 +587,25 @@ export function formatStandardPropertyId(sourceOrProp?: any, rawId?: string | nu
 export function extractCleanPropertyAddress(prop: any): string {
   if (!prop) return '';
 
-  const rawAddress = (prop.address || '').trim();
-  const rawTitle = (prop.title || prop.name || '').trim();
-  const rawDesc = (prop.description || '').replace(/<[^>]*>/g, ' ').trim();
-  const neighborhood = (prop.neighborhood || '').trim();
-  const city = (prop.city || '').trim();
-  const state = (prop.state || '').trim();
+  let rawAddress = '';
+  if (typeof prop.address === 'string') {
+    rawAddress = prop.address.trim();
+  } else if (prop.address && typeof prop.address === 'object') {
+    const parts = [
+      prop.address.street,
+      prop.address.number,
+      prop.address.neighborhood || prop.neighborhood,
+      prop.address.city || prop.city,
+      prop.address.state || prop.state,
+    ].filter(Boolean);
+    rawAddress = parts.join(', ');
+  }
+
+  const rawTitle = String(prop.title || prop.name || '').trim();
+  const rawDesc = String(prop.description || '').replace(/<[^>]*>/g, ' ').trim();
+  const neighborhood = String(prop.neighborhood || (typeof prop.address === 'object' ? prop.address?.neighborhood : '') || '').trim();
+  const city = String(prop.city || (typeof prop.address === 'object' ? prop.address?.city : '') || '').trim();
+  const state = String(prop.state || (typeof prop.address === 'object' ? prop.address?.state : '') || '').trim();
 
   // Verifica se rawAddress já contém logradouro explícito ou número
   const hasStreetIndicator = /\b(rua|r\.|avenida|av\.|alameda|al\.|travessa|trav\.|pra[çc]a|pc\.|rodovia|rod\.|estrada|est\.|quadra|qd\.|lote|lt\.|condom[ií]nio|cond\.)\b/i.test(rawAddress) ||

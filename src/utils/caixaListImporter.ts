@@ -345,30 +345,27 @@ export function parseCaixaCsv(
     if (cols.length < 3) continue;
 
     const rawIdStr = idxId !== -1 ? cols[idxId] : cols[0];
-    if (!rawIdStr) {
-      invalidRowsCount++;
-      continue;
-    }
-
-    const source_property_id = rawIdStr.trim();
-    if (!source_property_id || !/^\d{5,15}$/.test(normalizeCaixaId(source_property_id))) {
-      invalidRowsCount++;
-      continue;
-    }
-
     const rawLink = idxLink !== -1 ? cols[idxLink] : '';
+    const hdnImovelInLink = extractHdnImovelFromUrl(rawLink);
+
+    // Se o link contiver o hdnimovel oficial (10-15 dígitos), SEMPRE dê preferência a ele,
+    // pois arquivos CSV da Caixa frequentemente salvam a 1ª coluna com notação científica (ex: 8,78771E+12)
+    let source_property_id = '';
+    if (hdnImovelInLink && /^\d{5,15}$/.test(normalizeCaixaId(hdnImovelInLink))) {
+      source_property_id = normalizeCaixaId(hdnImovelInLink);
+    } else if (rawIdStr) {
+      source_property_id = normalizeCaixaId(rawIdStr.trim());
+    }
+
+    if (!source_property_id || !/^\d{5,15}$/.test(source_property_id)) {
+      invalidRowsCount++;
+      continue;
+    }
+
     const source_url = rawLink && rawLink.startsWith('http')
       ? rawLink.trim()
       : `https://venda-imoveis.caixa.gov.br/sistema/detalhe-imovel.asp?hdnOrigem=index&hdnimovel=${source_property_id}`;
 
-    const hdnImovelInLink = extractHdnImovelFromUrl(source_url);
-    if (hdnImovelInLink) {
-      if (normalizeCaixaId(source_property_id) !== normalizeCaixaId(hdnImovelInLink)) {
-        rejectedMismatchCount++;
-        invalidRowsCount++;
-        continue;
-      }
-    }
 
     const state = (idxUf !== -1 ? cols[idxUf] : uf).trim().toUpperCase();
     const city = idxCity !== -1 ? cols[idxCity].trim() : '';

@@ -149,34 +149,39 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
     setLoading(true);
     setPage(targetPage);
 
-    const params: PropertyFilterParams = {
-      state: selectedState || undefined,
-      city: selectedCity || undefined,
-      source: selectedBank !== 'ALL' ? selectedBank : undefined,
-      priceMin: priceMinInput ? Number(priceMinInput) : undefined,
-      priceMax: priceMaxInput ? Number(priceMaxInput) : undefined,
-      appraisalMin: appraisalMinInput ? Number(appraisalMinInput) : undefined,
-      appraisalMax: appraisalMaxInput ? Number(appraisalMaxInput) : undefined,
-      discountMin: discountMin !== undefined ? discountMin : undefined,
-      financing: financing,
-      occupancy: occupancy,
-      areaType: areaType,
-      areaMin: areaMinInput ? Number(areaMinInput) : undefined,
-      areaMax: areaMaxInput ? Number(areaMaxInput) : undefined,
-      propertyType: propertyType !== 'Todos' ? propertyType : undefined,
-      saleModality: saleModality !== 'Todas' ? saleModality : undefined,
-      sortBy: sortBy,
-      page: targetPage,
-      pageSize: pageSize,
-    };
+    try {
+      const params: PropertyFilterParams = {
+        state: selectedState || undefined,
+        city: selectedCity || undefined,
+        source: selectedBank !== 'ALL' ? selectedBank : undefined,
+        priceMin: priceMinInput ? Number(priceMinInput) : undefined,
+        priceMax: priceMaxInput ? Number(priceMaxInput) : undefined,
+        appraisalMin: appraisalMinInput ? Number(appraisalMinInput) : undefined,
+        appraisalMax: appraisalMaxInput ? Number(appraisalMaxInput) : undefined,
+        discountMin: discountMin !== undefined ? discountMin : undefined,
+        financing: financing,
+        occupancy: occupancy,
+        areaType: areaType,
+        areaMin: areaMinInput ? Number(areaMinInput) : undefined,
+        areaMax: areaMaxInput ? Number(areaMaxInput) : undefined,
+        propertyType: propertyType !== 'Todos' ? propertyType : undefined,
+        saleModality: saleModality !== 'Todas' ? saleModality : undefined,
+        sortBy: sortBy,
+        page: targetPage,
+        pageSize: pageSize,
+      };
 
-    const res = await queryPropertiesFromSupabase(params);
+      const res = await queryPropertiesFromSupabase(params);
 
-    setProperties(res.data);
-    setTotalCount(res.totalCount);
-    setTotalPages(res.totalPages);
-    setIsMemoryFallback(res.isMemoryFallback);
-    setLoading(false);
+      setProperties(res?.data || []);
+      setTotalCount(res?.totalCount || 0);
+      setTotalPages(res?.totalPages || 1);
+      setIsMemoryFallback(Boolean(res?.isMemoryFallback));
+    } catch (err) {
+      console.error('[executeSearch Error]', err);
+    } finally {
+      setLoading(false);
+    }
   }, [
     selectedState,
     selectedCity,
@@ -673,7 +678,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
 
             return (
               <div
-                key={prop.id || prop.source_property_id}
+                key={prop.id || `${prop.source || 'PROP'}_${prop.source_property_id || index}_${index}`}
                 className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between"
               >
                 <div>

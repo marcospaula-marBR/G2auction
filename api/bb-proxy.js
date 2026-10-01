@@ -208,6 +208,7 @@ function generateBBProperties(uf = 'SP', filterCity = '') {
           max_installments: 420,
           min_down_payment: minDownPayment,
           min_installment_value: minInstallment,
+          status: 'ACTIVE',
         };
       });
   }
@@ -269,6 +270,7 @@ function generateBBProperties(uf = 'SP', filterCity = '') {
       max_installments: 420,
       min_down_payment: minDownPayment,
       min_installment_value: minInstallment,
+      status: 'ACTIVE',
     };
   });
 }
