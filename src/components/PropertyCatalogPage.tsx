@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Search,
   Filter,
@@ -6,6 +6,8 @@ import {
   ExternalLink,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   ShieldCheck,
   Building2,
   MapPin,
@@ -17,6 +19,9 @@ import {
   CreditCard,
   AlertCircle,
   Route,
+  Map as MapIcon,
+  LayoutGrid,
+  Columns2,
 } from 'lucide-react';
 
 import {
@@ -29,6 +34,8 @@ import {
   type PropertyFilterParams,
 } from '../lib/supabaseClient';
 
+import type { Property } from '../types/auction';
+import { adaptCatalogItemToProperty } from '../utils/propertyAdapter';
 import { formatCurrencyBRL } from '../utils/financial';
 import { cleanCaixaAddressForMaps } from '../utils/addressSanitizer';
 import { getCaixaPropertyPageUrl } from '../utils/caixaEditalHelper';
@@ -37,17 +44,29 @@ import { getAuctionValues, getPaymentConditions, formatStandardPropertyId, extra
 import { EditalAnalysisModal } from './EditalAnalysisModal';
 import { FinanciamentoCaixaModal } from './FinanciamentoCaixaModal';
 import { BancosAdminPage } from './BancosAdminPage';
+import { PropertyMap } from './PropertyMap';
+import { useTenant } from '../config/tenant';
 
 interface PropertyCatalogPageProps {
   onOpenAdmin?: () => void;
   onOpenJourney?: (property: any) => void;
+  onPropertiesLoaded?: (adapted: Property[]) => void;
+  onOpenMaxBid?: (property: Property) => void;
+  onOpenDetail360?: (property: Property) => void;
 }
 
 export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
   onOpenAdmin: _onOpenAdmin,
   onOpenJourney,
+  onPropertiesLoaded,
+  onOpenMaxBid: _onOpenMaxBid,
+  onOpenDetail360,
 }) => {
+  const { tenant } = useTenant();
   const [activeTab, setActiveTab] = useState<'catalog' | 'sync'>('catalog');
+  const [viewMode, setViewMode] = useState<'grid' | 'split' | 'map'>('grid');
+  const [activeMapLayer, setActiveMapLayer] = useState<'default' | 'price' | 'flood' | 'safety' | 'noise' | '3d'>('default');
+  const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState<boolean>(false);
   // Estatísticas Resumidas da Base (Seção 17)
   const [summaryStats, setSummaryStats] = useState<{
     totalActiveCount: number;
@@ -104,9 +123,6 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
 
   // Modal do Simulador de Financiamento CAIXA
   const [selectedFinancingProperty, setSelectedFinancingProperty] = useState<any | null>(null);
-
-  // Painel de Filtros Expansível
-  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState<boolean>(true);
 
   // Carregar estatísticas e opções dos selects no primeiro render
   useEffect(() => {
@@ -173,10 +189,15 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
 
       const res = await queryPropertiesFromSupabase(params);
 
-      setProperties(res?.data || []);
+      const loaded = res?.data || [];
+      setProperties(loaded);
       setTotalCount(res?.totalCount || 0);
       setTotalPages(res?.totalPages || 1);
       setIsMemoryFallback(Boolean(res?.isMemoryFallback));
+
+      if (onPropertiesLoaded && loaded.length > 0) {
+        onPropertiesLoaded(loaded.map((item: any, idx: number) => adaptCatalogItemToProperty(item, idx)));
+      }
     } catch (err) {
       console.error('[executeSearch Error]', err);
     } finally {
@@ -201,6 +222,37 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
     sortBy,
     pageSize,
   ]);
+
+  // Volta para o catálogo se adminSync for desabilitado
+  useEffect(() => {
+    if (!tenant.features.adminSync && activeTab === 'sync') {
+      setActiveTab('catalog');
+    }
+  }, [tenant.features.adminSync, activeTab]);
+
+  // Se mapa for desabilitado no tenant, força modo grid
+  useEffect(() => {
+    if (!tenant.features.map && viewMode !== 'grid') {
+      setViewMode('grid');
+    }
+  }, [tenant.features.map, viewMode]);
+
+  const adaptedPropertiesForMap = useMemo(
+    () => properties.map((item, idx) => adaptCatalogItemToProperty(item, idx)),
+    [properties]
+  );
+
+  const activeAdvancedFilterCount = useMemo(() => {
+    let count = 0;
+    if (propertyType !== 'Todos') count++;
+    if (saleModality !== 'Todas') count++;
+    if (priceMinInput) count++;
+    if (appraisalMinInput || appraisalMaxInput) count++;
+    if (financing !== null) count++;
+    if (occupancy !== null) count++;
+    if (areaMinInput || areaMaxInput) count++;
+    return count;
+  }, [propertyType, saleModality, priceMinInput, appraisalMinInput, appraisalMaxInput, financing, occupancy, areaMinInput, areaMaxInput]);
 
   // Executar busca inicial e quando mudar a ordenação ou banco
   useEffect(() => {
@@ -227,76 +279,81 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6 p-4 sm:p-6 font-sans">
+    <div className="max-w-7xl mx-auto space-y-5 font-sans">
       
-      {/* BARRA SUPERIOR DO CATÁLOGO (Seção 17) */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white p-6 rounded-3xl border border-slate-800 shadow-xl space-y-4">
+      {/* BARRA SUPERIOR DO CATÁLOGO */}
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white p-5 sm:p-6 rounded-3xl border border-slate-800 shadow-lg space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center space-x-3">
-            <span className="bg-orange-500 text-slate-950 font-black text-xs px-3 py-1 rounded-full uppercase tracking-wider flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5" /> IMÓVEIS EM OPORTUNIDADE
+          <div className="flex items-center space-x-2.5">
+            <span
+              className="text-white font-black text-[11px] px-3 py-1 rounded-full uppercase tracking-wider flex items-center gap-1"
+              style={{ backgroundColor: tenant.primaryColor }}
+            >
+              <Sparkles className="w-3.5 h-3.5" /> Oportunidades
             </span>
-            <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5" /> Base Oficial Multi-Bancos
+            <span className="bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold px-3 py-1 rounded-full flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5" /> Base Multi-Bancos
             </span>
           </div>
 
-          {/* SELETOR DE MODO: CATÁLOGO GERAL vs. ROBÔS & SINCRONIZAÇÃO */}
-          <div className="flex items-center bg-slate-950/80 p-1.5 rounded-2xl border border-slate-700/80">
-            <button
-              onClick={() => setActiveTab('catalog')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
-                activeTab === 'catalog'
-                  ? 'bg-orange-500 text-slate-950 shadow-md'
-                  : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              <Building2 className="w-3.5 h-3.5" />
-              <span>Catálogo Unificado</span>
-              <span className="text-[10px] bg-slate-900/80 text-white px-2 py-0.5 rounded-full font-bold ml-1">
-                {totalCount.toLocaleString()}
-              </span>
-            </button>
-            <button
-              onClick={() => setActiveTab('sync')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
-                activeTab === 'sync'
-                  ? 'bg-orange-500 text-slate-950 shadow-md'
-                  : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              <RefreshCw className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Robôs & Carga dos Bancos</span>
-            </button>
-          </div>
+          {/* SELETOR DE MODO ADMIN: Apenas quando habilitado no tenant/admin */}
+          {tenant.features.adminSync && (
+            <div className="flex items-center bg-slate-950/80 p-1 rounded-2xl border border-slate-700/80">
+              <button
+                onClick={() => setActiveTab('catalog')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  activeTab === 'catalog'
+                    ? 'text-white shadow-sm'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+                style={activeTab === 'catalog' ? { backgroundColor: tenant.primaryColor } : undefined}
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                <span>Catálogo</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('sync')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  activeTab === 'sync'
+                    ? 'text-white shadow-sm'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+                style={activeTab === 'sync' ? { backgroundColor: tenant.primaryColor } : undefined}
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Admin Sync Bancos</span>
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              Catálogo de Imóveis dos Bancos
+            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+              Catálogo de Imóveis em Leilão
             </h1>
             <p className="text-xs text-slate-300 font-medium mt-1">
-              Oportunidades oficiais da Caixa Econômica Federal, Banco Santander, Banco Bradesco e Banco do Brasil.
+              Oportunidades da Caixa Econômica, Santander, Bradesco e Banco do Brasil.
             </p>
 
-            {/* Quick Pills de Bancos */}
+            {/* Pills Únicas de Bancos */}
             <div className="flex flex-wrap items-center gap-2 mt-3">
               {[
                 { id: 'ALL', label: 'Todos os Bancos' },
-                { id: 'CAIXA', label: '🏛️ Caixa Econômica' },
-                { id: 'SANTANDER', label: '🔴 Santander' },
-                { id: 'BRADESCO', label: '🟥 Bradesco' },
-                { id: 'BB', label: '🟡 Banco do Brasil' },
+                { id: 'CAIXA', label: 'Caixa Econômica' },
+                { id: 'SANTANDER', label: 'Santander' },
+                { id: 'BRADESCO', label: 'Bradesco' },
+                { id: 'BB', label: 'Banco do Brasil' },
               ].map((b) => (
                 <button
                   key={b.id}
                   onClick={() => setSelectedBank(b.id)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                     selectedBank === b.id
-                      ? 'bg-orange-500 text-slate-950 font-black shadow-md'
+                      ? 'text-white font-black shadow-md'
                       : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
                   }`}
+                  style={selectedBank === b.id ? { backgroundColor: tenant.primaryColor } : undefined}
                 >
                   {b.label}
                 </button>
@@ -304,23 +361,16 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-4 text-xs font-mono bg-slate-950/60 p-3 rounded-2xl border border-slate-800">
+          <div className="flex flex-wrap items-center gap-4 text-xs bg-slate-950/60 p-3 rounded-2xl border border-slate-800">
             <div>
-              <span className="text-slate-400 block text-[10px] uppercase font-bold">Encontrados:</span>
+              <span className="text-slate-400 block text-[10px] uppercase font-bold">Encontrados</span>
               <span className="text-emerald-400 font-black text-sm">{totalCount.toLocaleString()} imóveis</span>
-            </div>
-            <div className="h-6 w-px bg-slate-800 hidden sm:block" />
-            <div>
-              <span className="text-slate-400 block text-[10px] uppercase font-bold">Banco Selecionado:</span>
-              <span className="text-orange-400 font-bold uppercase">
-                {selectedBank === 'ALL' ? 'Todos os Bancos' : selectedBank}
-              </span>
             </div>
             {summaryStats.totalActiveCount > 0 && (
               <>
                 <div className="h-6 w-px bg-slate-800 hidden sm:block" />
                 <div>
-                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Base Ativa:</span>
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Base Ativa</span>
                   <span className="text-cyan-400 font-bold">{summaryStats.totalActiveCount.toLocaleString()}</span>
                 </div>
               </>
@@ -329,7 +379,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
         </div>
       </div>
 
-      {activeTab === 'sync' ? (
+      {activeTab === 'sync' && tenant.features.adminSync ? (
         <div className="space-y-6">
           <BancosAdminPage
             onGoToCatalog={() => {
@@ -340,65 +390,17 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
         </div>
       ) : (
         <>
-
-      {/* BOTÃO TOGGLE DE FILTROS EM MOBILE */}
-      <div className="lg:hidden">
-        <button
-          onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
-          className="w-full bg-white border border-slate-200 p-4 rounded-2xl shadow-sm text-xs font-black text-slate-900 flex items-center justify-between"
-        >
-          <div className="flex items-center space-x-2">
-            <Filter className="w-4 h-4 text-orange-500" />
-            <span>PAINEL DE FILTROS ({totalCount.toLocaleString()} resultados)</span>
-          </div>
-          <span className="text-orange-600 uppercase text-[10px]">
-            {isFilterPanelOpen ? 'Fechar Filtros' : 'Abrir Filtros'}
-          </span>
-        </button>
-      </div>
-
-      {/* PAINEL COMPLETO DE FILTROS (Seção 18 a 30) */}
-      <div className={`bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-6 ${isFilterPanelOpen ? 'block' : 'hidden lg:block'}`}>
-        
-        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-          <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-2">
-            <Filter className="w-4 h-4 text-orange-500" /> FILTRAR IMÓVEIS
-          </h2>
-
-          <button
-            onClick={handleClearFilters}
-            className="text-xs font-bold text-slate-500 hover:text-orange-600 transition-colors flex items-center gap-1"
-          >
-            <X className="w-3.5 h-3.5" />
-            <span>[ LIMPAR FILTROS ]</span>
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 text-xs">
-
-          {/* 0. BANCO / ORIGEM */}
-          <div className="space-y-1.5">
-            <label className="font-bold text-slate-700 uppercase text-[10px]">BANCO / INSTITUIÇÃO:</label>
-            <select
-              value={selectedBank}
-              onChange={(e) => setSelectedBank(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 font-bold text-slate-800 focus:ring-2 focus:ring-orange-500"
-            >
-              <option value="ALL">🏦 Todos os Bancos (Caixa, Santander, Bradesco, BB)</option>
-              <option value="CAIXA">🏛️ Caixa Econômica Federal</option>
-              <option value="SANTANDER">🔴 Banco Santander</option>
-              <option value="BRADESCO">🟥 Banco Bradesco</option>
-              <option value="BB">🟡 Banco do Brasil (Seu Imóvel BB)</option>
-            </select>
-          </div>
-          
-          {/* 1. ESTADO (UF) (Seção 19) */}
-          <div className="space-y-1.5">
-            <label className="font-bold text-slate-700 uppercase text-[10px]">ESTADO (UF):</label>
+      {/* PAINEL DE FILTROS EM 2 NÍVEIS (ENXUTO + AVANÇADO) */}
+      <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+        {/* Nível 1: Filtros Principais Sempre Visíveis */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end text-xs">
+          {/* ESTADO (UF) */}
+          <div className="space-y-1">
+            <label className="font-bold text-slate-600 uppercase text-[10px]">Estado (UF)</label>
             <select
               value={selectedState}
               onChange={(e) => setSelectedState(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 font-bold text-slate-800 focus:ring-2 focus:ring-orange-500"
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 font-bold text-slate-800 focus:ring-2 focus:ring-slate-400"
             >
               {availableStates.map((uf) => (
                 <option key={uf} value={uf}>
@@ -408,16 +410,16 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
             </select>
           </div>
 
-          {/* 2. CIDADE DEPENDENTE DO ESTADO (COMBOBOX PESQUISÁVEL E SCROLL CONTIDO) */}
-          <div className="space-y-1.5 relative">
-            <label className="font-bold text-slate-700 uppercase text-[10px]">CIDADE:</label>
+          {/* CIDADE */}
+          <div className="space-y-1 relative">
+            <label className="font-bold text-slate-600 uppercase text-[10px]">Cidade</label>
             <div className="relative">
               <input
                 type="text"
-                placeholder={selectedCity ? selectedCity : `Todas as Cidades (${availableCities.length})`}
+                placeholder={selectedCity ? selectedCity : `Todas (${availableCities.length})`}
                 value={selectedCity}
                 onChange={(e) => setSelectedCity(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 font-bold text-slate-900 focus:ring-2 focus:ring-orange-500 text-xs placeholder:text-slate-500 shadow-2xs"
+                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 font-bold text-slate-900 text-xs placeholder:text-slate-400"
                 list="cities-datalist"
               />
               {selectedCity && (
@@ -437,89 +439,25 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
             </datalist>
           </div>
 
-          {/* 3. TIPO DO IMÓVEL (Seção 27) */}
-          <div className="space-y-1.5">
-            <label className="font-bold text-slate-700 uppercase text-[10px]">TIPO DO IMÓVEL:</label>
-            <select
-              value={propertyType}
-              onChange={(e) => setPropertyType(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 font-bold text-slate-800 focus:ring-2 focus:ring-orange-500"
-            >
-              <option value="Todos">Todos os Tipos</option>
-              {availableTypes.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
+          {/* PREÇO MÁXIMO */}
+          <div className="space-y-1">
+            <label className="font-bold text-slate-600 uppercase text-[10px]">Preço Máximo (R$)</label>
+            <input
+              type="number"
+              placeholder="Até R$"
+              value={priceMaxInput}
+              onChange={(e) => setPriceMaxInput(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-bold"
+            />
           </div>
 
-          {/* 4. MODALIDADE DE VENDA (Seção 28) */}
-          <div className="space-y-1.5">
-            <label className="font-bold text-slate-700 uppercase text-[10px]">MODALIDADE DE VENDA:</label>
-            <select
-              value={saleModality}
-              onChange={(e) => setSaleModality(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 font-bold text-slate-800 focus:ring-2 focus:ring-orange-500"
-            >
-              <option value="Todas">Todas as Modalidades</option>
-              {availableModalities.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* 5. PREÇO MÍNIMO CAIXA (INTERVALO) (Seção 21) */}
-          <div className="space-y-1.5">
-            <label className="font-bold text-slate-700 uppercase text-[10px]">PREÇO MÍNIMO CAIXA (R$):</label>
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                type="number"
-                placeholder="De R$"
-                value={priceMinInput}
-                onChange={(e) => setPriceMinInput(e.target.value)}
-                className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold focus:ring-2 focus:ring-orange-500"
-              />
-              <input
-                type="number"
-                placeholder="Até R$"
-                value={priceMaxInput}
-                onChange={(e) => setPriceMaxInput(e.target.value)}
-                className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold focus:ring-2 focus:ring-orange-500"
-              />
-            </div>
-          </div>
-
-          {/* 6. VALOR DE AVALIAÇÃO (INTERVALO) (Seção 22) */}
-          <div className="space-y-1.5">
-            <label className="font-bold text-slate-700 uppercase text-[10px]">VALOR DE AVALIAÇÃO (R$):</label>
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                type="number"
-                placeholder="De R$"
-                value={appraisalMinInput}
-                onChange={(e) => setAppraisalMinInput(e.target.value)}
-                className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold focus:ring-2 focus:ring-orange-500"
-              />
-              <input
-                type="number"
-                placeholder="Até R$"
-                value={appraisalMaxInput}
-                onChange={(e) => setAppraisalMaxInput(e.target.value)}
-                className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold focus:ring-2 focus:ring-orange-500"
-              />
-            </div>
-          </div>
-
-          {/* 7. DESCONTO MÍNIMO (Seção 23) */}
-          <div className="space-y-1.5">
-            <label className="font-bold text-slate-700 uppercase text-[10px]">DESCONTO MÍNIMO (%):</label>
+          {/* DESCONTO MÍNIMO */}
+          <div className="space-y-1">
+            <label className="font-bold text-slate-600 uppercase text-[10px]">Desconto Mínimo</label>
             <select
               value={discountMin !== undefined ? discountMin : ''}
               onChange={(e) => setDiscountMin(e.target.value ? Number(e.target.value) : undefined)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 font-bold text-slate-800 focus:ring-2 focus:ring-orange-500"
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 font-bold text-slate-800"
             >
               <option value="">Qualquer Desconto</option>
               <option value="10">10%+ de Desconto</option>
@@ -531,128 +469,276 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
             </select>
           </div>
 
-          {/* 8. FINANCIAMENTO (Seção 24) */}
-          <div className="space-y-1.5">
-            <label className="font-bold text-slate-700 uppercase text-[10px]">FINANCIAMENTO:</label>
-            <select
-              value={financing === null ? 'todos' : financing ? 'sim' : 'nao'}
-              onChange={(e) => setFinancing(e.target.value === 'todos' ? null : e.target.value === 'sim')}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 font-bold text-slate-800 focus:ring-2 focus:ring-orange-500"
-            >
-              <option value="todos">Todos</option>
-              <option value="sim">Financiável</option>
-              <option value="nao">Não financiável</option>
-            </select>
-          </div>
-
-          {/* 9. OCUPAÇÃO (Seção 25) */}
-          <div className="space-y-1.5">
-            <label className="font-bold text-slate-700 uppercase text-[10px]">OCUPAÇÃO:</label>
-            <select
-              value={occupancy || ''}
-              onChange={(e) => setOccupancy((e.target.value as any) || null)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 font-bold text-slate-800 focus:ring-2 focus:ring-orange-500"
-            >
-              <option value="">Todos</option>
-              <option value="OCCUPIED">Ocupado</option>
-              <option value="VACANT">Desocupado</option>
-              <option value="UNKNOWN">Não informado</option>
-            </select>
-          </div>
-
-          {/* 10. ÁREA E SELETOR DE COLUNA DE ÁREA (Seção 26) */}
-          <div className="space-y-1.5 md:col-span-2">
-            <div className="flex items-center justify-between">
-              <label className="font-bold text-slate-700 uppercase text-[10px]">FILTRO DE ÁREA (m²):</label>
-              <select
-                value={areaType}
-                onChange={(e) => setAreaType(e.target.value as any)}
-                className="text-[10px] font-bold text-orange-600 bg-slate-100 rounded-lg px-2 py-0.5"
+          {/* TOGGLE MAIS FILTROS */}
+          <button
+            type="button"
+            onClick={() => setIsAdvancedFiltersOpen(!isAdvancedFiltersOpen)}
+            className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs px-3 py-2.5 rounded-xl border border-slate-200 flex items-center justify-center gap-1.5 transition-colors"
+          >
+            <Filter className="w-3.5 h-3.5" />
+            <span>Mais Filtros</span>
+            {activeAdvancedFilterCount > 0 && (
+              <span
+                className="text-white text-[10px] font-black px-1.5 py-0.2 rounded-full"
+                style={{ backgroundColor: tenant.primaryColor }}
               >
-                <option value="private_area">Área privativa</option>
-                <option value="total_area">Área total</option>
-                <option value="land_area">Área do terreno</option>
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                type="number"
-                placeholder="De m²"
-                value={areaMinInput}
-                onChange={(e) => setAreaMinInput(e.target.value)}
-                className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold focus:ring-2 focus:ring-orange-500"
-              />
-              <input
-                type="number"
-                placeholder="Até m²"
-                value={areaMaxInput}
-                onChange={(e) => setAreaMaxInput(e.target.value)}
-                className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold focus:ring-2 focus:ring-orange-500"
-              />
-            </div>
-          </div>
+                {activeAdvancedFilterCount}
+              </span>
+            )}
+            {isAdvancedFiltersOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
 
-        </div>
-
-        {/* BOTÃO BUSCAR IMÓVEIS (Seção 29) */}
-        <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-          <span className="text-[11px] font-bold text-slate-500">
-            * Todos os filtros são aplicados em conjunto (AND).
-          </span>
-
+          {/* BUSCAR */}
           <button
             onClick={() => executeSearch(1)}
             disabled={loading}
-            className="bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white font-black text-xs px-8 py-3.5 rounded-2xl shadow-lg shadow-orange-500/20 flex items-center space-x-2 transition-all transform active:scale-95 disabled:opacity-50"
+            className="w-full text-white font-black text-xs px-4 py-2.5 rounded-xl shadow-sm flex items-center justify-center space-x-1.5 transition-all active:scale-95 disabled:opacity-50"
+            style={{
+              background: `linear-gradient(135deg, ${tenant.primaryColor}, ${tenant.accentColor})`,
+            }}
           >
-            <Search className="w-4 h-4" />
-            <span>[ BUSCAR IMÓVEIS ]</span>
+            <Search className="w-3.5 h-3.5" />
+            <span>Buscar</span>
           </button>
         </div>
 
+        {/* Nível 2: Gaveta de Filtros Avançados */}
+        {isAdvancedFiltersOpen && (
+          <div className="pt-4 border-t border-slate-100 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 text-xs">
+              {/* TIPO DO IMÓVEL */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-600 uppercase text-[10px]">Tipo do Imóvel</label>
+                <select
+                  value={propertyType}
+                  onChange={(e) => setPropertyType(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 font-bold text-slate-800"
+                >
+                  <option value="Todos">Todos os Tipos</option>
+                  {availableTypes.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* MODALIDADE DE VENDA */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-600 uppercase text-[10px]">Modalidade de Venda</label>
+                <select
+                  value={saleModality}
+                  onChange={(e) => setSaleModality(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 font-bold text-slate-800"
+                >
+                  <option value="Todas">Todas as Modalidades</option>
+                  {availableModalities.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* PREÇO MÍNIMO */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-600 uppercase text-[10px]">Preço Mínimo (R$)</label>
+                <input
+                  type="number"
+                  placeholder="A partir de R$"
+                  value={priceMinInput}
+                  onChange={(e) => setPriceMinInput(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-bold"
+                />
+              </div>
+
+              {/* VALOR DE AVALIAÇÃO */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-600 uppercase text-[10px]">Valor de Avaliação (R$)</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    placeholder="De R$"
+                    value={appraisalMinInput}
+                    onChange={(e) => setAppraisalMinInput(e.target.value)}
+                    className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Até R$"
+                    value={appraisalMaxInput}
+                    onChange={(e) => setAppraisalMaxInput(e.target.value)}
+                    className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold"
+                  />
+                </div>
+              </div>
+
+              {/* FINANCIAMENTO */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-600 uppercase text-[10px]">Financiamento</label>
+                <select
+                  value={financing === null ? 'todos' : financing ? 'sim' : 'nao'}
+                  onChange={(e) => setFinancing(e.target.value === 'todos' ? null : e.target.value === 'sim')}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 font-bold text-slate-800"
+                >
+                  <option value="todos">Todos</option>
+                  <option value="sim">Financiável</option>
+                  <option value="nao">Somente à vista</option>
+                </select>
+              </div>
+
+              {/* OCUPAÇÃO */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-600 uppercase text-[10px]">Ocupação</label>
+                <select
+                  value={occupancy || ''}
+                  onChange={(e) => setOccupancy((e.target.value as any) || null)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 font-bold text-slate-800"
+                >
+                  <option value="">Todos</option>
+                  <option value="OCCUPIED">Ocupado</option>
+                  <option value="VACANT">Desocupado</option>
+                  <option value="UNKNOWN">Não informado</option>
+                </select>
+              </div>
+
+              {/* ÁREA */}
+              <div className="space-y-1 md:col-span-2">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-600 uppercase text-[10px]">Filtro de Área (m²)</label>
+                  <select
+                    value={areaType}
+                    onChange={(e) => setAreaType(e.target.value as any)}
+                    className="text-[10px] font-bold text-slate-700 bg-slate-100 rounded-lg px-2 py-0.5"
+                  >
+                    <option value="private_area">Área privativa</option>
+                    <option value="total_area">Área total</option>
+                    <option value="land_area">Área do terreno</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    placeholder="De m²"
+                    value={areaMinInput}
+                    onChange={(e) => setAreaMinInput(e.target.value)}
+                    className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Até m²"
+                    value={areaMaxInput}
+                    onChange={(e) => setAreaMaxInput(e.target.value)}
+                    className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+              <span className="text-[11px] text-slate-500">
+                Filtros aplicados em conjunto para refinar oportunidades.
+              </span>
+              <button
+                onClick={handleClearFilters}
+                className="text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Limpar Filtros</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* BARRA DE RESULTADOS E ORDENAÇÃO (Seção 32 & 33) */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm text-xs">
-        <div className="font-extrabold text-slate-800">
-          Exibindo {properties.length > 0 ? (page - 1) * pageSize + 1 : 0}–{Math.min(page * pageSize, totalCount)} de {totalCount.toLocaleString()} imóveis encontrados
+      {/* BARRA DE RESULTADOS, VIEW MODE (LISTA / MAPA) E ORDENAÇÃO */}
+      <div className="flex flex-col md:flex-row items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs text-xs">
+        <div className="font-bold text-slate-800">
+          Exibindo {properties.length > 0 ? (page - 1) * pageSize + 1 : 0}–{Math.min(page * pageSize, totalCount)} de {totalCount.toLocaleString()} imóveis
           {isMemoryFallback && (
-            <span className="text-amber-600 font-normal ml-2"> (Store local de teste)</span>
+            <span className="text-amber-600 font-normal ml-2">(Base local offline)</span>
           )}
         </div>
 
-        {/* SELETOR DE ORDENAÇÃO (Seção 32) */}
-        <div className="flex items-center space-x-2 w-full sm:w-auto">
-          <ArrowUpDown className="w-4 h-4 text-orange-500" />
-          <span className="font-bold text-slate-600 uppercase text-[10px]">ORDENAR POR:</span>
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
-            className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-black text-slate-900 focus:ring-2 focus:ring-orange-500 text-xs flex-grow sm:flex-grow-0"
-          >
-            <option value="discount_desc">Maior desconto</option>
-            <option value="price_asc">Menor preço</option>
-            <option value="appraisal_desc">Maior avaliação</option>
-            <option value="area_desc">Maior área</option>
-            <option value="recent_desc">Mais recentes</option>
-            <option value="neighborhood_asc">Bairro (A-Z) · Agrupar p/ Comparar</option>
-            <option value="address_asc">Rua / Logradouro (A-Z)</option>
-          </select>
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+          {/* Toggle Lista / Mapa+Lista / Mapa */}
+          {tenant.features.map && (
+            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1 transition-all ${
+                  viewMode === 'grid' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>Lista</span>
+              </button>
+              <button
+                onClick={() => setViewMode('split')}
+                className={`px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1 transition-all ${
+                  viewMode === 'split' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Columns2 className="w-3.5 h-3.5" />
+                <span>Mapa + Lista</span>
+              </button>
+              <button
+                onClick={() => setViewMode('map')}
+                className={`px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1 transition-all ${
+                  viewMode === 'map' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <MapIcon className="w-3.5 h-3.5" />
+                <span>Mapa</span>
+              </button>
+            </div>
+          )}
+
+          {/* SELETOR DE ORDENAÇÃO */}
+          <div className="flex items-center space-x-2">
+            <ArrowUpDown className="w-3.5 h-3.5 text-slate-500" />
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 font-bold text-slate-900 text-xs"
+            >
+              <option value="discount_desc">Maior desconto</option>
+              <option value="price_asc">Menor preço</option>
+              <option value="appraisal_desc">Maior avaliação</option>
+              <option value="area_desc">Maior área</option>
+              <option value="recent_desc">Mais recentes</option>
+              <option value="neighborhood_asc">Bairro (A-Z)</option>
+              <option value="address_asc">Rua / Logradouro (A-Z)</option>
+            </select>
+          </div>
         </div>
       </div>
 
-      {/* LISTA DE CARDS DE IMÓVEIS (Seção 34 a 37) */}
-      {loading ? (
+      {/* MAPA INTEGRADO (QUANDO MODO FOR MAP OU SPLIT) */}
+      {tenant.features.map && (viewMode === 'map' || viewMode === 'split') && !loading && adaptedPropertiesForMap.length > 0 && (
+        <PropertyMap
+          properties={adaptedPropertiesForMap}
+          selectedProperty={adaptedPropertiesForMap[0]}
+          onSelectProperty={(p) => {
+            if (onOpenDetail360) onOpenDetail360(p);
+          }}
+          activeLayer={activeMapLayer}
+          setActiveLayer={setActiveMapLayer}
+        />
+      )}
+
+      {/* LISTA DE CARDS DE IMÓVEIS */}
+      {viewMode !== 'map' && (loading ? (
         <div className="py-20 flex flex-col items-center justify-center space-y-3 bg-white rounded-3xl border border-slate-200">
-          <RefreshCw className="w-8 h-8 text-orange-500 animate-spin" />
-          <span className="text-xs font-black text-slate-700">CONSULTANDO BANCO DE DADOS...</span>
+          <RefreshCw className="w-8 h-8 animate-spin" style={{ color: tenant.primaryColor }} />
+          <span className="text-xs font-black text-slate-700">Consultando oportunidades...</span>
         </div>
       ) : properties.length === 0 ? (
         <div className="py-20 flex flex-col items-center justify-center space-y-3 bg-white rounded-3xl border border-slate-200 text-center p-6">
           <Building2 className="w-12 h-12 text-slate-300 stroke-1" />
-          <h3 className="text-base font-black text-slate-800">NENHUM IMÓVEL ENCONTRADO</h3>
+          <h3 className="text-base font-black text-slate-800">Nenhum imóvel encontrado</h3>
           <p className="text-xs text-slate-500 max-w-md">
-            Nenhum imóvel CAIXA corresponde aos critérios informados. Tente ajustar o preço, desconto ou cidade selecionada.
+            Nenhum imóvel encontrado com os critérios informados. Tente ajustar o preço, desconto ou cidade selecionada.
           </p>
           <button
             onClick={handleClearFilters}
@@ -662,7 +748,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {properties.map((prop, index) => {
             const hasPrivArea = prop.private_area !== null && prop.private_area > 0;
             const hasTotalArea = prop.total_area !== null && prop.total_area > 0;
@@ -945,81 +1031,93 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
                   })()}
                 </div>
 
-                {/* BOTÕES DO CARD (Seção 34) */}
-                <div className="p-5 pt-0 space-y-2">
-                  <div className="grid grid-cols-2 gap-2">
+                {/* BOTÕES DO CARD (Enxutos e Escaneáveis) */}
+                <div className="p-4 pt-0 space-y-2">
+                  <div className={`grid gap-2 ${onOpenJourney ? 'grid-cols-2' : 'grid-cols-1'}`}>
                     <button
                       onClick={() => setSelectedDetailProperty(prop)}
-                      className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black text-xs py-3 rounded-2xl transition-colors flex items-center justify-center space-x-1"
+                      className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-2.5 rounded-xl transition-colors flex items-center justify-center"
                     >
-                      <span>[ VER OPORTUNIDADE ]</span>
+                      <span>Ver Detalhes</span>
                     </button>
 
-                    <a
-                      href={prop.source_url || (isCaixa ? getCaixaPropertyPageUrl(prop) : prop.source === 'BB' ? 'https://www.seuimovelbb.com.br' : prop.source === 'BRADESCO' ? 'https://vitrinebradesco.com.br' : 'https://www.santanderimoveis.com.br')}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold text-xs py-3 rounded-2xl transition-colors flex items-center justify-center space-x-1 text-center"
-                    >
-                      <span>[ 🔗 PÁGINA {prop.source || 'CAIXA'} ]</span>
-                      <ExternalLink className="w-3 h-3 text-slate-500" />
-                    </a>
+                    {onOpenJourney && (
+                      <button
+                        onClick={() => onOpenJourney(prop)}
+                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2.5 rounded-xl transition-colors flex items-center justify-center gap-1"
+                      >
+                        <Route className="w-3.5 h-3.5" />
+                        <span>Minha Jornada</span>
+                      </button>
+                    )}
                   </div>
 
-                  {/* BOTÃO GOOGLE MAPS 360° */}
+                  {/* Barra compacta de ações secundárias */}
                   {(() => {
                     const mapsInfo = cleanCaixaAddressForMaps(prop.address, prop.city, prop.state);
+                    const bankUrl =
+                      prop.source_url ||
+                      (isCaixa
+                        ? getCaixaPropertyPageUrl(prop)
+                        : prop.source === 'BB'
+                        ? 'https://www.seuimovelbb.com.br'
+                        : prop.source === 'BRADESCO'
+                        ? 'https://vitrinebradesco.com.br'
+                        : 'https://www.santanderimoveis.com.br');
+
                     return (
-                      <a
-                        href={mapsInfo.googleMapsUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-2.5 rounded-2xl shadow-xs transition-colors flex items-center justify-center space-x-1 text-center"
-                      >
-                        <MapPin className="w-3.5 h-3.5 text-emerald-200" />
-                        <span>[ 📍 MAPA & STREET VIEW 360° ]</span>
-                      </a>
+                      <div className="grid grid-cols-4 gap-1.5 text-[10px] font-bold">
+                        <a
+                          href={bankUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={`Abrir no portal ${prop.source || 'CAIXA'}`}
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 px-1.5 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-colors"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5 text-slate-600" />
+                          <span>Banco</span>
+                        </a>
+
+                        <a
+                          href={mapsInfo.googleMapsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Abrir Google Maps & Street View"
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 px-1.5 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-colors"
+                        >
+                          <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Mapa 360°</span>
+                        </a>
+
+                        <button
+                          onClick={() => setSelectedFinancingProperty(prop)}
+                          title="Simular Financiamento"
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 px-1.5 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-colors"
+                        >
+                          <Calculator className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Financiar</span>
+                        </button>
+
+                        <button
+                          onClick={() => setSelectedEditalProperty(prop)}
+                          title="Analisar Edital com IA"
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 px-1.5 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-colors"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" style={{ color: tenant.primaryColor }} />
+                          <span>Edital IA</span>
+                        </button>
+                      </div>
                     );
                   })()}
-
-                  {/* BOTÃO MINHA JORNADA */}
-                  {onOpenJourney && (
-                    <button
-                      onClick={() => onOpenJourney(prop)}
-                      className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs py-2.5 rounded-2xl shadow-sm transition-all flex items-center justify-center space-x-1.5"
-                    >
-                      <Route className="w-3.5 h-3.5 text-emerald-100" />
-                      <span>[ 🗺️ MINHA JORNADA ]</span>
-                    </button>
-                  )}
-
-                  {/* BOTÕES DE FINANCIAMENTO E ANÁLISE G2 AI */}
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    <button
-                      onClick={() => setSelectedFinancingProperty(prop)}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black text-[11px] py-2.5 rounded-2xl shadow-xs transition-colors flex items-center justify-center space-x-1"
-                    >
-                      <Calculator className="w-3.5 h-3.5 text-blue-100" />
-                      <span>[ 🏦 FINANCIAMENTO ]</span>
-                    </button>
-
-                    <button
-                      onClick={() => setSelectedEditalProperty(prop)}
-                      className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black text-[11px] py-2.5 rounded-2xl shadow-xs transition-colors flex items-center justify-center space-x-1"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-orange-100" />
-                      <span>[ 🤖 G2 AI EDITAL ]</span>
-                    </button>
-                  </div>
                 </div>
               </div>
             );
           })}
         </div>
-      )}
+      ))}
 
-      {/* CONTROLES DE PAGINAÇÃO (Seção 33) */}
-      {totalPages > 1 && (
+      {/* CONTROLES DE PAGINAÇÃO */}
+      {viewMode !== 'map' && totalPages > 1 && (
         <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm text-xs font-bold">
           <button
             onClick={() => executeSearch(page - 1)}
@@ -1324,20 +1422,20 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
                         href={mapsInfo.googleMapsUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-4 py-3 rounded-xl transition-colors flex items-center justify-center space-x-2 text-center shadow-xs"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-3 rounded-xl transition-colors flex items-center justify-center space-x-2 text-center shadow-xs"
                       >
                         <MapPin className="w-4 h-4" />
-                        <span>[ 🗺️ VER NO GOOGLE MAPS ]</span>
+                        <span>Ver no Google Maps</span>
                       </a>
 
                       <a
                         href={mapsInfo.wazeUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="bg-sky-500 hover:bg-sky-600 text-white font-black text-xs px-4 py-3 rounded-xl transition-colors flex items-center justify-center space-x-2 text-center shadow-xs"
+                        className="bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs px-4 py-3 rounded-xl transition-colors flex items-center justify-center space-x-2 text-center shadow-xs"
                       >
                         <ExternalLink className="w-4 h-4 text-white" />
-                        <span>[ 🚙 NAVEGAR VIA WAZE ]</span>
+                        <span>Navegar via Waze</span>
                       </a>
                     </div>
                   </div>
@@ -1369,27 +1467,28 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
                       onOpenJourney(selectedDetailProperty);
                       setSelectedDetailProperty(null);
                     }}
-                    className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs px-5 py-3 rounded-2xl transition-all flex items-center space-x-1.5 shadow-md"
+                    className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs px-5 py-3 rounded-2xl transition-all flex items-center space-x-1.5 shadow-md"
                   >
                     <Route className="w-4 h-4 text-emerald-100" />
-                    <span>[ 🗺️ INICIAR MINHA JORNADA ]</span>
+                    <span>Iniciar Minha Jornada</span>
                   </button>
                 )}
 
                 <button
                   onClick={() => setSelectedEditalProperty(selectedDetailProperty)}
-                  className="bg-orange-500 hover:bg-orange-600 text-white font-black text-xs px-5 py-3 rounded-2xl transition-colors flex items-center space-x-1.5 shadow-md"
+                  className="text-white font-bold text-xs px-5 py-3 rounded-2xl transition-opacity hover:opacity-95 flex items-center space-x-1.5 shadow-md"
+                  style={{ backgroundColor: tenant.primaryColor }}
                 >
-                  <Sparkles className="w-4 h-4 text-orange-100" />
-                  <span>[ 🤖 ANALISAR EDITAL (G2 AI) ]</span>
+                  <Sparkles className="w-4 h-4 text-white/90" />
+                  <span>Analisar Edital (IA)</span>
                 </button>
 
                 <button
                   onClick={() => setSelectedFinancingProperty(selectedDetailProperty)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-black text-xs px-5 py-3 rounded-2xl transition-colors flex items-center space-x-1.5 shadow-md"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-5 py-3 rounded-2xl transition-colors flex items-center space-x-1.5 shadow-md"
                 >
                   <Calculator className="w-4 h-4 text-blue-100" />
-                  <span>[ 🏦 SIMULAR FINANCIAMENTO ]</span>
+                  <span>Simular Financiamento</span>
                 </button>
               </div>
             </div>

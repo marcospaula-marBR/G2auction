@@ -199,76 +199,6 @@ export default async function handler(req, res) {
         console.warn('[Santander Proxy Fetch Error]', err);
       }
 
-      // Se a extração ao vivo não encontrou registros (ex: estado sem leilões no momento), usa gerador resiliente
-      if (realProperties.length === 0) {
-        const stateCities = uf === 'SP' ? ['São Paulo', 'Campinas', 'Santos', 'Ribeirão Preto', 'São José dos Campos', 'Sorocaba', 'Santo André', 'Osasco', 'Guarulhos', 'Bauru']
-          : uf === 'RJ' ? ['Rio de Janeiro', 'Niterói', 'Petrópolis', 'Volta Redonda', 'Macaé', 'Cabo Frio', 'Nova Iguaçu', 'Duque de Caxias']
-          : uf === 'MG' ? ['Belo Horizonte', 'Uberlândia', 'Contagem', 'Juiz de Fora', 'Betim', 'Montes Claros', 'Uberaba']
-          : uf === 'PR' ? ['Curitiba', 'Londrina', 'Maringá', 'Ponta Grossa', 'Cascavel', 'São José dos Pinhais']
-          : uf === 'RS' ? ['Porto Alegre', 'Caxias do Sul', 'Canoas', 'Pelotas', 'Santa Maria']
-          : uf === 'SC' ? ['Florianópolis', 'Joinville', 'Blumenau', 'São José', 'Chapecó', 'Itajaí']
-          : uf === 'BA' ? ['Salvador', 'Feira de Santana', 'Vitória da Conquista', 'Camaçari', 'Juazeiro']
-          : uf === 'GO' ? ['Goiânia', 'Aparecida de Goiânia', 'Anápolis', 'Rio Verde']
-          : uf === 'DF' ? ['Brasília', 'Taguatinga', 'Ceilândia', 'Águas Claras']
-          : uf === 'PE' ? ['Recife', 'Jaboatão dos Guararapes', 'Olinda', 'Caruaru']
-          : uf === 'CE' ? ['Fortaleza', 'Caucaia', 'Juazeiro do Norte', 'Sobral']
-          : [`Capital (${uf})`, `Interior (${uf})`, `Região Central (${uf})`];
-
-        const propertyTypes = [
-          { type: 'Apartamento', area: 68, beds: 2, mod: 'Leilão Extrajudicial Santander (Alienação Fiduciária)', baseVal: 285000, desc: 42, neigh: 'Centro / Zona Sul' },
-          { type: 'Casa Residencial', area: 155, beds: 3, mod: 'Venda Direta Santander Online', baseVal: 420000, desc: 45, neigh: 'Bairro Residencial Nobre' },
-          { type: 'Apartamento', area: 92, beds: 3, mod: 'Leilão Santander 2ª Praça', baseVal: 340000, desc: 50, neigh: 'Jardim América' },
-          { type: 'Sala Comercial', area: 45, beds: 0, mod: 'Leilão Extrajudicial Santander', baseVal: 190000, desc: 38, neigh: 'Centro Financeiro' },
-          { type: 'Casa em Condomínio', area: 180, beds: 4, mod: 'Leilão Santander 1ª Praça', baseVal: 560000, desc: 35, neigh: 'Condomínio Fechado' },
-          { type: 'Apartamento', area: 54, beds: 2, mod: 'Venda Direta Santander', baseVal: 165000, desc: 48, neigh: 'Vila Nova' },
-          { type: 'Terreno', area: 300, beds: 0, mod: 'Leilão Santander 2ª Praça', baseVal: 130000, desc: 55, neigh: 'Loteamento Residencial' },
-          { type: 'Apartamento', area: 80, beds: 2, mod: 'Leilão Extrajudicial Santander', baseVal: 310000, desc: 40, neigh: 'Bairro Universitário' },
-        ];
-
-        const count = Math.min(stateCities.length, propertyTypes.length);
-        for (let i = 0; i < count; i++) {
-          const c = stateCities[i % stateCities.length];
-          const tpl = propertyTypes[i % propertyTypes.length];
-          const saleVal = Math.round(tpl.baseVal * (0.85 + (i * 0.05)));
-          const appraisalVal = Math.round(saleVal / (1 - (tpl.desc / 100)));
-          const calcDiscount = Math.round(((appraisalVal - saleVal) / appraisalVal) * 100);
-
-          realProperties.push({
-            source: 'SANTANDER',
-            id: `snt_${uf}_${100 + i}`,
-            title: `${tpl.type} Santander — ${c}/${uf}`,
-            city: c,
-            state: uf,
-            neighborhood: tpl.neigh,
-            sale_value: saleVal,
-            appraisal_value: appraisalVal,
-            first_auction_value: null,
-            second_auction_value: null,
-            first_auction_date: null,
-            second_auction_date: null,
-            auction_date: '2026-10-15T11:00:00',
-            has_both_auctions: false,
-            discount_percentage: calcDiscount,
-            sale_modality: tpl.mod,
-            property_type: tpl.type,
-            area_m2: tpl.area,
-            bedrooms: tpl.beds,
-            address: `${tpl.neigh}, ${c} - ${uf}`,
-            link: targetPageUrl,
-            auctioneer: i % 2 === 0 ? 'Mega Leilões (Santander Oficial)' : 'Zukerman Leilões',
-            main_photo_url: '',
-            payment_conditions: saleVal >= 90000 
-              ? `À vista com recursos próprios ou Financiamento Imobiliário Santander em até 420 meses (Entrada mínima de 20% a partir de R$ ${Math.round(saleVal * 0.2).toLocaleString('pt-BR')}).`
-              : 'Somente à vista (Santander não financia valores abaixo de R$ 90 mil).',
-            max_installments: saleVal >= 90000 ? 420 : 1,
-            min_down_payment: saleVal >= 90000 ? Math.round(saleVal * 0.2) : saleVal,
-            min_installment_value: saleVal >= 90000 ? Math.round(((saleVal * 0.8) / 420) + ((saleVal * 0.8) * 0.0084)) : 0,
-            accepts_financing: saleVal >= 90000,
-          });
-        }
-        totalFound = realProperties.length;
-      }
-
       return res.status(200).json({
         bank: 'SANTANDER',
         uf,
@@ -280,13 +210,16 @@ export default async function handler(req, res) {
         properties: realProperties,
         totalFound: totalFound || realProperties.length,
         responseTimeMs: Date.now() - startTime,
-        note: `${realProperties.length} oportunidades Santander em ${uf} carregadas da busca oficial (${targetPageUrl}).`,
+        note:
+          realProperties.length > 0
+            ? `${realProperties.length} oportunidades reais Santander em ${uf} (${targetPageUrl}).`
+            : `O portal Santander migrou para API autenticada (api.shi.santander.com.br); nenhum dado sintético foi gerado.`,
         auctioneers: SANTANDER_AUCTIONEERS.filter(a => a.ufs.includes(uf) || a.ufs.length === 0),
       });
     }
 
     return res.status(400).json({ error: `Ação desconhecida: ${action}` });
-  } catch (err) {
+  } catch {
     return res.status(200).json({ bank: 'SANTANDER', status: 200, properties: [] });
   }
 }

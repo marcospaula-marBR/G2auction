@@ -60,7 +60,6 @@ export default async function handler(req, res) {
 
     if (action === 'search') {
       const startTime = Date.now();
-      let liveHtml = '';
       let isLiveFetched = false;
 
       const shouldFetchAll = urlObj.searchParams.get('fetchAll') === 'true' || !urlObj.searchParams.has('page');
@@ -268,64 +267,6 @@ export default async function handler(req, res) {
         console.warn('[Bradesco Proxy API Error]', err);
       }
 
-      // Se a API não retornou registros (ex: estado sem leilões), utiliza fallback resiliente
-      if (realProperties.length === 0) {
-        const stateCities = uf === 'SP' ? ['São Paulo', 'Sorocaba', 'Ribeirão Preto', 'Campinas', 'Santos', 'São José do Rio Preto', 'Piracicaba', 'Franca', 'Jundiaí', 'Presidente Prudente']
-          : uf === 'RJ' ? ['Rio de Janeiro', 'Niterói', 'Volta Redonda', 'Petrópolis', 'Macaé', 'Nova Iguaçu', 'Cabo Frio', 'Teresópolis', 'Angra dos Reis']
-          : uf === 'MG' ? ['Belo Horizonte', 'Uberlândia', 'Juiz de Fora', 'Uberaba', 'Ipatinga', 'Montes Claros', 'Divinópolis', 'Poços de Caldas']
-          : uf === 'PR' ? ['Curitiba', 'Londrina', 'Maringá', 'Cascavel', 'Ponta Grossa', 'Foz do Iguaçu', 'Guarapuava']
-          : uf === 'RS' ? ['Porto Alegre', 'Caxias do Sul', 'Pelotas', 'Santa Maria', 'Passo Fundo', 'Novo Hamburgo']
-          : uf === 'SC' ? ['Florianópolis', 'Joinville', 'Blumenau', 'Itajaí', 'Criciúma', 'Chapecó', 'Balneário Camboriú']
-          : uf === 'BA' ? ['Salvador', 'Feira de Santana', 'Vitória da Conquista', 'Ilhéus', 'Itabuna', 'Porto Seguro']
-          : uf === 'GO' ? ['Goiânia', 'Anápolis', 'Rio Verde', 'Itumbiara', 'Caldas Novas', 'Jataí']
-          : uf === 'DF' ? ['Brasília', 'Águas Claras', 'Taguatinga', 'Sobradinho', 'Lago Norte']
-          : uf === 'PE' ? ['Recife', 'Caruaru', 'Petrolina', 'Olinda', 'Garanhuns']
-          : uf === 'CE' ? ['Fortaleza', 'Sobral', 'Juazeiro do Norte', 'Crato']
-          : uf === 'AP' ? ['Macapá', 'Santana', 'Laranjal do Jari', 'Oiapoque', 'Mazagão']
-          : [`Capital (${uf})`, `Interior (${uf})`, `Região Urbana (${uf})`];
-
-        const propertyTemplates = [
-          { type: 'Apartamento', area: 74, beds: 2, mod: 'Leilão Extrajudicial Bradesco', baseVal: 310000, desc: 40, neigh: 'Bairro Residencial' },
-          { type: 'Casa Residencial', area: 135, beds: 3, mod: 'Venda Direta Bradesco Online', baseVal: 260000, desc: 46, neigh: 'Jardim das Flores' },
-          { type: 'Terreno / Lote', area: 250, beds: 0, mod: 'Leilão Bradesco 2ª Praça', baseVal: 145000, desc: 52, neigh: 'Condomínio Fechado' },
-          { type: 'Apartamento', area: 88, beds: 3, mod: 'Leilão Bradesco 1ª Praça', baseVal: 410000, desc: 35, neigh: 'Parque Residencial' },
-          { type: 'Casa em Condomínio', area: 160, beds: 3, mod: 'Leilão Extrajudicial Bradesco', baseVal: 380000, desc: 48, neigh: 'Bairro Nobre' },
-          { type: 'Sala Comercial', area: 42, beds: 0, mod: 'Venda Direta Bradesco', baseVal: 175000, desc: 44, neigh: 'Centro Empresarial' },
-          { type: 'Apartamento', area: 62, beds: 2, mod: 'Leilão Bradesco 2ª Praça', baseVal: 220000, desc: 50, neigh: 'Vila Santana' },
-          { type: 'Casa', area: 200, beds: 4, mod: 'Leilão Extrajudicial Bradesco', baseVal: 490000, desc: 42, neigh: 'Jardim Europa' },
-        ];
-
-        const count = Math.min(stateCities.length, propertyTemplates.length);
-        for (let i = 0; i < count; i++) {
-          const c = stateCities[i % stateCities.length];
-          const tpl = propertyTemplates[i % propertyTemplates.length];
-          const saleVal = Math.round(tpl.baseVal * (0.9 + (i * 0.04)));
-          const appraisalVal = Math.round(saleVal / (1 - (tpl.desc / 100)));
-          const calcDiscount = Math.round(((appraisalVal - saleVal) / appraisalVal) * 100);
-
-          realProperties.push({
-            source: 'BRADESCO',
-            id: `brd_${uf}_${200 + i}`,
-            title: `${tpl.type} Bradesco — ${c}/${uf}`,
-            city: c,
-            state: uf,
-            neighborhood: tpl.neigh,
-            sale_value: saleVal,
-            appraisal_value: appraisalVal,
-            discount_percentage: calcDiscount,
-            sale_modality: tpl.mod,
-            property_type: tpl.type,
-            area_m2: tpl.area,
-            bedrooms: tpl.beds,
-            address: `${tpl.neigh}, ${c} - ${uf}`,
-            link: targetSearchUrl,
-            auctioneer: i % 2 === 0 ? 'Mega Leilões (Bradesco Oficial)' : 'Sodré Santoro / Biasi',
-            main_photo_url: '',
-          });
-        }
-        totalFound = realProperties.length;
-      }
-
       return res.status(200).json({
         bank: 'BRADESCO',
         uf,
@@ -337,13 +278,16 @@ export default async function handler(req, res) {
         properties: realProperties,
         totalFound: totalFound || realProperties.length,
         responseTimeMs: Date.now() - startTime,
-        note: `${realProperties.length} oportunidades Bradesco em ${uf} carregadas da busca oficial (${targetSearchUrl}).`,
+        note:
+          realProperties.length > 0
+            ? `${realProperties.length} oportunidades reais Bradesco em ${uf} (${targetSearchUrl}).`
+            : `Nenhum leilão ativo encontrado no Bradesco para ${uf} neste momento.`,
         alternativeAuctioneers: BRADESCO_AUCTIONEERS.filter(a => a.ufs.includes(uf) || a.ufs.length === 0),
       });
     }
 
     return res.status(400).json({ error: `Ação desconhecida: ${action}` });
-  } catch (err) {
+  } catch {
     return res.status(200).json({ bank: 'BRADESCO', status: 200, properties: [] });
   }
 }

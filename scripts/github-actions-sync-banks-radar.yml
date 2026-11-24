@@ -1,0 +1,38 @@
+name: Sincronização Automática Bancos + Radar IA
+
+on:
+  schedule:
+    # Executa 2x ao dia: 06h00 BRT (09:00 UTC) e 15h00 BRT (18:00 UTC)
+    - cron: '0 9,18 * * *'
+  workflow_dispatch:
+    inputs:
+      ufs:
+        description: 'UFs separadas por vírgula'
+        required: false
+        default: 'SP,RJ,MG,PR,RS,SC,BA,DF,GO,PE,CE'
+
+jobs:
+  sync-and-notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Instalar dependências de sincronização
+        run: pip install psycopg2-binary python-dotenv
+
+      - name: Sincronizar bancos reais -> Supabase e executar Radar IA
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
+        run: |
+          UFS="${{ github.event.inputs.ufs || 'SP,RJ,MG,PR,RS,SC,BA,DF,GO,PE,CE' }}"
+          python scripts/sync_banks_to_supabase.py --banks bradesco,caixa --ufs "$UFS" --run-radar

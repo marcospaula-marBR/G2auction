@@ -158,10 +158,30 @@ export interface LedgerEntry {
   invoiceUrl?: string;
 }
 
+export interface PartnerService {
+  id: string;
+  title: string;
+  description: string;
+  price: number;
+  billingModel: 'Fixo' | 'Por m²' | 'Comissão %' | 'Por Hora';
+  turnaroundDays: number;
+}
+
 export interface Partner {
   id: string;
   name: string;
-  role: 'Advogado Especialista' | 'Despachante Imobiliário' | 'Mestre de Obras / Empreiteiro' | 'Pedreiro' | 'Corretor de Imóveis' | 'Leiloeiro Homologado' | 'Engenheiro Civil';
+  role:
+    | 'Advogado Especialista'
+    | 'Corretor de Imóveis'
+    | 'Administrador / Despachante'
+    | 'Pedreiro / Reforma'
+    | 'Engenheiro / Arquiteto'
+    | 'Avaliador Imobiliário'
+    | 'Despachante Imobiliário'
+    | 'Mestre de Obras / Empreiteiro'
+    | 'Pedreiro'
+    | 'Leiloeiro Homologado'
+    | 'Engenheiro Civil';
   city: string;
   state: string;
   rating: number;
@@ -171,6 +191,13 @@ export interface Partner {
   phone: string;
   avatar: string;
   specialty: string;
+  verified?: boolean;
+  registrationCode?: string;
+  startingPrice?: number;
+  responseTimeHours?: number;
+  splitReady?: boolean;
+  approvalStatus?: 'HOMOLOGADO' | 'EM_HOMOLOGACAO';
+  services?: PartnerService[];
 }
 
 export interface InvestmentScenario {
