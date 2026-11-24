@@ -123,10 +123,13 @@ export function adaptCatalogItemToProperty(raw: any, index: number = 0): Propert
     acqType = 'Venda Direta Banco';
   }
 
-  // Status de Ocupação
-  let occStatus: OccupancyStatus = 'Ocupado';
-  if (raw.occupancy_status === 'VACANT' || raw.occupancy_status === 'Desocupado' || raw.raw_list_data?.['Ocupação'] === 'Desocupado') {
+  // Status de Ocupação real (não assume Ocupado se desconhecido)
+  let occStatus: OccupancyStatus = 'Desconhecido';
+  const rawOcc = String(raw.occupancy_status || raw.raw_list_data?.['Ocupação'] || '').trim().toUpperCase();
+  if (rawOcc === 'VACANT' || rawOcc === 'DESOCUPADO') {
     occStatus = 'Desocupado';
+  } else if (rawOcc === 'OCCUPIED' || rawOcc === 'OCUPADO') {
+    occStatus = 'Ocupado';
   }
 
   // Tipo / Categoria
@@ -212,28 +215,28 @@ export function adaptCatalogItemToProperty(raw: any, index: number = 0): Propert
     legalComplexityScore: 3.5,
     renovationEstimate: Math.round(saleValue * 0.08),
     safetyIndex: {
-      level: 'Baixo Risco',
-      score: 8.5,
-      recentIncidentsCount: 1,
-      summary: 'Região com infraestrutura urbana consolidada',
-      provenance: 'DADO OFICIAL',
+      level: 'Risco Moderado',
+      score: 0,
+      recentIncidentsCount: 0,
+      summary: 'Análise sob demanda na Ficha 360° (não auditado automaticamente)',
+      provenance: 'REQUER VALIDAÇÃO',
     },
     floodRisk: {
-      level: 'Mínimo',
-      distanceToRiskZoneMeters: 1200,
-      summary: 'Área com topografia estável',
+      level: 'Moderado',
+      distanceToRiskZoneMeters: 0,
+      summary: 'Verificação hidrológica sob demanda (requer validação)',
     },
     noiseIndex: {
-      level: 'Silencioso',
-      sources: ['Residencial'],
-      summary: 'Rua de tráfego local',
+      level: 'Moderado',
+      sources: [],
+      summary: 'Verificação de entorno sob demanda via Street View',
     },
     urbanAmenities: {
-      walkabilityScore: 82,
-      schoolsNearby: 4,
-      hospitalsNearby: 2,
-      supermarketsNearby: 3,
-      publicTransportNearby: 5,
+      walkabilityScore: 0,
+      schoolsNearby: 0,
+      hospitalsNearby: 0,
+      supermarketsNearby: 0,
+      publicTransportNearby: 0,
     },
     newsIntelligence: [],
     comparables: [],
@@ -241,7 +244,7 @@ export function adaptCatalogItemToProperty(raw: any, index: number = 0): Propert
     editalUrl: raw.source_url || '',
     matriculaUrl: '',
     lifecycleStep: 2,
-    isFinancable: raw.accepts_financing ?? true,
+    isFinancable: raw.accepts_financing === true,
     minDownPaymentPercentage: 5,
   };
 }

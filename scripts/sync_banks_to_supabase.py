@@ -274,6 +274,8 @@ def normalize_bradesco_item(item: dict[str, Any], uf_fallback: str) -> dict[str,
         "min_down_payment": min_down,
         "min_installment_value": min_inst_val,
         "status": "ACTIVE",
+        "source_generated_at": dt.date.today().isoformat(),
+        "source_file_url": "https://api.vitrinebradesco.com.br/v1/auctions",
         "raw_list_data": item,
     }
     record["source_hash"] = compute_hash(record)
@@ -425,8 +427,9 @@ def fetch_caixa_uf(uf: str, csv_path: Path | None = None) -> tuple[str, list[dic
 
     url = f"https://venda-imoveis.caixa.gov.br/listaweb/Lista_imoveis_{uf_upper}.csv"
     try:
-        req = urllib.request.Request(url, headers={**BROWSER_HEADERS, "Accept": "*/*"})
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        # Envia exatamente os headers padrão do cliente HTTP (sem User-Agent Python-urllib/browser que dispara WAF)
+        req = urllib.request.Request(url, headers={"User-Agent": "undici", "Accept": "*/*"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
             raw_bytes = resp.read()
             text = raw_bytes.decode("cp1252", errors="ignore")
             low = text.lower()

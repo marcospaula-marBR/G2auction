@@ -877,3 +877,63 @@ export async function fetchCatalogSummaryStatsFromSupabase(): Promise<{
     lastImportGeneratedAt: lastGenDate || '2026-08-07',
   };
 }
+
+export interface BankFreshnessInfo {
+  source: string;
+  activeCount: number;
+  lastSyncedAt: string | null;
+  sourceGeneratedAt: string | null;
+}
+
+/**
+ * FREQUÊNCIA E ATUALIZAÇÃO REAL POR BANCO NO SUPABASE
+ */
+export async function fetchBankFreshnessFromSupabase(): Promise<BankFreshnessInfo[]> {
+  const sources = ['CAIXA', 'BRADESCO', 'SANTANDER', 'BB'];
+
+  if (supabase) {
+    try {
+      const results = await Promise.all(
+        sources.map(async (source) => {
+          const [countRes, latestRes] = await Promise.all([
+            supabase
+              .from('properties')
+              .select('id', { count: 'exact', head: true })
+              .eq('source', source)
+              .eq('status', 'ACTIVE'),
+            supabase
+              .from('properties')
+              .select('last_seen_at, source_generated_at')
+              .eq('source', source)
+              .eq('status', 'ACTIVE')
+              .order('last_seen_at', { ascending: false })
+              .limit(1)
+              .maybeSingle(),
+          ]);
+
+          return {
+            source,
+            activeCount: countRes.count ?? 0,
+            lastSyncedAt: latestRes.data?.last_seen_at || null,
+            sourceGeneratedAt: latestRes.data?.source_generated_at || null,
+          };
+        })
+      );
+      return results;
+    } catch (e: any) {
+      console.warn('[Bank Freshness Error]', e.message);
+    }
+  }
+
+  return sources.map((source) => {
+    const matching = Array.from(memoryStore.properties.values()).filter(
+      (p) => (p.source || 'CAIXA') === source && (!p.status || p.status === 'ACTIVE')
+    );
+    return {
+      source,
+      activeCount: matching.length,
+      lastSyncedAt: matching[0]?.updated_at || null,
+      sourceGeneratedAt: matching[0]?.source_generated_at || null,
+    };
+  });
+}

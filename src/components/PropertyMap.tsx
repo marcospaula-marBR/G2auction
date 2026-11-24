@@ -76,32 +76,6 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
     return clampCoordinatesToLand(coords.lat, coords.lng, city);
   };
 
-  const getRiskColor = (p: Property) => {
-    const s = p.riskScore ?? 4;
-    if (s <= 2) return { text: '🟢 Baixo Risco', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
-    if (s <= 4) return { text: '🟡 Risco Moderado', color: 'text-amber-700 bg-amber-50 border-amber-200' };
-    return { text: '🔴 Atenção Jurídica', color: 'text-red-700 bg-red-50 border-red-200' };
-  };
-
-  const getFloodBadge = (p: Property) => {
-    const level = p.floodRisk?.level || 'Mínimo';
-    if (level === 'Elevado') return { label: 'Risco de Alagamento Alto', color: 'text-red-700 bg-red-50 border-red-200' };
-    if (level === 'Moderado') return { label: 'Atenção Alagamento', color: 'text-amber-700 bg-amber-50 border-amber-200' };
-    return { label: 'Área Livre de Enchente', color: 'text-sky-700 bg-sky-50 border-sky-200' };
-  };
-
-  const getSafetyBadge = (p: Property) => {
-    const level = p.safetyIndex?.level || 'Baixo Risco';
-    if (level.includes('Atenção')) return { label: 'Atenção Estatística', color: 'text-amber-700 bg-amber-50 border-amber-200' };
-    return { label: 'Segurança Consolidada', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
-  };
-
-  const getNoiseBadge = (p: Property) => {
-    const level = p.noiseIndex?.level || 'Silencioso';
-    if (level.includes('Intenso')) return { label: 'Ruído Urbano Elevado', color: 'text-amber-700 bg-amber-50 border-amber-200' };
-    return { label: 'Rua Silenciosa / Calma', color: 'text-slate-700 bg-slate-100 border-slate-200' };
-  };
-
   // ── GERA HTML DO CARD RICO AO PASSAR O MOUSE (HOVER) ─────────────────────
   const renderRichHoverCardHtml = (p: Property): string => {
     const rawPrice = p.secondAuctionPrice || p.estimatedMarketPrice || (p as any).sale_value || 0;
@@ -116,17 +90,30 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
     const state = p.address?.state || (p as any).state || 'SP';
     const neighborhood = p.address?.neighborhood || (p as any).neighborhood || 'Região Central';
     const street = p.address?.street || '';
-    const area = p.area || (p as any).private_area || (p as any).total_area || 72;
-    const bedrooms = p.bedrooms ?? (p as any).bedrooms ?? 2;
-    const parking = p.parkingSpaces ?? (p as any).parking_spaces ?? 1;
+    const area = p.area || (p as any).private_area || (p as any).total_area || 0;
+    const bedrooms = p.bedrooms ?? (p as any).bedrooms ?? 0;
+    const parking = p.parkingSpaces ?? (p as any).parking_spaces ?? 0;
     const modality = p.acquisitionType || (p as any).sale_modality || 'Leilão Extrajudicial';
-    const occStatus = p.occupancyStatus || ((p as any).occupancy_status === 'VACANT' ? 'Desocupado' : 'Ocupado');
+    const rawOcc = (p as any).occupancy_status;
+    const occStatus =
+      p.occupancyStatus === 'Desocupado' || rawOcc === 'VACANT'
+        ? 'Desocupado'
+        : p.occupancyStatus === 'Ocupado' || rawOcc === 'OCCUPIED'
+        ? 'Ocupado'
+        : 'Não informada';
     const bankName = p.bankName || p.originBank || 'CAIXA ECONÔMICA FEDERAL';
 
-    const risk = getRiskColor(p);
-    const flood = getFloodBadge(p);
-    const safety = getSafetyBadge(p);
-    const noise = getNoiseBadge(p);
+    const canFinance = Boolean(p.isFinancable);
+    const pricePerM2 = !isSobConsulta && area > 0 ? Math.round(rawPrice / area) : 0;
+    const occClass =
+      occStatus === 'Desocupado'
+        ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+        : occStatus === 'Ocupado'
+        ? 'text-amber-700 bg-amber-50 border-amber-200'
+        : 'text-slate-700 bg-slate-50 border-slate-200';
+    const finClass = canFinance
+      ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+      : 'text-amber-700 bg-amber-50 border-amber-200';
 
     const bankBadgeColor = bankName.includes('SANTANDER')
       ? 'bg-red-700 text-white'
@@ -177,33 +164,33 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
 
         <!-- Características Físicas -->
         <div class="grid grid-cols-3 gap-1.5 text-center text-[10px] font-bold text-slate-700 mb-2.5 bg-slate-50/70 p-1.5 rounded-lg border border-slate-100">
-          <div class="border-r border-slate-200 pr-1">📐 ${area}m²</div>
+          <div class="border-r border-slate-200 pr-1">📐 ${area > 0 ? `${area}m²` : 'N/I'}</div>
           <div class="border-r border-slate-200 pr-1">🛏️ ${bedrooms} qts</div>
           <div>🚗 ${parking} vg</div>
         </div>
 
-        <!-- Marcações de Entorno & Risco -->
+        <!-- Dados Reais do Edital & Oportunidade -->
         <div class="space-y-1 pt-1.5 border-t border-slate-100">
-          <p class="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Marcações desta Localidade:</p>
-          
-          <div class="flex items-center justify-between text-[10px] py-0.5 px-2 rounded-md border ${risk.color}">
-            <span class="font-bold flex items-center gap-1">⚖️ Análise Jurídica:</span>
-            <span class="font-black">${risk.text}</span>
+          <p class="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Dados Reais do Edital & Oportunidade:</p>
+
+          <div class="flex items-center justify-between text-[10px] py-0.5 px-2 rounded-md border ${finClass}">
+            <span class="font-bold">💳 Financiamento:</span>
+            <span class="font-black">${canFinance ? 'Aceita Financiamento' : 'Somente à Vista'}</span>
           </div>
 
-          <div class="flex items-center justify-between text-[10px] py-0.5 px-2 rounded-md border ${flood.color}">
-            <span class="font-bold flex items-center gap-1">🌊 Alagamento:</span>
-            <span class="font-bold">${flood.label}</span>
+          <div class="flex items-center justify-between text-[10px] py-0.5 px-2 rounded-md border ${occClass}">
+            <span class="font-bold">🏠 Ocupação:</span>
+            <span class="font-bold">${occStatus}</span>
           </div>
 
-          <div class="flex items-center justify-between text-[10px] py-0.5 px-2 rounded-md border ${safety.color}">
-            <span class="font-bold flex items-center gap-1">🛡️ Segurança:</span>
-            <span class="font-bold">${safety.label}</span>
+          <div class="flex items-center justify-between text-[10px] py-0.5 px-2 rounded-md border text-slate-700 bg-slate-50 border-slate-200">
+            <span class="font-bold">📐 Valor / m²:</span>
+            <span class="font-bold">${pricePerM2 > 0 ? `R$ ${pricePerM2.toLocaleString('pt-BR')}/m²` : 'Não informado'}</span>
           </div>
 
-          <div class="flex items-center justify-between text-[10px] py-0.5 px-2 rounded-md border ${noise.color}">
-            <span class="font-bold flex items-center gap-1">🔊 Ruído:</span>
-            <span class="font-bold">${noise.label}</span>
+          <div class="flex items-center justify-between text-[10px] py-0.5 px-2 rounded-md border text-indigo-700 bg-indigo-50 border-indigo-200">
+            <span class="font-bold">⚖️ Auditoria Jurídica/Geo:</span>
+            <span class="font-bold">Pendente · Ficha 360°</span>
           </div>
         </div>
 

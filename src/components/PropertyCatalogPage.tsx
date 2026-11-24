@@ -31,6 +31,8 @@ import {
   fetchDistinctPropertyTypesFromSupabase,
   fetchDistinctSaleModalitiesFromSupabase,
   fetchCatalogSummaryStatsFromSupabase,
+  fetchBankFreshnessFromSupabase,
+  type BankFreshnessInfo,
   type PropertyFilterParams,
 } from '../lib/supabaseClient';
 
@@ -67,7 +69,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
   const [viewMode, setViewMode] = useState<'grid' | 'split' | 'map'>('grid');
   const [activeMapLayer, setActiveMapLayer] = useState<'default' | 'price' | 'flood' | 'safety' | 'noise' | '3d'>('default');
   const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState<boolean>(false);
-  // Estatísticas Resumidas da Base (Seção 17)
+  // Estatísticas Resumidas da Base e Frescor por Banco
   const [summaryStats, setSummaryStats] = useState<{
     totalActiveCount: number;
     lastImportDate: string | null;
@@ -77,6 +79,7 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
     lastImportDate: null,
     lastImportGeneratedAt: null,
   });
+  const [bankFreshness, setBankFreshness] = useState<BankFreshnessInfo[]>([]);
 
   // Opções Dinâmicas para os Selects (Seções 19, 20, 27, 28)
   const [availableStates, setAvailableStates] = useState<string[]>([]);
@@ -127,8 +130,12 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
   // Carregar estatísticas e opções dos selects no primeiro render
   useEffect(() => {
     async function loadInitialOptions() {
-      const statsRes = await fetchCatalogSummaryStatsFromSupabase();
+      const [statsRes, freshnessRes] = await Promise.all([
+        fetchCatalogSummaryStatsFromSupabase(),
+        fetchBankFreshnessFromSupabase(),
+      ]);
       setSummaryStats(statsRes);
+      setBankFreshness(freshnessRes);
 
       const states = await fetchDistinctStatesFromSupabase();
       setAvailableStates(states);
@@ -377,6 +384,54 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
             )}
           </div>
         </div>
+
+        {/* SELO VISÍVEL DE ATUALIZAÇÃO REAL POR BANCO */}
+        {bankFreshness.length > 0 && (
+          <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center gap-2 text-[11px]">
+            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mr-1">
+              Última Atualização dos Bancos:
+            </span>
+            {bankFreshness.map((b) => {
+              const syncDate = b.lastSyncedAt ? new Date(b.lastSyncedAt) : null;
+              const isRecent =
+                syncDate !== null && !isNaN(syncDate.getTime()) && Date.now() - syncDate.getTime() < 48 * 3600 * 1000;
+              const genDateFormatted = b.sourceGeneratedAt
+                ? b.sourceGeneratedAt.split('-').reverse().join('/')
+                : null;
+              const syncFormatted =
+                syncDate && !isNaN(syncDate.getTime())
+                  ? syncDate.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                  : null;
+
+              return (
+                <div
+                  key={b.source}
+                  className="bg-slate-950/70 border border-slate-700/80 px-2.5 py-1 rounded-xl flex items-center gap-1.5"
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      b.activeCount === 0
+                        ? 'bg-slate-500'
+                        : isRecent
+                        ? 'bg-emerald-400'
+                        : 'bg-amber-400'
+                    }`}
+                  />
+                  <span className="font-black text-white">{b.source}</span>
+                  {b.activeCount > 0 ? (
+                    <span className="text-slate-300">
+                      · {b.activeCount.toLocaleString()} ativos
+                      {genDateFormatted ? ` · Base ${genDateFormatted}` : ''}
+                      {syncFormatted ? ` · Sync ${syncFormatted}` : ''}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400">· Sem carga ativa</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {activeTab === 'sync' && tenant.features.adminSync ? (
