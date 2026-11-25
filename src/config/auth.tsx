@@ -2,12 +2,14 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 
 export type AccountRole = 'investor' | 'partner';
+export type MemberRole = 'superadmin' | 'tenant_admin' | 'partner' | 'investor';
 
 export interface AuthUser {
   id: string;
   email: string;
   name: string;
   accountRole: AccountRole;
+  memberRole?: MemberRole;
   partnerCategory?: string;
   isManager: boolean;
   isDemoSession: boolean;
@@ -97,22 +99,6 @@ function clearPendingRole() {
   }
 }
 
-async function syncRoleMembership(userId: string, role: AccountRole) {
-  if (!supabase || !userId) return;
-  try {
-    await supabase.from('tenant_members').upsert(
-      {
-        tenant_id: DEFAULT_G2_TENANT_ID,
-        user_id: userId,
-        role,
-      },
-      { onConflict: 'tenant_id,user_id' }
-    );
-  } catch {
-    // best-effort sync
-  }
-}
-
 async function fetchIsManager(userId: string): Promise<boolean> {
   if (!supabase || !userId) return false;
   try {
@@ -125,6 +111,46 @@ async function fetchIsManager(userId: string): Promise<boolean> {
     return !error && Array.isArray(data) && data.length > 0;
   } catch {
     return false;
+  }
+}
+
+async function fetchMemberRole(userId: string): Promise<{ isManager: boolean; memberRole?: MemberRole }> {
+  if (!supabase || !userId) return { isManager: false };
+  try {
+    const { data, error } = await supabase
+      .from('tenant_members')
+      .select('role')
+      .eq('user_id', userId);
+    if (error || !Array.isArray(data) || data.length === 0) {
+      return { isManager: false };
+    }
+    const roles = data.map((r) => String(r.role) as MemberRole);
+    const priority: MemberRole[] = ['superadmin', 'tenant_admin', 'partner', 'investor'];
+    const highest = priority.find((p) => roles.includes(p)) || roles[0];
+    return {
+      isManager: roles.includes('superadmin') || roles.includes('tenant_admin'),
+      memberRole: highest,
+    };
+  } catch {
+    return { isManager: false };
+  }
+}
+
+async function syncRoleMembership(userId: string, role: AccountRole) {
+  if (!supabase || !userId) return;
+  try {
+    // Nunca rebaixar superadmin / tenant_admin ao alternar visão Investidor/Parceiro ou ao logar
+    if (await fetchIsManager(userId)) return;
+    await supabase.from('tenant_members').upsert(
+      {
+        tenant_id: DEFAULT_G2_TENANT_ID,
+        user_id: userId,
+        role,
+      },
+      { onConflict: 'tenant_id,user_id' }
+    );
+  } catch {
+    // best-effort sync
   }
 }
 
@@ -233,9 +259,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (sbUser) {
         const pending = readPendingRole();
         const resolved = buildAuthUserFromSupabase(sbUser, pending?.role, pending?.category);
-        const managerFlag = await fetchIsManager(sbUser.id);
+        const roleInfo = await fetchMemberRole(sbUser.id);
         if (!isMounted) return;
-        setUser({ ...resolved, isManager: managerFlag });
+        setUser({ ...resolved, isManager: roleInfo.isManager, memberRole: roleInfo.memberRole });
       }
       setLoading(false);
     });
@@ -261,9 +287,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const resolvedUser = buildAuthUserFromSupabase(sbUser, effectiveRole, effectiveCategory);
         setUser(resolvedUser);
-        fetchIsManager(sbUser.id).then((managerFlag) => {
-          if (managerFlag && isMounted) {
-            setUser((prev) => (prev && prev.id === sbUser.id ? { ...prev, isManager: true } : prev));
+        fetchMemberRole(sbUser.id).then((roleInfo) => {
+          if (isMounted) {
+            setUser((prev) =>
+              prev && prev.id === sbUser.id
+                ? { ...prev, isManager: roleInfo.isManager, memberRole: roleInfo.memberRole }
+                : prev
+            );
           }
         });
 

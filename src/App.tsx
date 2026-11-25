@@ -35,7 +35,7 @@ import {
 } from './utils/radarMatchEngine';
 import { Wallet, Wrench, Users, PieChart, Route, Landmark, CheckCircle2, AlertCircle, X } from 'lucide-react';
 
-const APP_VERSION = 'v3.15.2';
+const APP_VERSION = 'v3.16.0';
 const INTRO_SEEN_KEY = 'auction_intro_seen_v1';
 
 function AppContent() {

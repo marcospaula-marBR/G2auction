@@ -196,7 +196,11 @@ export interface Partner {
   startingPrice?: number;
   responseTimeHours?: number;
   splitReady?: boolean;
-  approvalStatus?: 'HOMOLOGADO' | 'EM_HOMOLOGACAO';
+  approvalStatus?: 'HOMOLOGADO' | 'EM_HOMOLOGACAO' | 'SUSPENSO';
+  source?: 'supabase' | 'demo';
+  email?: string;
+  pixKey?: string;
+  dbStatus?: 'PENDING' | 'APPROVED' | 'SUSPENDED';
   services?: PartnerService[];
 }
 

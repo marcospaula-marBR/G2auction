@@ -27,7 +27,7 @@ export const Header: React.FC<HeaderProps> = ({
   onInstallPwa,
   onReplayIntro,
   unreadNotifications,
-  version = 'v3.15.2',
+  version = 'v3.16.0',
 }) => {
   const { tenant } = useTenant();
   const { user, signOut } = useAuth();
@@ -125,24 +125,39 @@ export const Header: React.FC<HeaderProps> = ({
             {user ? (
               <div
                 className={`flex items-center border rounded-xl pl-2.5 pr-1.5 py-1.5 gap-2 ${
-                  user.accountRole === 'partner'
+                  user.isManager
+                    ? 'bg-amber-50/90 border-amber-300'
+                    : user.accountRole === 'partner'
                     ? 'bg-indigo-50 border-indigo-200'
                     : 'bg-emerald-50 border-emerald-200'
                 }`}
-                title={`Conectado como ${user.email} (${user.accountRole === 'partner' ? 'Parceiro' : 'Investidor'})`}
+                title={`Conectado como ${user.email} (${
+                  user.isManager ? 'Administrador / Superadmin · ' : ''
+                }${user.accountRole === 'partner' ? 'Parceiro' : 'Investidor'})`}
               >
-                {user.accountRole === 'partner' ? (
+                {user.isManager ? (
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                ) : user.accountRole === 'partner' ? (
                   <Briefcase className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                 ) : (
                   <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
                 )}
                 <span
                   className={`text-[11px] font-bold max-w-[110px] truncate ${
-                    user.accountRole === 'partner' ? 'text-indigo-950' : 'text-emerald-900'
+                    user.isManager
+                      ? 'text-amber-950'
+                      : user.accountRole === 'partner'
+                      ? 'text-indigo-950'
+                      : 'text-emerald-900'
                   }`}
                 >
                   {user.name}
                 </span>
+                {user.isManager && (
+                  <span className="inline-flex items-center gap-0.5 text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-amber-500 text-slate-950 shadow-2xs">
+                    ADMIN
+                  </span>
+                )}
                 <span
                   className={`hidden md:inline text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md text-white ${
                     user.accountRole === 'partner' ? 'bg-indigo-600' : 'bg-emerald-600'
@@ -153,7 +168,9 @@ export const Header: React.FC<HeaderProps> = ({
                 <button
                   onClick={signOut}
                   className={`p-1 rounded-lg hover:bg-white transition-colors ${
-                    user.accountRole === 'partner'
+                    user.isManager
+                      ? 'text-amber-800 hover:text-red-600'
+                      : user.accountRole === 'partner'
                       ? 'text-indigo-700 hover:text-red-600'
                       : 'text-emerald-700 hover:text-red-600'
                   }`}

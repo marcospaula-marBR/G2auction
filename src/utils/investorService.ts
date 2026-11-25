@@ -444,6 +444,67 @@ export async function createInvestmentVehicle(input: {
   }
 }
 
+export async function updateInvestmentVehicle(
+  vehicleId: string,
+  patch: Partial<{
+    name: string;
+    vehicle_type: VehicleType;
+    legal_structure: LegalStructure;
+    city: string | null;
+    state: string | null;
+    property_summary: string | null;
+    initial_quota_value: number;
+    target_capital: number;
+    min_investment_brl: number;
+    estimated_exit_months: number;
+    projected_roi_pct: number;
+    admin_fee_annual_pct: number;
+    admin_fee_mode: AdminFeeMode;
+    performance_fee_pct: number;
+    performance_hurdle_type: HurdleType;
+    performance_hurdle_annual_pct: number;
+  }>
+): Promise<{ ok: boolean; vehicle?: InvestmentVehicle; error?: string }> {
+  if (!supabase) return { ok: false, error: 'Supabase não configurado.' };
+  try {
+    const cleanPatch: Record<string, any> = {
+      ...patch,
+      updated_at: new Date().toISOString(),
+    };
+    if (typeof cleanPatch.state === 'string') {
+      cleanPatch.state = cleanPatch.state.trim().toUpperCase().slice(0, 2) || null;
+    }
+    const { data, error } = await supabase
+      .from('investment_vehicles')
+      .update(cleanPatch)
+      .eq('id', vehicleId)
+      .select('*')
+      .single();
+
+    if (error || !data) {
+      return { ok: false, error: error?.message || 'Falha ao atualizar operação cotizada.' };
+    }
+    return { ok: true, vehicle: normalizeVehicle(data) };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || 'Exceção ao atualizar operação.' };
+  }
+}
+
+export async function deleteInvestmentVehicle(
+  vehicleId: string
+): Promise<{ ok: boolean; error?: string }> {
+  if (!supabase) return { ok: false, error: 'Supabase não configurado.' };
+  try {
+    const { error } = await supabase.from('investment_vehicles').delete().eq('id', vehicleId);
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || 'Exceção ao excluir operação.' };
+  }
+}
+
 export async function convertIntentToQuotas(
   intent: QuotaSubscriptionIntent,
   vehicle: InvestmentVehicle

@@ -26,6 +26,8 @@ import {
   createQuotaIntent,
   cancelQuotaIntent,
   createInvestmentVehicle,
+  updateInvestmentVehicle,
+  deleteInvestmentVehicle,
   convertIntentToQuotas,
   updateVehicleStageAndNav,
   createCapitalCallOrExpense,
@@ -34,6 +36,7 @@ import {
   FALLBACK_REFERENCE_VEHICLES,
   type CapitalCall,
 } from '../utils/investorService';
+import { AdminStakeholdersPanel } from './AdminStakeholdersPanel';
 import {
   fetchOfficialBcbRates,
   fetchBcbPeriodBenchmark,
@@ -61,6 +64,8 @@ import {
   PlusCircle,
   TrendingUp,
   AlertTriangle,
+  Edit3,
+  Trash2,
 } from 'lucide-react';
 import {
   BarChart,
@@ -178,6 +183,42 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
   const [mgrStage, setMgrStage] = useState<VehicleStage>('REFORMA');
   const [mgrNavInput, setMgrNavInput] = useState<string>('');
   const [mgrNavNote, setMgrNavNote] = useState<string>('');
+  const [editingVehicleOpen, setEditingVehicleOpen] = useState<boolean>(false);
+  const [editVehicleForm, setEditVehicleForm] = useState<{
+    name: string;
+    vehicle_type: VehicleType;
+    legal_structure: LegalStructure;
+    city: string;
+    state: string;
+    property_summary: string;
+    initial_quota_value: number;
+    target_capital: number;
+    min_investment_brl: number;
+    estimated_exit_months: number;
+    projected_roi_pct: number;
+    admin_fee_annual_pct: number;
+    admin_fee_mode: AdminFeeMode;
+    performance_fee_pct: number;
+    performance_hurdle_type: HurdleType;
+    performance_hurdle_annual_pct: number;
+  }>({
+    name: '',
+    vehicle_type: 'SINGLE_ASSET',
+    legal_structure: 'SCP',
+    city: '',
+    state: 'SP',
+    property_summary: '',
+    initial_quota_value: 1000,
+    target_capital: 350000,
+    min_investment_brl: 5000,
+    estimated_exit_months: 10,
+    projected_roi_pct: 32,
+    admin_fee_annual_pct: 0,
+    admin_fee_mode: 'ON_EXIT_ACCRUED',
+    performance_fee_pct: 20,
+    performance_hurdle_type: 'CDI',
+    performance_hurdle_annual_pct: 10.75,
+  });
 
   const [callKind, setCallKind] = useState<'EXPENSE' | 'CAPITAL_CALL'>('CAPITAL_CALL');
   const [callTitle, setCallTitle] = useState<string>('');
@@ -522,6 +563,87 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
 
   const selectedMgrVehicle = vehiclesById[mgrVehicleId] || vehicles[0];
 
+  const handleOpenEditVehicle = (v: InvestmentVehicle) => {
+    setEditVehicleForm({
+      name: v.name,
+      vehicle_type: v.vehicle_type,
+      legal_structure: v.legal_structure,
+      city: v.city || '',
+      state: v.state || 'SP',
+      property_summary: v.property_summary || '',
+      initial_quota_value: v.initial_quota_value,
+      target_capital: v.target_capital,
+      min_investment_brl: v.min_investment_brl,
+      estimated_exit_months: v.estimated_exit_months,
+      projected_roi_pct: v.projected_roi_pct,
+      admin_fee_annual_pct: v.admin_fee_annual_pct,
+      admin_fee_mode: v.admin_fee_mode,
+      performance_fee_pct: v.performance_fee_pct,
+      performance_hurdle_type: v.performance_hurdle_type,
+      performance_hurdle_annual_pct: v.performance_hurdle_annual_pct,
+    });
+    setEditingVehicleOpen((prev) => !prev);
+  };
+
+  const handleSaveVehicleEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedMgrVehicle || !editVehicleForm.name.trim()) return;
+    setManagerBusy(true);
+    setManagerMsg(null);
+    try {
+      const res = await updateInvestmentVehicle(selectedMgrVehicle.id, {
+        name: editVehicleForm.name.trim(),
+        vehicle_type: editVehicleForm.vehicle_type,
+        legal_structure: editVehicleForm.legal_structure,
+        city: editVehicleForm.city.trim() || null,
+        state: editVehicleForm.state.trim().toUpperCase().slice(0, 2) || null,
+        property_summary: editVehicleForm.property_summary.trim() || null,
+        initial_quota_value: editVehicleForm.initial_quota_value,
+        target_capital: editVehicleForm.target_capital,
+        min_investment_brl: editVehicleForm.min_investment_brl,
+        estimated_exit_months: editVehicleForm.estimated_exit_months,
+        projected_roi_pct: editVehicleForm.projected_roi_pct,
+        admin_fee_annual_pct: editVehicleForm.admin_fee_annual_pct,
+        admin_fee_mode: editVehicleForm.admin_fee_mode,
+        performance_fee_pct: editVehicleForm.performance_fee_pct,
+        performance_hurdle_type: editVehicleForm.performance_hurdle_type,
+        performance_hurdle_annual_pct: editVehicleForm.performance_hurdle_annual_pct,
+      });
+      if (res.ok) {
+        setManagerMsg({ type: 'success', text: `Operação "${editVehicleForm.name}" atualizada!` });
+        setEditingVehicleOpen(false);
+        await loadPortalData();
+      } else {
+        setManagerMsg({ type: 'error', text: res.error || 'Falha ao editar operação.' });
+      }
+    } finally {
+      setManagerBusy(false);
+    }
+  };
+
+  const handleDeleteVehicle = async () => {
+    if (!selectedMgrVehicle) return;
+    const confirmed = window.confirm(
+      `Excluir permanentemente a operação "${selectedMgrVehicle.name}" e todas as suas reservas/chamadas vinculadas?`
+    );
+    if (!confirmed) return;
+    setManagerBusy(true);
+    setManagerMsg(null);
+    try {
+      const res = await deleteInvestmentVehicle(selectedMgrVehicle.id);
+      if (res.ok) {
+        setManagerMsg({ type: 'success', text: `Operação "${selectedMgrVehicle.name}" excluída.` });
+        setEditingVehicleOpen(false);
+        setMgrVehicleId('');
+        await loadPortalData();
+      } else {
+        setManagerMsg({ type: 'error', text: res.error || 'Falha ao excluir operação.' });
+      }
+    } finally {
+      setManagerBusy(false);
+    }
+  };
+
   const handleUpdateStageAndNav = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedMgrVehicle) return;
@@ -814,7 +936,7 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
               ? [
                   {
                     id: 'gestao',
-                    label: `Gestão de Cotas (${pendingQueue.length})`,
+                    label: `Gestão & Stakeholders (${pendingQueue.length})`,
                     icon: Settings2,
                   },
                 ]
@@ -1936,6 +2058,174 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
                     Atualizar Etapa & Marcação NAV
                   </button>
                 </form>
+
+                {selectedMgrVehicle && (
+                  <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditVehicle(selectedMgrVehicle)}
+                      className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold flex items-center gap-1"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>{editingVehicleOpen ? 'Fechar Edição' : 'Editar Cadastro da Operação'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={managerBusy}
+                      onClick={handleDeleteVehicle}
+                      className="px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 font-bold flex items-center gap-1 disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Excluir Operação</span>
+                    </button>
+                  </div>
+                )}
+
+                {editingVehicleOpen && selectedMgrVehicle && (
+                  <form
+                    onSubmit={handleSaveVehicleEdit}
+                    className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2.5"
+                  >
+                    <span className="font-black text-slate-900 block">Editar Dados da Operação</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <input
+                        required
+                        type="text"
+                        value={editVehicleForm.name}
+                        onChange={(e) => setEditVehicleForm((f) => ({ ...f, name: e.target.value }))}
+                        placeholder="Nome da Operação"
+                        className="sm:col-span-2 bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 font-bold"
+                      />
+                      <select
+                        value={editVehicleForm.vehicle_type}
+                        onChange={(e) =>
+                          setEditVehicleForm((f) => ({ ...f, vehicle_type: e.target.value as VehicleType }))
+                        }
+                        className="bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 font-bold"
+                      >
+                        <option value="SINGLE_ASSET">Imóvel Individual</option>
+                        <option value="MULTI_ASSET_POOL">Clube Multi-Imóveis</option>
+                      </select>
+                      <select
+                        value={editVehicleForm.legal_structure}
+                        onChange={(e) =>
+                          setEditVehicleForm((f) => ({
+                            ...f,
+                            legal_structure: e.target.value as LegalStructure,
+                          }))
+                        }
+                        className="bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 font-bold"
+                      >
+                        <option value="SCP">SCP</option>
+                        <option value="SPE">SPE</option>
+                        <option value="CONDOMINIO">Condomínio</option>
+                        <option value="CLUBE_PRIVADO">Clube Privado</option>
+                      </select>
+                      <input
+                        type="text"
+                        value={editVehicleForm.city}
+                        onChange={(e) => setEditVehicleForm((f) => ({ ...f, city: e.target.value }))}
+                        placeholder="Cidade"
+                        className="bg-white border border-slate-300 rounded-xl px-2.5 py-1.5"
+                      />
+                      <input
+                        type="text"
+                        maxLength={2}
+                        value={editVehicleForm.state}
+                        onChange={(e) =>
+                          setEditVehicleForm((f) => ({ ...f, state: e.target.value.toUpperCase() }))
+                        }
+                        placeholder="UF"
+                        className="bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 uppercase font-bold"
+                      />
+                      <div>
+                        <label className="text-[10px] text-slate-500 block">Capital Alvo (R$)</label>
+                        <input
+                          type="number"
+                          min={1000}
+                          value={editVehicleForm.target_capital}
+                          onChange={(e) =>
+                            setEditVehicleForm((f) => ({
+                              ...f,
+                              target_capital: Math.max(1000, Number(e.target.value) || 1000),
+                            }))
+                          }
+                          className="w-full bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-500 block">Aporte Mínimo (R$)</label>
+                        <input
+                          type="number"
+                          min={100}
+                          value={editVehicleForm.min_investment_brl}
+                          onChange={(e) =>
+                            setEditVehicleForm((f) => ({
+                              ...f,
+                              min_investment_brl: Math.max(100, Number(e.target.value) || 500),
+                            }))
+                          }
+                          className="w-full bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-500 block">ROI Alvo (%)</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={editVehicleForm.projected_roi_pct}
+                          onChange={(e) =>
+                            setEditVehicleForm((f) => ({
+                              ...f,
+                              projected_roi_pct: Math.max(1, Number(e.target.value) || 20),
+                            }))
+                          }
+                          className="w-full bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-500 block">Exit (meses)</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={editVehicleForm.estimated_exit_months}
+                          onChange={(e) =>
+                            setEditVehicleForm((f) => ({
+                              ...f,
+                              estimated_exit_months: Math.max(1, Number(e.target.value) || 10),
+                            }))
+                          }
+                          className="w-full bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 font-bold"
+                        />
+                      </div>
+                      <textarea
+                        rows={2}
+                        value={editVehicleForm.property_summary}
+                        onChange={(e) =>
+                          setEditVehicleForm((f) => ({ ...f, property_summary: e.target.value }))
+                        }
+                        placeholder="Resumo da tese / operação"
+                        className="sm:col-span-2 bg-white border border-slate-300 rounded-xl px-2.5 py-1.5"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="submit"
+                        disabled={managerBusy}
+                        className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black"
+                      >
+                        Salvar Operação
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingVehicleOpen(false)}
+                        className="px-3 py-1.5 rounded-xl bg-slate-200 text-slate-700 font-bold"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
 
               {/* Chamada de Capital ou Despesa Rateada */}
@@ -2079,6 +2369,9 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
               )}
             </div>
           </div>
+
+          {/* 6. Gestão Centralizada de Stakeholders (Usuários, Parceiros e Empresas/Tenants) */}
+          <AdminStakeholdersPanel currentUserId={user?.id} primaryColor={tenant.primaryColor} />
         </div>
       )}
     </div>

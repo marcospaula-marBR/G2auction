@@ -3,12 +3,21 @@ import type { Partner, PartnerService } from '../types/auction';
 import {
   ShieldCheck, Star, Phone, MapPin, UserCheck, Search,
   CreditCard, CheckCircle2, Lock, ArrowRight, X, Clock,
-  Briefcase, Percent, Split, Building2,
+  Briefcase, Percent, Split, Building2, Edit3, Trash2, Ban,
 } from 'lucide-react';
 import { useTenant } from '../config/tenant';
 import { useAuth } from '../config/auth';
 import { supabase } from '../lib/supabaseClient';
 import { formatCurrencyBRL } from '../utils/financial';
+import {
+  fetchPartnersFromSupabase,
+  createPartnerInSupabase,
+  updatePartnerInSupabase,
+  deletePartnerInSupabase,
+  dbPartnerToUiPartner,
+  mapPartnerRoleToCategory,
+  type PartnerApprovalDb,
+} from '../utils/adminStakeholdersService';
 
 interface PartnerNetworkProps {
   partners: Partner[];
@@ -48,26 +57,67 @@ function matchesRoleFilter(role: Partner['role'], filterId: string): boolean {
   return true;
 }
 
-function mapPartnerRoleToCategory(role: Partner['role']): string {
-  const r = role.toLowerCase();
-  if (r.includes('advogado')) return 'ADVOGADO';
-  if (r.includes('despachante')) return 'DESPACHANTE';
-  if (r.includes('administrador')) return 'ADMINISTRADOR';
-  if (r.includes('pedreiro') || r.includes('reforma')) return 'PEDREIRO_REFORMA';
-  if (r.includes('avaliador')) return 'AVALIADOR';
-  if (r.includes('engenheiro') || r.includes('arquiteto')) return 'ENGENHEIRO_ARQUITETO';
-  return 'CORRETOR';
+const DEMO_PARTNERS_OVERRIDES_KEY = 'auction_demo_partners_overrides_v1';
+
+interface DemoPartnerOverrides {
+  hiddenIds: string[];
+  edited: Record<string, Partner>;
+}
+
+function readDemoOverrides(): DemoPartnerOverrides {
+  try {
+    const raw = localStorage.getItem(DEMO_PARTNERS_OVERRIDES_KEY);
+    if (!raw) return { hiddenIds: [], edited: {} };
+    const parsed = JSON.parse(raw);
+    return {
+      hiddenIds: Array.isArray(parsed?.hiddenIds) ? parsed.hiddenIds : [],
+      edited: parsed?.edited && typeof parsed.edited === 'object' ? parsed.edited : {},
+    };
+  } catch {
+    return { hiddenIds: [], edited: {} };
+  }
+}
+
+function saveDemoOverrides(next: DemoPartnerOverrides) {
+  try {
+    localStorage.setItem(DEMO_PARTNERS_OVERRIDES_KEY, JSON.stringify(next));
+  } catch {
+    // ignore storage errors
+  }
 }
 
 export const PartnerNetwork: React.FC<PartnerNetworkProps> = ({ partners: initialPartners }) => {
   const { tenant } = useTenant();
   const { user, switchAccountRole } = useAuth();
-  const [partners, setPartners] = useState<Partner[]>(initialPartners);
+  const isAdmin = Boolean(user?.isManager || tenant.features.adminSync);
+
+  const [partners, setPartners] = useState<Partner[]>(() => {
+    const ov = readDemoOverrides();
+    return initialPartners
+      .filter((p) => !ov.hiddenIds.includes(p.id))
+      .map((p) => ({ ...(ov.edited[p.id] || p), source: 'demo' as const }));
+  });
   const [subTab, setSubTab] = useState<'marketplace' | 'onboarding'>(() =>
     user?.accountRole === 'partner' ? 'onboarding' : 'marketplace'
   );
   const [roleFilter, setRoleFilter] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [adminFeedback, setAdminFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [editingPartner, setEditingPartner] = useState<Partner | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    role: 'Corretor de Imóveis' as Partner['role'],
+    registrationCode: '',
+    city: '',
+    state: 'SP',
+    phone: '',
+    email: '',
+    pixKey: '',
+    specialty: '',
+    startingPrice: '500',
+    dbStatus: 'APPROVED' as PartnerApprovalDb,
+  });
+  const [savingPartner, setSavingPartner] = useState<boolean>(false);
 
   // Modal Checkout Split Payment
   const [checkoutPartner, setCheckoutPartner] = useState<Partner | null>(null);
@@ -100,6 +150,170 @@ export const PartnerNetwork: React.FC<PartnerNetworkProps> = ({ partners: initia
       }));
     }
   }, [user?.id, user?.accountRole, user?.name]);
+
+  useEffect(() => {
+    let active = true;
+    fetchPartnersFromSupabase().then((res) => {
+      if (!active || !res.ok) return;
+      const dbPartners = res.partners.map(dbPartnerToUiPartner);
+      const ov = readDemoOverrides();
+      const demoPartners = initialPartners
+        .filter((p) => !ov.hiddenIds.includes(p.id))
+        .map((p) => ({ ...(ov.edited[p.id] || p), source: 'demo' as const }));
+      setPartners([...dbPartners, ...demoPartners]);
+    });
+    return () => {
+      active = false;
+    };
+  }, [initialPartners, user?.id, user?.isManager]);
+
+  const openEditPartner = (partner: Partner) => {
+    setEditingPartner(partner);
+    setEditForm({
+      name: partner.name,
+      role: partner.role,
+      registrationCode: partner.registrationCode || '',
+      city: partner.city,
+      state: partner.state,
+      phone: partner.phone || '',
+      email: partner.email || '',
+      pixKey: partner.pixKey || '',
+      specialty: partner.specialty || '',
+      startingPrice: String(partner.startingPrice || 500),
+      dbStatus:
+        partner.dbStatus ||
+        (partner.approvalStatus === 'HOMOLOGADO'
+          ? 'APPROVED'
+          : partner.approvalStatus === 'SUSPENSO'
+          ? 'SUSPENDED'
+          : 'PENDING'),
+    });
+  };
+
+  const handleSavePartnerEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPartner || !editForm.name.trim() || !editForm.city.trim()) return;
+    setSavingPartner(true);
+    setAdminFeedback(null);
+    try {
+      const uiStatus: Partner['approvalStatus'] =
+        editForm.dbStatus === 'APPROVED'
+          ? 'HOMOLOGADO'
+          : editForm.dbStatus === 'SUSPENDED'
+          ? 'SUSPENSO'
+          : 'EM_HOMOLOGACAO';
+
+      const updated: Partner = {
+        ...editingPartner,
+        name: editForm.name.trim(),
+        role: editForm.role,
+        registrationCode: editForm.registrationCode.trim() || undefined,
+        city: editForm.city.trim(),
+        state: editForm.state.trim().toUpperCase().slice(0, 2) || 'SP',
+        phone: editForm.phone.trim() || '(Não informado)',
+        email: editForm.email.trim() || undefined,
+        pixKey: editForm.pixKey.trim() || undefined,
+        specialty: editForm.specialty.trim() || editingPartner.specialty,
+        startingPrice: Math.max(50, Number(editForm.startingPrice) || 500),
+        verified: editForm.dbStatus === 'APPROVED',
+        splitReady: Boolean(editForm.pixKey.trim()),
+        approvalStatus: uiStatus,
+        dbStatus: editForm.dbStatus,
+      };
+
+      if (editingPartner.source === 'supabase' && supabase) {
+        const res = await updatePartnerInSupabase(editingPartner.id, {
+          name: updated.name,
+          category: mapPartnerRoleToCategory(updated.role),
+          registration_code: updated.registrationCode || null,
+          city: updated.city,
+          state: updated.state,
+          phone: updated.phone,
+          email: updated.email || null,
+          pix_key: updated.pixKey || null,
+          specialty: updated.specialty,
+          approval_status: editForm.dbStatus,
+        });
+        if (!res.ok) {
+          setAdminFeedback({ type: 'error', text: res.error || 'Erro ao atualizar parceiro no banco.' });
+          return;
+        }
+      } else {
+        const ov = readDemoOverrides();
+        ov.edited[editingPartner.id] = updated;
+        saveDemoOverrides(ov);
+      }
+
+      setPartners((prev) => prev.map((p) => (p.id === editingPartner.id ? updated : p)));
+      setAdminFeedback({ type: 'success', text: `Parceiro "${updated.name}" atualizado!` });
+      setEditingPartner(null);
+    } finally {
+      setSavingPartner(false);
+    }
+  };
+
+  const handleTogglePartnerStatus = async (partner: Partner, nextDbStatus: PartnerApprovalDb) => {
+    setAdminFeedback(null);
+    const uiStatus: Partner['approvalStatus'] =
+      nextDbStatus === 'APPROVED'
+        ? 'HOMOLOGADO'
+        : nextDbStatus === 'SUSPENDED'
+        ? 'SUSPENSO'
+        : 'EM_HOMOLOGACAO';
+
+    if (partner.source === 'supabase' && supabase) {
+      const res = await updatePartnerInSupabase(partner.id, { approval_status: nextDbStatus });
+      if (!res.ok) {
+        setAdminFeedback({ type: 'error', text: res.error || 'Erro ao alterar status.' });
+        return;
+      }
+    } else {
+      const ov = readDemoOverrides();
+      ov.edited[partner.id] = {
+        ...partner,
+        verified: nextDbStatus === 'APPROVED',
+        approvalStatus: uiStatus,
+        dbStatus: nextDbStatus,
+      };
+      saveDemoOverrides(ov);
+    }
+
+    setPartners((prev) =>
+      prev.map((p) =>
+        p.id === partner.id
+          ? { ...p, verified: nextDbStatus === 'APPROVED', approvalStatus: uiStatus, dbStatus: nextDbStatus }
+          : p
+      )
+    );
+    setAdminFeedback({
+      type: 'success',
+      text: `Status de "${partner.name}" alterado para ${nextDbStatus === 'APPROVED' ? 'Homologado' : 'Suspenso'}.`,
+    });
+  };
+
+  const handleDeletePartner = async (partner: Partner) => {
+    const confirmed = window.confirm(`Excluir o parceiro "${partner.name}"?`);
+    if (!confirmed) return;
+    setAdminFeedback(null);
+
+    if (partner.source === 'supabase' && supabase) {
+      const res = await deletePartnerInSupabase(partner.id);
+      if (!res.ok) {
+        setAdminFeedback({ type: 'error', text: res.error || 'Erro ao excluir parceiro no Supabase.' });
+        return;
+      }
+    } else {
+      const ov = readDemoOverrides();
+      if (!ov.hiddenIds.includes(partner.id)) {
+        ov.hiddenIds.push(partner.id);
+      }
+      delete ov.edited[partner.id];
+      saveDemoOverrides(ov);
+    }
+
+    setPartners((prev) => prev.filter((p) => p.id !== partner.id));
+    setAdminFeedback({ type: 'success', text: `Parceiro "${partner.name}" removido.` });
+  };
 
   const filteredPartners = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
@@ -198,25 +412,26 @@ export const PartnerNetwork: React.FC<PartnerNetworkProps> = ({ partners: initia
     };
 
     if (supabase && user && !user.isDemoSession) {
-      try {
-        await supabase.from('partners').insert({
-          tenant_id: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenant.id)
-            ? tenant.id
-            : null,
-          user_id: user.id,
-          name: created.name,
-          category: mapPartnerRoleToCategory(newPartnerForm.role),
-          registration_code: newPartnerForm.registrationCode || null,
-          city: created.city,
-          state: created.state.slice(0, 2),
-          phone: newPartnerForm.phone || null,
-          email: user.email || null,
-          specialty: created.specialty,
-          pix_key: newPartnerForm.pixKey || null,
-          approval_status: 'PENDING',
-        });
-      } catch {
-        // Fallback local mantido
+      const res = await createPartnerInSupabase({
+        tenantId: tenant.id,
+        userId: user.id,
+        name: created.name,
+        category: mapPartnerRoleToCategory(newPartnerForm.role),
+        registrationCode: newPartnerForm.registrationCode,
+        city: created.city,
+        state: created.state,
+        phone: newPartnerForm.phone,
+        email: user.email,
+        specialty: created.specialty,
+        pixKey: newPartnerForm.pixKey,
+        approvalStatus: isAdmin ? 'APPROVED' : 'PENDING',
+      });
+      if (res.ok && res.partner) {
+        created.id = res.partner.id;
+        created.source = 'supabase';
+        created.dbStatus = res.partner.approval_status;
+        created.approvalStatus = res.partner.approval_status === 'APPROVED' ? 'HOMOLOGADO' : 'EM_HOMOLOGACAO';
+        created.verified = res.partner.approval_status === 'APPROVED';
       }
     }
 
@@ -261,6 +476,27 @@ export const PartnerNetwork: React.FC<PartnerNetworkProps> = ({ partners: initia
           >
             Alternar para Visão Investidor
           </button>
+        </div>
+      )}
+
+      {/* Faixa Modo Admin (Edição/Homologação/Exclusão de Parceiros) */}
+      {isAdmin && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-950">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              <strong>Modo Administrador:</strong> você pode editar dados, homologar, suspender ou excluir parceiros diretamente nos cards abaixo.
+            </span>
+          </div>
+          {adminFeedback && (
+            <span
+              className={`font-bold px-2.5 py-0.5 rounded-lg ${
+                adminFeedback.type === 'success' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+              }`}
+            >
+              {adminFeedback.text}
+            </span>
+          )}
         </div>
       )}
 
@@ -414,6 +650,16 @@ export const PartnerNetwork: React.FC<PartnerNetworkProps> = ({ partners: initia
                             Em Homologação
                           </span>
                         )}
+                        {partner.approvalStatus === 'SUSPENSO' && (
+                          <span className="text-[10px] font-bold bg-red-100 text-red-800 px-1.5 py-0.5 rounded">
+                            Suspenso
+                          </span>
+                        )}
+                        {partner.source === 'supabase' && (
+                          <span className="text-[10px] font-bold bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded">
+                            Supabase
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex flex-wrap items-center text-[11px] text-slate-500 gap-3 mt-1">
@@ -457,20 +703,58 @@ export const PartnerNetwork: React.FC<PartnerNetworkProps> = ({ partners: initia
                 </div>
 
                 {/* Ação & Split Info */}
-                <div className="flex items-center justify-between pt-3 border-t border-slate-100 gap-2">
-                  <div className="flex items-center gap-2 text-[11px] text-slate-600 font-semibold">
-                    <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>{partner.phone}</span>
+                <div className="space-y-2.5 pt-3 border-t border-slate-100">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-[11px] text-slate-600 font-semibold">
+                      <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>{partner.phone}</span>
+                    </div>
+
+                    <button
+                      onClick={() => openCheckout(partner)}
+                      className="text-white text-xs font-bold px-4 py-2 rounded-xl shadow-2xs flex items-center gap-1.5 transition-opacity hover:opacity-95"
+                      style={{ backgroundColor: tenant.primaryColor }}
+                    >
+                      <CreditCard className="w-3.5 h-3.5" />
+                      <span>Contratar / Orçar</span>
+                    </button>
                   </div>
 
-                  <button
-                    onClick={() => openCheckout(partner)}
-                    className="text-white text-xs font-bold px-4 py-2 rounded-xl shadow-2xs flex items-center gap-1.5 transition-opacity hover:opacity-95"
-                    style={{ backgroundColor: tenant.primaryColor }}
-                  >
-                    <CreditCard className="w-3.5 h-3.5" />
-                    <span>Contratar / Orçar</span>
-                  </button>
+                  {isAdmin && (
+                    <div className="flex flex-wrap items-center justify-end gap-1.5 pt-2 border-t border-slate-100 text-[11px]">
+                      {partner.approvalStatus !== 'HOMOLOGADO' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePartnerStatus(partner, 'APPROVED')}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold flex items-center gap-1"
+                        >
+                          <CheckCircle2 className="w-3 h-3" /> Homologar
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePartnerStatus(partner, 'SUSPENDED')}
+                          className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold flex items-center gap-1"
+                        >
+                          <Ban className="w-3 h-3" /> Suspender
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => openEditPartner(partner)}
+                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold flex items-center gap-1"
+                      >
+                        <Edit3 className="w-3 h-3" /> Editar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeletePartner(partner)}
+                        className="px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 font-bold flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3 h-3" /> Excluir
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -832,6 +1116,176 @@ export const PartnerNetwork: React.FC<PartnerNetworkProps> = ({ partners: initia
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {/* Modal Edição Admin de Parceiro */}
+      {editingPartner && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4 overflow-y-auto">
+          <form
+            onSubmit={handleSavePartnerEdit}
+            className="bg-white w-full max-w-xl rounded-3xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] text-xs"
+          >
+            <div className="p-5 bg-slate-900 text-white flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 block">
+                  Edição Admin de Stakeholder
+                </span>
+                <h3 className="font-black text-sm">{editingPartner.name}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingPartner(null)}
+                className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2 space-y-1">
+                <label className="font-bold text-slate-700 block">Nome / Empresa *</label>
+                <input
+                  required
+                  type="text"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 block">Categoria</label>
+                <select
+                  value={editForm.role}
+                  onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value as Partner['role'] }))}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
+                >
+                  <option value="Corretor de Imóveis">Corretor de Imóveis</option>
+                  <option value="Advogado Especialista">Advogado Especialista</option>
+                  <option value="Administrador / Despachante">Administrador / Despachante</option>
+                  <option value="Despachante Imobiliário">Despachante Imobiliário</option>
+                  <option value="Pedreiro / Reforma">Pedreiro / Reforma</option>
+                  <option value="Engenheiro / Arquiteto">Engenheiro / Arquiteto</option>
+                  <option value="Avaliador Imobiliário">Avaliador Imobiliário</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 block">Status de Homologação</label>
+                <select
+                  value={editForm.dbStatus}
+                  onChange={(e) => setEditForm((f) => ({ ...f, dbStatus: e.target.value as PartnerApprovalDb }))}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
+                >
+                  <option value="APPROVED">Homologado</option>
+                  <option value="PENDING">Em Homologação (Pendente)</option>
+                  <option value="SUSPENDED">Suspenso</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 block">Cidade *</label>
+                <input
+                  required
+                  type="text"
+                  value={editForm.city}
+                  onChange={(e) => setEditForm((f) => ({ ...f, city: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 block">UF *</label>
+                <input
+                  required
+                  type="text"
+                  maxLength={2}
+                  value={editForm.state}
+                  onChange={(e) => setEditForm((f) => ({ ...f, state: e.target.value.toUpperCase() }))}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold uppercase"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 block">Registro (OAB/CRECI/CNPJ)</label>
+                <input
+                  type="text"
+                  value={editForm.registrationCode}
+                  onChange={(e) => setEditForm((f) => ({ ...f, registrationCode: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 block">Telefone / WhatsApp</label>
+                <input
+                  type="text"
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 block">E-mail</label>
+                <input
+                  type="email"
+                  value={editForm.email}
+                  onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 block">Chave PIX (Split)</label>
+                <input
+                  type="text"
+                  value={editForm.pixKey}
+                  onChange={(e) => setEditForm((f) => ({ ...f, pixKey: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 block">Preço Inicial (R$)</label>
+                <input
+                  type="number"
+                  min={50}
+                  value={editForm.startingPrice}
+                  onChange={(e) => setEditForm((f) => ({ ...f, startingPrice: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
+                />
+              </div>
+
+              <div className="sm:col-span-2 space-y-1">
+                <label className="font-bold text-slate-700 block">Especialidade</label>
+                <textarea
+                  rows={2}
+                  value={editForm.specialty}
+                  onChange={(e) => setEditForm((f) => ({ ...f, specialty: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2"
+                />
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingPartner(null)}
+                className="px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={savingPartner}
+                className="px-5 py-2 rounded-xl text-white font-black disabled:opacity-50"
+                style={{ backgroundColor: tenant.primaryColor }}
+              >
+                {savingPartner ? 'Salvando...' : 'Salvar Alterações'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>
