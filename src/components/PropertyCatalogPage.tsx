@@ -289,29 +289,35 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
     <div className="max-w-7xl mx-auto space-y-5 font-sans">
       
       {/* BARRA SUPERIOR DO CATÁLOGO */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white p-5 sm:p-6 rounded-3xl border border-slate-800 shadow-lg space-y-4">
+      <div
+        className="relative overflow-hidden bg-white/95 backdrop-blur-md text-slate-800 p-5 sm:p-6 rounded-3xl border shadow-sm space-y-4 transition-colors"
+        style={{
+          backgroundImage: `linear-gradient(135deg, ${tenant.primaryColor}12 0%, rgba(255,255,255,0.92) 48%, ${tenant.accentColor}12 100%)`,
+          borderColor: `${tenant.primaryColor}26`,
+        }}
+      >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center space-x-2.5">
             <span
-              className="text-white font-black text-[11px] px-3 py-1 rounded-full uppercase tracking-wider flex items-center gap-1"
+              className="text-white font-black text-[11px] px-3 py-1 rounded-full uppercase tracking-wider flex items-center gap-1 shadow-xs"
               style={{ backgroundColor: tenant.primaryColor }}
             >
               <Sparkles className="w-3.5 h-3.5" /> Oportunidades
             </span>
-            <span className="bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold px-3 py-1 rounded-full flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5" /> Base Multi-Bancos
+            <span className="bg-emerald-50 text-emerald-700 border border-emerald-200/90 text-[11px] font-bold px-3 py-1 rounded-full flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Base Multi-Bancos
             </span>
           </div>
 
           {/* SELETOR DE MODO ADMIN: Apenas quando habilitado no tenant/admin */}
           {tenant.features.adminSync && (
-            <div className="flex items-center bg-slate-950/80 p-1 rounded-2xl border border-slate-700/80">
+            <div className="flex items-center bg-slate-100/90 backdrop-blur-sm p-1 rounded-2xl border border-slate-200/80">
               <button
                 onClick={() => setActiveTab('catalog')}
                 className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
                   activeTab === 'catalog'
                     ? 'text-white shadow-sm'
-                    : 'text-slate-300 hover:text-white'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
                 style={activeTab === 'catalog' ? { backgroundColor: tenant.primaryColor } : undefined}
               >
@@ -323,11 +329,15 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
                 className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
                   activeTab === 'sync'
                     ? 'text-white shadow-sm'
-                    : 'text-slate-300 hover:text-white'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
                 style={activeTab === 'sync' ? { backgroundColor: tenant.primaryColor } : undefined}
               >
-                <RefreshCw className="w-3.5 h-3.5 text-emerald-400" />
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${
+                    activeTab === 'sync' ? 'text-white' : 'text-emerald-600'
+                  }`}
+                />
                 <span>Admin Sync Bancos</span>
               </button>
             </div>
@@ -336,11 +346,11 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
 
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div>
-            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
               Catálogo de Imóveis em Leilão
             </h1>
-            <p className="text-xs text-slate-300 font-medium mt-1">
-              Oportunidades da Caixa Econômica, Santander, Bradesco e Banco do Brasil.
+            <p className="text-xs text-slate-600 font-medium mt-1">
+              Oportunidades da Caixa Econômica, Bradesco, Santander, Itaú, Banco do Brasil, Portal Zuk, Mega Leilões e Judiciais.
             </p>
 
             {/* Pills Únicas de Bancos e Origens */}
@@ -361,8 +371,8 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
                   onClick={() => setSelectedBank(b.id)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                     selectedBank === b.id
-                      ? 'text-white font-black shadow-md'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                      ? 'text-white font-black shadow-sm'
+                      : 'bg-white/80 hover:bg-white text-slate-700 border border-slate-200/90 hover:border-slate-300'
                   }`}
                   style={selectedBank === b.id ? { backgroundColor: tenant.primaryColor } : undefined}
                 >
@@ -372,27 +382,24 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-4 text-xs bg-slate-950/60 p-3 rounded-2xl border border-slate-800">
+          <div className="grid grid-cols-2 sm:flex sm:items-center gap-4 text-xs bg-white/80 backdrop-blur-sm px-4 py-3 rounded-2xl border border-slate-200/90 shadow-xs shrink-0">
             <div>
-              <span className="text-slate-400 block text-[10px] uppercase font-bold">Encontrados</span>
-              <span className="text-emerald-400 font-black text-sm">{totalCount.toLocaleString()} imóveis</span>
+              <span className="text-slate-500 block text-[10px] uppercase font-bold tracking-wide">Encontrados</span>
+              <span className="text-emerald-600 font-black text-sm">{totalCount.toLocaleString()} imóveis</span>
             </div>
             {summaryStats.totalActiveCount > 0 && (
-              <>
-                <div className="h-6 w-px bg-slate-800 hidden sm:block" />
-                <div>
-                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Base Ativa</span>
-                  <span className="text-cyan-400 font-bold">{summaryStats.totalActiveCount.toLocaleString()}</span>
-                </div>
-              </>
+              <div className="sm:border-l sm:border-slate-200 sm:pl-4">
+                <span className="text-slate-500 block text-[10px] uppercase font-bold tracking-wide">Base Ativa</span>
+                <span className="text-slate-900 font-black text-sm">{summaryStats.totalActiveCount.toLocaleString()}</span>
+              </div>
             )}
           </div>
         </div>
 
         {/* SELO VISÍVEL DE ATUALIZAÇÃO REAL POR BANCO */}
         {bankFreshness.length > 0 && (
-          <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center gap-2 text-[11px]">
-            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mr-1">
+          <div className="pt-3 border-t border-slate-200/80 flex flex-wrap items-center gap-1.5 text-[11px]">
+            <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px] mr-1">
               Última Atualização dos Bancos:
             </span>
             {bankFreshness
@@ -412,26 +419,26 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
               return (
                 <div
                   key={b.source}
-                  className="bg-slate-950/70 border border-slate-700/80 px-2.5 py-1 rounded-xl flex items-center gap-1.5"
+                  className="bg-white/75 border border-slate-200/80 px-2.5 py-1 rounded-xl flex items-center gap-1.5"
                 >
                   <span
                     className={`w-2 h-2 rounded-full ${
                       b.activeCount === 0
-                        ? 'bg-slate-500'
+                        ? 'bg-slate-400'
                         : isRecent
-                        ? 'bg-emerald-400'
-                        : 'bg-amber-400'
+                        ? 'bg-emerald-500'
+                        : 'bg-amber-500'
                     }`}
                   />
-                  <span className="font-black text-white">{b.source}</span>
+                  <span className="font-black text-slate-900">{b.source}</span>
                   {b.activeCount > 0 ? (
-                    <span className="text-slate-300">
+                    <span className="text-slate-600">
                       · {b.activeCount.toLocaleString()} ativos
                       {genDateFormatted ? ` · Base ${genDateFormatted}` : ''}
                       {syncFormatted ? ` · Sync ${syncFormatted}` : ''}
                     </span>
                   ) : (
-                    <span className="text-slate-400">· Sem carga ativa</span>
+                    <span className="text-slate-500">· Sem carga ativa</span>
                   )}
                 </div>
               );
