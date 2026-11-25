@@ -20,7 +20,7 @@ import { AuthProvider, useAuth } from './config/auth';
 import { mockProperties } from './data/mockProperties';
 import { mockParceiros } from './data/mockParceiros';
 import type { Property, LedgerEntry, UserProfile } from './types/auction';
-import { queryPropertiesFromSupabase, autoSeedDefaultCsvFromPublic } from './lib/supabaseClient';
+import { queryPropertiesFromSupabase } from './lib/supabaseClient';
 import { adaptCatalogItemToProperty } from './utils/propertyAdapter';
 import {
   registerServiceWorker,
@@ -35,7 +35,7 @@ import {
 } from './utils/radarMatchEngine';
 import { Wallet, Wrench, Users, PieChart, Route, Landmark, CheckCircle2, AlertCircle, X } from 'lucide-react';
 
-const APP_VERSION = 'v3.13.0';
+const APP_VERSION = 'v3.14.0';
 const INTRO_SEEN_KEY = 'auction_intro_seen_v1';
 
 function AppContent() {
@@ -67,12 +67,11 @@ function AppContent() {
     setDeferredPrompt(null);
   };
 
-  // Carrega amostra leve (60 itens) no boot; PropertyCatalogPage alimenta a lista ativa via onPropertiesLoaded
+  // Carrega amostra enxuta (24 itens) no boot; PropertyCatalogPage alimenta a lista ativa via onPropertiesLoaded
   useEffect(() => {
     async function loadInitialSample() {
       try {
-        await autoSeedDefaultCsvFromPublic();
-        const res = await queryPropertiesFromSupabase({ pageSize: 60, state: 'SP' });
+        const res = await queryPropertiesFromSupabase({ pageSize: 24, state: 'SP' });
         if (res && res.data && res.data.length > 0) {
           const adapted = res.data.map((p: any, idx: number) => adaptCatalogItemToProperty(p, idx));
           setProperties(adapted);

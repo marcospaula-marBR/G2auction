@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { Property, UserProfile, LedgerEntry } from '../types/auction';
 import { formatCurrencyBRL } from '../utils/financial';
 import { useTenant } from '../config/tenant';
@@ -16,13 +16,23 @@ import {
   type QuotaSubscriptionIntent,
   type VehicleDocument,
   type HurdleType,
+  type VehicleType,
+  type LegalStructure,
+  type VehicleStage,
+  type AdminFeeMode,
 } from '../utils/quotaEngine';
 import {
   fetchInvestorPortalData,
   createQuotaIntent,
   cancelQuotaIntent,
+  createInvestmentVehicle,
+  convertIntentToQuotas,
+  updateVehicleStageAndNav,
+  createCapitalCallOrExpense,
+  executeVehicleLiquidation,
   exportQuotaLedgerCsv,
   FALLBACK_REFERENCE_VEHICLES,
+  type CapitalCall,
 } from '../utils/investorService';
 import {
   PieChart as PieChartIcon,
@@ -40,6 +50,10 @@ import {
   Scale,
   ArrowRight,
   Info,
+  Settings2,
+  PlusCircle,
+  TrendingUp,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   BarChart,
@@ -60,7 +74,7 @@ interface PortfolioDashboardProps {
   ledgerEntries?: LedgerEntry[];
 }
 
-type InvestorSubTab = 'operacoes' | 'simulador' | 'extrato' | 'governanca';
+type InvestorSubTab = 'operacoes' | 'simulador' | 'extrato' | 'governanca' | 'gestao';
 type VehicleFilter = 'ALL' | 'SINGLE_ASSET' | 'MULTI_ASSET_POOL';
 
 const STAGE_LABELS: Record<InvestmentVehicle['stage'], string> = {
@@ -83,29 +97,34 @@ const INTENT_STATUS_META: Record<
 };
 
 export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
+  properties = [],
   onOpenAuth,
   ledgerEntries = [],
 }) => {
   const { tenant } = useTenant();
   const { user } = useAuth();
 
+  const canManageQuotas = Boolean(user?.isManager || tenant.features.adminSync);
+
   const [subTab, setSubTab] = useState<InvestorSubTab>('operacoes');
   const [vehicleFilter, setVehicleFilter] = useState<VehicleFilter>('ALL');
   const [vehicles, setVehicles] = useState<InvestmentVehicle[]>(FALLBACK_REFERENCE_VEHICLES);
   const [ledgerEvents, setLedgerEvents] = useState<QuotaLedgerEvent[]>([]);
   const [intents, setIntents] = useState<QuotaSubscriptionIntent[]>([]);
+  const [allIntents, setAllIntents] = useState<QuotaSubscriptionIntent[]>([]);
+  const [capitalCalls, setCapitalCalls] = useState<CapitalCall[]>([]);
   const [documents, setDocuments] = useState<VehicleDocument[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [syncedFromCloud, setSyncedFromCloud] = useState<boolean>(false);
 
-  // Modal / Drawer inline de Intenção de Aporte em Cotas
+  // Drawer inline de Intenção de Aporte em Cotas
   const [selectedVehicle, setSelectedVehicle] = useState<InvestmentVehicle | null>(null);
   const [intentAmountInput, setIntentAmountInput] = useState<string>('10000');
   const [intentNotes, setIntentNotes] = useState<string>('');
   const [submittingIntent, setSubmittingIntent] = useState<boolean>(false);
   const [intentFeedback, setIntentFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Simulador Interativo de Cotas & Taxas (Adm + Performance sobre Hurdle)
+  // Simulador Interativo de Cotas & Taxas
   const [simInvested, setSimInvested] = useState<number>(25000);
   const [simQuotaNominal, setSimQuotaNominal] = useState<number>(1000);
   const [simMonths, setSimMonths] = useState<number>(10);
@@ -115,25 +134,68 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
   const [simHurdleType, setSimHurdleType] = useState<HurdleType>('CDI');
   const [simHurdleAnnualPct, setSimHurdleAnnualPct] = useState<number>(10.75);
 
-  useEffect(() => {
-    let active = true;
+  // Fase 3: Estados do Painel do Gestor
+  const [managerMsg, setManagerMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [managerBusy, setManagerBusy] = useState<boolean>(false);
+
+  const [newOpName, setNewOpName] = useState<string>('');
+  const [newOpType, setNewOpType] = useState<VehicleType>('SINGLE_ASSET');
+  const [newOpLegal, setNewOpLegal] = useState<LegalStructure>('SCP');
+  const [newOpPropertyId, setNewOpPropertyId] = useState<string>('');
+  const [newOpCity, setNewOpCity] = useState<string>('');
+  const [newOpState, setNewOpState] = useState<string>('SP');
+  const [newOpSummary, setNewOpSummary] = useState<string>('');
+  const [newOpQuotaNominal, setNewOpQuotaNominal] = useState<number>(1000);
+  const [newOpMinInvest, setNewOpMinInvest] = useState<number>(5000);
+  const [newOpTargetCapital, setNewOpTargetCapital] = useState<number>(350000);
+  const [newOpExitMonths, setNewOpExitMonths] = useState<number>(10);
+  const [newOpProjRoi, setNewOpProjRoi] = useState<number>(32);
+  const [newOpAdminFee, setNewOpAdminFee] = useState<number>(0);
+  const [newOpAdminMode, setNewOpAdminMode] = useState<AdminFeeMode>('ON_EXIT_ACCRUED');
+  const [newOpPerfFee, setNewOpPerfFee] = useState<number>(20);
+  const [newOpHurdleType, setNewOpHurdleType] = useState<HurdleType>('CDI');
+  const [newOpHurdlePct, setNewOpHurdlePct] = useState<number>(10.75);
+
+  const [mgrVehicleId, setMgrVehicleId] = useState<string>('');
+  const [mgrStage, setMgrStage] = useState<VehicleStage>('REFORMA');
+  const [mgrNavInput, setMgrNavInput] = useState<string>('');
+  const [mgrNavNote, setMgrNavNote] = useState<string>('');
+
+  const [callKind, setCallKind] = useState<'EXPENSE' | 'CAPITAL_CALL'>('CAPITAL_CALL');
+  const [callTitle, setCallTitle] = useState<string>('');
+  const [callAmount, setCallAmount] = useState<string>('15000');
+  const [callDueDate, setCallDueDate] = useState<string>(() =>
+    new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10)
+  );
+
+  const [liqSaleProceeds, setLiqSaleProceeds] = useState<string>('480000');
+  const [liqMonths, setLiqMonths] = useState<number>(10);
+
+  const loadPortalData = useCallback(async () => {
     setLoading(true);
-    fetchInvestorPortalData(user?.id, user?.isDemoSession)
-      .then((res) => {
-        if (!active) return;
-        setVehicles(res.vehicles);
-        setLedgerEvents(res.ledgerEvents);
-        setIntents(res.intents);
-        setDocuments(res.documents);
-        setSyncedFromCloud(res.syncedFromSupabase);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [user?.id, user?.isDemoSession]);
+    try {
+      const res = await fetchInvestorPortalData(user?.id, user?.isDemoSession, canManageQuotas);
+      setVehicles(res.vehicles);
+      setLedgerEvents(res.ledgerEvents);
+      setIntents(res.intents);
+      setAllIntents(res.allIntents);
+      setCapitalCalls(res.capitalCalls);
+      setDocuments(res.documents);
+      setSyncedFromCloud(res.syncedFromSupabase);
+      if (res.vehicles.length > 0 && !mgrVehicleId) {
+        const first = res.vehicles[0];
+        setMgrVehicleId(first.id);
+        setMgrStage(first.stage);
+        setMgrNavInput(String(first.current_nav_per_quota));
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id, user?.isDemoSession, canManageQuotas, mgrVehicleId]);
+
+  useEffect(() => {
+    loadPortalData();
+  }, [loadPortalData]);
 
   const vehiclesById = useMemo(() => {
     const map: Record<string, InvestmentVehicle> = {};
@@ -146,7 +208,6 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
     return vehicles.filter((v) => v.vehicle_type === vehicleFilter);
   }, [vehicles, vehicleFilter]);
 
-  // Posição consolidada em cotas integralizadas
   const positionSummary = useMemo(() => {
     const quotasByVehicle: Record<string, number> = {};
     let totalInvestedBrl = 0;
@@ -154,6 +215,7 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
 
     for (const ev of ledgerEvents) {
       if (ev.user_id && user?.id && ev.user_id !== user.id) continue;
+      if (!ev.user_id) continue;
       if (ev.quotas_delta !== 0) {
         quotasByVehicle[ev.vehicle_id] = (quotasByVehicle[ev.vehicle_id] || 0) + ev.quotas_delta;
       }
@@ -194,7 +256,6 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
     };
   }, [ledgerEvents, intents, vehiclesById, user?.id]);
 
-  // Cálculo em tempo real da intenção sendo preenchida
   const intentPreview = useMemo(() => {
     if (!selectedVehicle) return null;
     const amount = Math.max(0, Number(intentAmountInput) || 0);
@@ -214,7 +275,6 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
     return { amount, estQuotas, estOwnershipPct, waterfall };
   }, [selectedVehicle, intentAmountInput]);
 
-  // Resultado do Simulador Interativo
   const simWaterfall = useMemo(() => {
     const grossProfit = simInvested * (simGrossRoiPct / 100);
     return computeExitFeeWaterfall({
@@ -314,6 +374,9 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
       });
 
       setIntents((prev) => [res.intent, ...prev]);
+      if (canManageQuotas) {
+        setAllIntents((prev) => [res.intent, ...prev]);
+      }
       setIntentFeedback({
         type: 'success',
         text: res.savedToCloud
@@ -332,15 +395,204 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
       setIntents((prev) =>
         prev.map((it) => (it.id === intentId ? { ...it, status: 'CANCELLED' } : it))
       );
+      setAllIntents((prev) =>
+        prev.map((it) => (it.id === intentId ? { ...it, status: 'CANCELLED' } : it))
+      );
     }
   };
 
-  // Exemplo dinâmico de rateio por cota usando lançamentos do Livro Caixa local + veículo selecionado
+  // Gestor: importar imóvel do catálogo para preencher criação de operação
+  const handleSelectCatalogProperty = (propId: string) => {
+    setNewOpPropertyId(propId);
+    const found = properties.find((p) => p.id === propId);
+    if (!found) return;
+    setNewOpName(`SCP · ${found.title}`);
+    setNewOpCity(found.address.city);
+    setNewOpState(found.address.state);
+    setNewOpTargetCapital(Math.max(50000, Math.round(found.secondAuctionPrice * 1.15)));
+    setNewOpSummary(
+      `${found.title} em ${found.address.city}/${found.address.state} (${found.bankName}). Lance ref. ${formatCurrencyBRL(found.secondAuctionPrice)} vs avaliação ${formatCurrencyBRL(found.appraisalValue)}.`
+    );
+  };
+
+  const handleCreateVehicle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newOpName.trim()) return;
+    setManagerBusy(true);
+    setManagerMsg(null);
+    try {
+      const res = await createInvestmentVehicle({
+        tenantId: tenant.id,
+        name: newOpName,
+        vehicleType: newOpType,
+        legalStructure: newOpLegal,
+        propertyId: newOpPropertyId || null,
+        propertySummary: newOpSummary,
+        city: newOpCity,
+        state: newOpState,
+        initialQuotaValue: newOpQuotaNominal,
+        targetCapital: newOpTargetCapital,
+        minInvestmentBrl: newOpMinInvest,
+        estimatedExitMonths: newOpExitMonths,
+        projectedRoiPct: newOpProjRoi,
+        adminFeeAnnualPct: newOpAdminFee,
+        adminFeeMode: newOpAdminMode,
+        performanceFeePct: newOpPerfFee,
+        performanceHurdleType: newOpHurdleType,
+        performanceHurdleAnnualPct: newOpHurdlePct,
+      });
+
+      if (res.ok && res.vehicle) {
+        setVehicles((prev) => [...prev, res.vehicle!]);
+        setMgrVehicleId(res.vehicle.id);
+        setMgrStage(res.vehicle.stage);
+        setMgrNavInput(String(res.vehicle.current_nav_per_quota));
+        setManagerMsg({
+          type: 'success',
+          text: `Operação "${res.vehicle.name}" criada com cota inicial de ${formatCurrencyBRL(res.vehicle.initial_quota_value)}.`,
+        });
+        setNewOpName('');
+        setNewOpSummary('');
+      } else {
+        setManagerMsg({
+          type: 'error',
+          text: res.error || 'Erro ao criar operação. Verifique se você está logado como gestor.',
+        });
+      }
+    } finally {
+      setManagerBusy(false);
+    }
+  };
+
+  const handleConvertIntent = async (intent: QuotaSubscriptionIntent) => {
+    const veh = vehiclesById[intent.vehicle_id];
+    if (!veh) return;
+    setManagerBusy(true);
+    setManagerMsg(null);
+    try {
+      const res = await convertIntentToQuotas(intent, veh);
+      if (res.ok) {
+        setManagerMsg({
+          type: 'success',
+          text: `Intenção de ${intent.investor_email} integralizada com sucesso em cotas oficiais!`,
+        });
+        await loadPortalData();
+      } else {
+        setManagerMsg({ type: 'error', text: res.error || 'Erro ao integralizar cotas.' });
+      }
+    } finally {
+      setManagerBusy(false);
+    }
+  };
+
+  const selectedMgrVehicle = vehiclesById[mgrVehicleId] || vehicles[0];
+
+  const handleUpdateStageAndNav = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedMgrVehicle) return;
+    setManagerBusy(true);
+    setManagerMsg(null);
+    try {
+      const nextNav = Math.max(0.01, Number(mgrNavInput) || selectedMgrVehicle.current_nav_per_quota);
+      const res = await updateVehicleStageAndNav(selectedMgrVehicle, mgrStage, nextNav, mgrNavNote);
+      if (res.ok) {
+        setManagerMsg({
+          type: 'success',
+          text: `Etapa atualizada para ${STAGE_LABELS[mgrStage]} e Cota NAV ajustada para ${formatCurrencyBRL(nextNav)}.`,
+        });
+        setMgrNavNote('');
+        await loadPortalData();
+      } else {
+        setManagerMsg({ type: 'error', text: res.error || 'Falha ao atualizar etapa/NAV.' });
+      }
+    } finally {
+      setManagerBusy(false);
+    }
+  };
+
+  const handleRegisterCallOrExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedMgrVehicle || !callTitle.trim()) return;
+    const amt = Number(callAmount) || 0;
+    if (amt <= 0) return;
+    setManagerBusy(true);
+    setManagerMsg(null);
+    try {
+      const res = await createCapitalCallOrExpense({
+        vehicle: selectedMgrVehicle,
+        kind: callKind,
+        title: callTitle,
+        amountBrl: amt,
+        dueDate: callDueDate,
+        createdByUserId: user?.id,
+      });
+      if (res.ok) {
+        setManagerMsg({
+          type: 'success',
+          text:
+            callKind === 'CAPITAL_CALL'
+              ? `Chamada de capital "${callTitle}" (${formatCurrencyBRL(amt)}) aberta para os cotistas!`
+              : `Despesa "${callTitle}" (${formatCurrencyBRL(amt)}) gravada no livro-razão!`,
+        });
+        setCallTitle('');
+        await loadPortalData();
+      } else {
+        setManagerMsg({ type: 'error', text: res.error || 'Falha ao registrar evento.' });
+      }
+    } finally {
+      setManagerBusy(false);
+    }
+  };
+
+  const liquidationPreview = useMemo(() => {
+    if (!selectedMgrVehicle) return null;
+    const proceeds = Math.max(0, Number(liqSaleProceeds) || 0);
+    const invested = selectedMgrVehicle.raised_capital || 0;
+    const grossProfit = proceeds - invested;
+    return computeExitFeeWaterfall({
+      investedCapital: invested,
+      grossProfitBrl: grossProfit,
+      holdingMonths: liqMonths,
+      adminFeeAnnualPct: selectedMgrVehicle.admin_fee_annual_pct,
+      performanceFeePct: selectedMgrVehicle.performance_fee_pct,
+      hurdleType: selectedMgrVehicle.performance_hurdle_type,
+      hurdleAnnualPct: selectedMgrVehicle.performance_hurdle_annual_pct,
+    });
+  }, [selectedMgrVehicle, liqSaleProceeds, liqMonths]);
+
+  const handleExecuteLiquidation = async () => {
+    if (!selectedMgrVehicle) return;
+    const proceeds = Math.max(0, Number(liqSaleProceeds) || 0);
+    if (proceeds <= 0) return;
+    setManagerBusy(true);
+    setManagerMsg(null);
+    try {
+      const res = await executeVehicleLiquidation(
+        selectedMgrVehicle,
+        proceeds,
+        liqMonths,
+        ledgerEvents
+      );
+      if (res.ok) {
+        setManagerMsg({
+          type: 'success',
+          text: `Operação encerrada! Distribuído líquido de ${formatCurrencyBRL(res.distributedTotalBrl)} para ${res.investorsCount} cotista(s).`,
+        });
+        await loadPortalData();
+      } else {
+        setManagerMsg({ type: 'error', text: res.error || 'Erro ao liquidar operação.' });
+      }
+    } finally {
+      setManagerBusy(false);
+    }
+  };
+
   const proRataPreview = useMemo(() => {
     const v = selectedVehicle || vehicles[0];
     if (!v) return null;
     const totalVehicleExpenses = ledgerEntries.reduce((acc, e) => acc + e.amount, 0);
-    const sampleQuotas = positionSummary.quotasByVehicle[v.id] || convertBrlToQuotas(10000, v.current_nav_per_quota);
+    const sampleQuotas =
+      positionSummary.quotasByVehicle[v.id] || convertBrlToQuotas(10000, v.current_nav_per_quota);
     const denomQuotas = Math.max(v.total_quotas_issued, sampleQuotas, 1);
     const sharePct = computeOwnershipPct(sampleQuotas, denomQuotas);
     return {
@@ -351,6 +603,11 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
       yourShareBrl: computeProRataAmount(totalVehicleExpenses, sharePct),
     };
   }, [selectedVehicle, vehicles, ledgerEntries, positionSummary.quotasByVehicle]);
+
+  const pendingQueue = useMemo(
+    () => allIntents.filter((i) => i.status === 'PENDING' || i.status === 'APPROVED'),
+    [allIntents]
+  );
 
   return (
     <div className="space-y-6">
@@ -375,6 +632,11 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
                 <ShieldCheck className="w-3 h-3" />
                 {syncedFromCloud ? 'Sincronizado com Supabase' : 'Operações Modelo Ativas'}
               </span>
+              {user?.isManager && (
+                <span className="bg-indigo-50 text-indigo-800 border border-indigo-200 text-[10px] font-black px-2.5 py-1 rounded-full">
+                  Modo Gestor Ativo
+                </span>
+              )}
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-slate-900">
               Área do Investidor · {tenant.brandName}
@@ -403,7 +665,7 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
           )}
         </div>
 
-        {/* 4 KPIs Reais do Investidor (Zero Mocks Fixos) */}
+        {/* 4 KPIs Reais do Investidor */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="bg-white/90 p-4 rounded-2xl border border-slate-200/90">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
@@ -445,13 +707,13 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
 
           <div className="bg-white/90 p-4 rounded-2xl border border-slate-200/90">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-              Modelo de Taxa Recomendado
+              Chamadas de Capital Abertas
             </span>
-            <span className="text-sm font-black text-slate-900 block mt-1.5">
-              Performance só na Venda
+            <span className="text-xl font-black text-slate-900 block mt-1">
+              {capitalCalls.filter((c) => c.status === 'OPEN').length} chamada(s)
             </span>
             <span className="text-[11px] text-emerald-700 font-bold block mt-0.5">
-              20% apenas sobre o excedente do CDI
+              Performance só na venda acima do CDI
             </span>
           </div>
         </div>
@@ -463,6 +725,15 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
             { id: 'simulador', label: 'Simulador de Cotas & Taxas', icon: Calculator },
             { id: 'extrato', label: 'Extrato & Rateio', icon: PieChartIcon },
             { id: 'governanca', label: 'Governança & IR', icon: FileText },
+            ...(canManageQuotas
+              ? [
+                  {
+                    id: 'gestao',
+                    label: `Gestão de Cotas (${pendingQueue.length})`,
+                    icon: Settings2,
+                  },
+                ]
+              : []),
           ].map((tab) => {
             const Icon = tab.icon;
             const active = subTab === tab.id;
@@ -489,7 +760,6 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
       {/* ABA 1: OPERAÇÕES EM COTAS & REGISTRO DE INTENÇÃO */}
       {subTab === 'operacoes' && (
         <div className="space-y-6">
-          {/* Filtro: Ambos os modelos */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-1.5">
               {[
@@ -516,7 +786,6 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
             </span>
           </div>
 
-          {/* Grid de Operações */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             {filteredVehicles.map((v) => {
               const progressPct = v.target_capital > 0 ? Math.min(100, (v.raised_capital / v.target_capital) * 100) : 0;
@@ -568,7 +837,6 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
                       )}
                     </div>
 
-                    {/* Métricas de Cota Configurável */}
                     <div className="grid grid-cols-3 gap-2.5 bg-slate-50 p-3 rounded-2xl border border-slate-200/80 text-xs">
                       <div>
                         <span className="text-[10px] font-bold uppercase text-slate-400 block">Cota Atual (NAV)</span>
@@ -597,7 +865,6 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
                       </div>
                     </div>
 
-                    {/* Progresso de Captação */}
                     <div className="space-y-1 text-[11px]">
                       <div className="flex justify-between font-bold text-slate-700">
                         <span>Integralizado: {formatCurrencyBRL(v.raised_capital)}</span>
@@ -611,7 +878,6 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
                       </div>
                     </div>
 
-                    {/* Política Transparente de Taxas */}
                     <div className="text-[11px] bg-amber-50/70 border border-amber-200/80 rounded-xl px-3 py-2 text-amber-950 flex items-start gap-2">
                       <Scale className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-0.5" />
                       <span>
@@ -626,11 +892,12 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
                   <button
                     type="button"
                     onClick={() => openIntentDrawer(v)}
-                    className="w-full py-2.5 rounded-xl text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-2xs hover:opacity-95"
+                    disabled={v.stage === 'ENCERRADO'}
+                    className="w-full py-2.5 rounded-xl text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-2xs hover:opacity-95 disabled:opacity-40"
                     style={{ backgroundColor: tenant.primaryColor }}
                   >
                     <Sparkles className="w-3.5 h-3.5" />
-                    <span>Reservar Cotas / Registrar Intenção</span>
+                    <span>{v.stage === 'ENCERRADO' ? 'Operação Encerrada' : 'Reservar Cotas / Registrar Intenção'}</span>
                   </button>
                 </div>
               );
@@ -713,7 +980,6 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
                   </div>
                 </div>
 
-                {/* Preview automático em Cotas + Retorno Líquido */}
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2.5">
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
                     Conversão Automática para Cotas
@@ -976,7 +1242,6 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
             </div>
           </div>
 
-          {/* Waterfall + Gráfico Comparativo */}
           <div className="lg:col-span-6 space-y-5 text-xs">
             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-3">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
@@ -1051,9 +1316,44 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
         </div>
       )}
 
-      {/* ABA 3: EXTRATO IMUTÁVEL & RATEIO PRO-RATA */}
+      {/* ABA 3: EXTRATO IMUTÁVEL, CHAMADAS DE CAPITAL & RATEIO PRO-RATA */}
       {subTab === 'extrato' && (
         <div className="space-y-5 text-xs">
+          {capitalCalls.filter((c) => c.status === 'OPEN').length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-3xl p-5 space-y-3">
+              <h3 className="font-black text-amber-950 text-sm flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-amber-700" /> Chamadas de Capital em Aberto
+              </h3>
+              <div className="space-y-2">
+                {capitalCalls
+                  .filter((c) => c.status === 'OPEN')
+                  .map((c) => {
+                    const v = vehiclesById[c.vehicle_id];
+                    const myQuotas = positionSummary.quotasByVehicle[c.vehicle_id] || 0;
+                    const sharePct = v ? computeOwnershipPct(myQuotas, v.total_quotas_issued) : 0;
+                    const myDue = computeProRataAmount(c.total_call_brl, sharePct);
+                    return (
+                      <div key={c.id} className="bg-white p-3.5 rounded-2xl border border-amber-200/80 flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <span className="font-black text-slate-900 block">
+                            {c.title} · <span className="text-slate-500 font-medium">{v?.name || c.vehicle_id}</span>
+                          </span>
+                          <span className="text-[11px] text-slate-600">
+                            Total da chamada: <strong>{formatCurrencyBRL(c.total_call_brl)}</strong> · Vencimento:{' '}
+                            <strong>{new Date(c.due_date).toLocaleDateString('pt-BR')}</strong>
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Sua Fração ({sharePct.toFixed(2)}%)</span>
+                          <strong className="text-sm font-black text-amber-800">{formatCurrencyBRL(myDue)}</strong>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+
           {proRataPreview && (
             <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4">
               <div className="space-y-1">
@@ -1194,6 +1494,459 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ABA 5 (FASE 3): PAINEL DO GESTOR DE COTAS */}
+      {subTab === 'gestao' && canManageQuotas && (
+        <div className="space-y-6 text-xs">
+          {managerMsg && (
+            <div
+              className={`p-3.5 rounded-2xl border font-bold flex items-center gap-2 ${
+                managerMsg.type === 'success'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : 'bg-red-50 border-red-200 text-red-900'
+              }`}
+            >
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{managerMsg.text}</span>
+            </div>
+          )}
+
+          {/* 1. Fila de Intenções para Converter em Cotas */}
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <span className="font-black text-slate-900">
+                1. Fila de Intenções de Aporte ({pendingQueue.length} pendente(s))
+              </span>
+              <span className="text-[11px] text-slate-500">
+                Ao liquidar, emite as cotas no Livro-Razão pelo NAV atual e atualiza a captação
+              </span>
+            </div>
+            {pendingQueue.length === 0 ? (
+              <div className="p-5 text-center text-slate-500">
+                Nenhuma intenção pendente de integralização no momento.
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {pendingQueue.map((it) => {
+                  const veh = vehiclesById[it.vehicle_id];
+                  return (
+                    <div key={it.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <span className="font-black text-slate-900 block">
+                          {it.investor_name || it.investor_email} ·{' '}
+                          <span className="text-sky-700">{veh?.name || it.vehicle_id}</span>
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          {it.investor_email} · Valor: <strong>{formatCurrencyBRL(it.amount_brl)}</strong> ·{' '}
+                          {formatQuotas(it.estimated_quotas, 4)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={managerBusy}
+                          onClick={() => handleConvertIntent(it)}
+                          className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px] disabled:opacity-50"
+                        >
+                          Liquidar & Emitir Cotas
+                        </button>
+                        <button
+                          type="button"
+                          disabled={managerBusy}
+                          onClick={() => handleCancelIntent(it.id)}
+                          className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-red-50 hover:text-red-700 text-slate-600 font-bold text-[11px]"
+                        >
+                          Recusar
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* 2. Criar Nova Operação Cotizada */}
+            <form
+              onSubmit={handleCreateVehicle}
+              className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-3.5"
+            >
+              <div className="border-b border-slate-100 pb-2.5">
+                <h3 className="font-black text-slate-900 text-sm flex items-center gap-1.5">
+                  <PlusCircle className="w-4 h-4 text-emerald-600" /> 2. Criar Nova Operação Cotizada
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Importe um imóvel do catálogo ou abra um novo Clube Multi-Imóveis com cota configurável.
+                </p>
+              </div>
+
+              {properties.length > 0 && (
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700 block">Importar Imóvel do Catálogo (Opcional)</label>
+                  <select
+                    value={newOpPropertyId}
+                    onChange={(e) => handleSelectCatalogProperty(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-medium"
+                  >
+                    <option value="">-- Preenchimento manual --</option>
+                    {properties.slice(0, 30).map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.title} ({p.address.city}/{p.address.state}) — {formatCurrencyBRL(p.secondAuctionPrice)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="font-bold text-slate-700 block">Nome da Operação / Fundo *</label>
+                  <input
+                    required
+                    type="text"
+                    value={newOpName}
+                    onChange={(e) => setNewOpName(e.target.value)}
+                    placeholder="Ex: SCP Apto Santana/SP — Edital Caixa"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700 block">Modelo</label>
+                  <select
+                    value={newOpType}
+                    onChange={(e) => setNewOpType(e.target.value as VehicleType)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
+                  >
+                    <option value="SINGLE_ASSET">Imóvel Individual (Deal-by-Deal)</option>
+                    <option value="MULTI_ASSET_POOL">Clube Multi-Imóveis (Pool)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700 block">Estrutura Jurídica</label>
+                  <select
+                    value={newOpLegal}
+                    onChange={(e) => setNewOpLegal(e.target.value as LegalStructure)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
+                  >
+                    <option value="SCP">SCP</option>
+                    <option value="SPE">SPE</option>
+                    <option value="CONDOMINIO">Condomínio</option>
+                    <option value="CLUBE_PRIVADO">Clube Privado</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700 block">Cota Nominal (R$)</label>
+                  <input
+                    type="number"
+                    min={10}
+                    value={newOpQuotaNominal}
+                    onChange={(e) => setNewOpQuotaNominal(Math.max(10, Number(e.target.value) || 100))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700 block">Capital Alvo (R$)</label>
+                  <input
+                    type="number"
+                    min={10000}
+                    value={newOpTargetCapital}
+                    onChange={(e) => setNewOpTargetCapital(Math.max(10000, Number(e.target.value) || 100000))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700 block">Aporte Mínimo (R$)</label>
+                  <input
+                    type="number"
+                    min={500}
+                    value={newOpMinInvest}
+                    onChange={(e) => setNewOpMinInvest(Math.max(500, Number(e.target.value) || 1000))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700 block">Taxa Adm (% a.a.)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={10}
+                    step={0.25}
+                    value={newOpAdminFee}
+                    onChange={(e) => setNewOpAdminFee(Math.max(0, Number(e.target.value) || 0))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700 block">Cobrança da Adm</label>
+                  <select
+                    value={newOpAdminMode}
+                    onChange={(e) => setNewOpAdminMode(e.target.value as AdminFeeMode)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
+                  >
+                    <option value="ON_EXIT_ACCRUED">Acumulada só na Venda</option>
+                    <option value="PERIODIC">Periódica</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700 block">Performance (% na venda)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={50}
+                    value={newOpPerfFee}
+                    onChange={(e) => setNewOpPerfFee(Math.max(0, Number(e.target.value) || 0))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700 block">Hurdle / Piso</label>
+                  <select
+                    value={newOpHurdleType}
+                    onChange={(e) => {
+                      const next = e.target.value as HurdleType;
+                      setNewOpHurdleType(next);
+                      if (next === 'CDI') setNewOpHurdlePct(10.75);
+                      if (next === 'IPCA_PLUS_6') setNewOpHurdlePct(10.5);
+                      if (next === 'NONE') setNewOpHurdlePct(0);
+                    }}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
+                  >
+                    <option value="CDI">100% CDI</option>
+                    <option value="IPCA_PLUS_6">IPCA + 6%</option>
+                    <option value="FIXED_ANNUAL">Taxa Fixa</option>
+                    <option value="NONE">Sem Hurdle</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700 block">Benchmark (% a.a.)</label>
+                  <input
+                    type="number"
+                    step={0.25}
+                    value={newOpHurdlePct}
+                    onChange={(e) => setNewOpHurdlePct(Math.max(0, Number(e.target.value) || 0))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700 block">Prazo Exit (meses)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={newOpExitMonths}
+                    onChange={(e) => setNewOpExitMonths(Math.max(1, Number(e.target.value) || 10))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700 block">ROI Bruto Alvo (%)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={newOpProjRoi}
+                    onChange={(e) => setNewOpProjRoi(Math.max(1, Number(e.target.value) || 25))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={managerBusy}
+                className="w-full py-2.5 rounded-xl text-white font-black shadow-xs hover:opacity-95 disabled:opacity-50"
+                style={{ backgroundColor: tenant.primaryColor }}
+              >
+                Publicar Operação em Cotas
+              </button>
+            </form>
+
+            {/* 3. Etapa, NAV, Chamada de Capital & Liquidação na Venda */}
+            <div className="space-y-5">
+              <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-3">
+                <label className="font-black text-slate-900 text-sm block">
+                  3. Gerenciar Operação Existente
+                </label>
+                <select
+                  value={selectedMgrVehicle?.id || ''}
+                  onChange={(e) => {
+                    const v = vehiclesById[e.target.value];
+                    setMgrVehicleId(e.target.value);
+                    if (v) {
+                      setMgrStage(v.stage);
+                      setMgrNavInput(String(v.current_nav_per_quota));
+                    }
+                  }}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
+                >
+                  {vehicles.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name} ({STAGE_LABELS[v.stage]})
+                    </option>
+                  ))}
+                </select>
+
+                <form onSubmit={handleUpdateStageAndNav} className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  <div>
+                    <label className="font-bold text-slate-600 block mb-1">Etapa Atual</label>
+                    <select
+                      value={mgrStage}
+                      onChange={(e) => setMgrStage(e.target.value as VehicleStage)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-2 font-bold"
+                    >
+                      {Object.entries(STAGE_LABELS).map(([k, lbl]) => (
+                        <option key={k} value={k}>
+                          {lbl}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-600 block mb-1">Novo Valor da Cota NAV (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={mgrNavInput}
+                      onChange={(e) => setMgrNavInput(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-2 font-black"
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    value={mgrNavNote}
+                    onChange={(e) => setMgrNavNote(e.target.value)}
+                    placeholder="Motivo da marcação (ex.: Imóvel desocupado / laudo atualização)"
+                    className="sm:col-span-2 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-medium"
+                  />
+                  <button
+                    type="submit"
+                    disabled={managerBusy}
+                    className="sm:col-span-2 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold"
+                  >
+                    Atualizar Etapa & Marcação NAV
+                  </button>
+                </form>
+              </div>
+
+              {/* Chamada de Capital ou Despesa Rateada */}
+              <form
+                onSubmit={handleRegisterCallOrExpense}
+                className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-2.5"
+              >
+                <span className="font-black text-slate-900 text-sm flex items-center gap-1.5">
+                  <TrendingUp className="w-4 h-4 text-amber-600" /> 4. Abrir Chamada de Capital / Lançar Despesa
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    value={callKind}
+                    onChange={(e) => setCallKind(e.target.value as 'EXPENSE' | 'CAPITAL_CALL')}
+                    className="bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-2 font-bold"
+                  >
+                    <option value="CAPITAL_CALL">Chamada de Capital</option>
+                    <option value="EXPENSE">Despesa Rateada</option>
+                  </select>
+                  <input
+                    type="number"
+                    min={100}
+                    value={callAmount}
+                    onChange={(e) => setCallAmount(e.target.value)}
+                    placeholder="Valor R$"
+                    className="bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-2 font-black"
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <input
+                    required
+                    type="text"
+                    value={callTitle}
+                    onChange={(e) => setCallTitle(e.target.value)}
+                    placeholder="Ex: Reforma 2ª etapa / ITBI"
+                    className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-medium"
+                  />
+                  <input
+                    type="date"
+                    value={callDueDate}
+                    onChange={(e) => setCallDueDate(e.target.value)}
+                    className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={managerBusy}
+                  className="w-full py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black"
+                >
+                  Registrar no Livro / Notificar Cotistas
+                </button>
+              </form>
+
+              {/* Liquidação na Venda (Exit Waterfall) */}
+              {selectedMgrVehicle && liquidationPreview && (
+                <div className="bg-slate-900 text-white p-5 rounded-3xl space-y-3">
+                  <span className="font-black text-sm block">5. Liquidação Final na Venda (Exit Waterfall)</span>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="text-[10px] uppercase text-slate-400 block mb-1">Valor Bruto Venda (R$)</label>
+                      <input
+                        type="number"
+                        value={liqSaleProceeds}
+                        onChange={(e) => setLiqSaleProceeds(e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 font-black text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase text-slate-400 block mb-1">Prazo Realizado (meses)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={liqMonths}
+                        onChange={(e) => setLiqMonths(Math.max(1, Number(e.target.value) || 1))}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 font-black text-white"
+                      />
+                    </div>
+                  </div>
+                  <div className="bg-white/10 rounded-2xl p-3 text-[11px] space-y-1 text-slate-200">
+                    <div className="flex justify-between">
+                      <span>Capital Integralizado:</span>
+                      <strong>{formatCurrencyBRL(liquidationPreview.investedCapital)}</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Adm + Perf ({selectedMgrVehicle.performance_fee_pct}% &gt; Hurdle):</span>
+                      <strong>
+                        {formatCurrencyBRL(liquidationPreview.adminFeeBrl + liquidationPreview.performanceFeeBrl)}
+                      </strong>
+                    </div>
+                    <div className="flex justify-between text-emerald-300 font-black pt-1 border-t border-white/10">
+                      <span>Líquido Total p/ Cotistas (após IR 15%):</span>
+                      <span>{formatCurrencyBRL(liquidationPreview.netFinalAmountBrl)}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={managerBusy || selectedMgrVehicle.stage === 'ENCERRADO'}
+                    onClick={handleExecuteLiquidation}
+                    className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black disabled:opacity-40"
+                  >
+                    {selectedMgrVehicle.stage === 'ENCERRADO'
+                      ? 'Operação Já Encerrada'
+                      : 'Executar Liquidação & Distribuir Cotas'}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

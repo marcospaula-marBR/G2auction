@@ -414,9 +414,68 @@ def run_radar_matcher(dry_run: bool = False) -> dict[str, int]:
         conn.close()
 
 
+def notify_open_quota_alerts() -> dict[str, int]:
+    """Dispara alertas por Gmail SMTP sobre chamadas de capital abertas para cotistas."""
+    conn = get_pg_connection()
+    stats = {"calls_checked": 0, "emails_sent": 0}
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT cc.id, cc.vehicle_id, cc.title, cc.total_call_brl, cc.due_date,
+                   iv.name AS vehicle_name
+            FROM public.capital_calls cc
+            JOIN public.investment_vehicles iv ON iv.id = cc.vehicle_id
+            WHERE cc.status = 'OPEN'
+            ORDER BY cc.created_at DESC;
+        """)
+        calls = cur.fetchall()
+        stats["calls_checked"] = len(calls)
+        if not calls or not (os.getenv("SMTP_USER", "").strip() and os.getenv("SMTP_PASS", "").strip()):
+            print(f"[Quota Alerts] {stats}")
+            return stats
+
+        for call in calls:
+            cur.execute("""
+                SELECT DISTINCT u.email
+                FROM (
+                    SELECT user_id FROM public.quota_ledger_events
+                    WHERE vehicle_id = %s AND user_id IS NOT NULL
+                    UNION
+                    SELECT user_id FROM public.quota_subscription_intents
+                    WHERE vehicle_id = %s AND status IN ('PENDING', 'APPROVED', 'CONVERTED')
+                ) ids
+                JOIN auth.users u ON u.id = ids.user_id
+                WHERE u.email IS NOT NULL;
+            """, (str(call["vehicle_id"]), str(call["vehicle_id"])))
+            recipients = [r["email"] for r in cur.fetchall()]
+            for email in recipients:
+                subject = f"Chamada de Capital: {call['vehicle_name']} — {call['title']}"
+                html = (
+                    f"<h2>Chamada de Capital Aberta — G2 Auction</h2>"
+                    f"<p><strong>Operação:</strong> {call['vehicle_name']}</p>"
+                    f"<p><strong>Descrição:</strong> {call['title']}</p>"
+                    f"<p><strong>Valor Total:</strong> {format_brl(float(call['total_call_brl']))} "
+                    f"(rateado conforme suas cotas)</p>"
+                    f"<p><strong>Vencimento:</strong> {call['due_date']}</p>"
+                    f"<p>Acesse a aba <em>Área do Investidor → Extrato & Rateio</em> para conferir sua fração exata.</p>"
+                )
+                ok, _ = send_smtp_email(email, subject, html)
+                if ok:
+                    stats["emails_sent"] += 1
+        print(f"[Quota Alerts] {stats}")
+        return stats
+    finally:
+        conn.close()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Executar Radar IA e disparos de alertas.")
     parser.add_argument("--dry-run", action="store_true", help="Simula sem gravar nem enviar mensagens.")
+    parser.add_argument(
+        "--notify-quota-alerts",
+        action="store_true",
+        help="Notifica cotistas sobre chamadas de capital abertas via Gmail SMTP.",
+    )
     parser.add_argument(
         "--test-email",
         type=str,
@@ -424,6 +483,9 @@ if __name__ == "__main__":
         help="Envia um e-mail de teste via SMTP/Resend configurado no .env e encerra.",
     )
     args = parser.parse_args()
+    if args.notify_quota_alerts:
+        notify_open_quota_alerts()
+        sys.exit(0)
     if args.test_email:
         load_dotenv(BASE_DIR / ".env")
         if os.getenv("SMTP_USER", "").strip() and os.getenv("SMTP_PASS", "").strip():

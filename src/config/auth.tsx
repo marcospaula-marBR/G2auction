@@ -9,6 +9,7 @@ export interface AuthUser {
   name: string;
   accountRole: AccountRole;
   partnerCategory?: string;
+  isManager: boolean;
   isDemoSession: boolean;
 }
 
@@ -112,6 +113,21 @@ async function syncRoleMembership(userId: string, role: AccountRole) {
   }
 }
 
+async function fetchIsManager(userId: string): Promise<boolean> {
+  if (!supabase || !userId) return false;
+  try {
+    const { data, error } = await supabase
+      .from('tenant_members')
+      .select('role')
+      .eq('user_id', userId)
+      .in('role', ['superadmin', 'tenant_admin'])
+      .limit(1);
+    return !error && Array.isArray(data) && data.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 function buildAuthUserFromSupabase(
   sbUser: { id: string; email?: string; user_metadata?: Record<string, any> },
   overrideRole?: AccountRole,
@@ -134,6 +150,7 @@ function buildAuthUserFromSupabase(
       (sbUser.email ? sbUser.email.split('@')[0] : accountRole === 'partner' ? 'Parceiro' : 'Investidor'),
     accountRole,
     partnerCategory,
+    isManager: false,
     isDemoSession: false,
   };
 }
@@ -147,6 +164,7 @@ function loadLocalDemoUser(): AuthUser | null {
       return {
         ...parsed,
         accountRole: parsed.accountRole === 'partner' ? 'partner' : 'investor',
+        isManager: Boolean(parsed.isManager),
       } as AuthUser;
     }
   } catch {
@@ -209,13 +227,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const client = supabase;
     let isMounted = true;
 
-    client.auth.getSession().then(({ data }) => {
+    client.auth.getSession().then(async ({ data }) => {
       if (!isMounted) return;
       const sbUser = data.session?.user;
       if (sbUser) {
         const pending = readPendingRole();
         const resolved = buildAuthUserFromSupabase(sbUser, pending?.role, pending?.category);
-        setUser(resolved);
+        const managerFlag = await fetchIsManager(sbUser.id);
+        if (!isMounted) return;
+        setUser({ ...resolved, isManager: managerFlag });
       }
       setLoading(false);
     });
@@ -241,6 +261,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const resolvedUser = buildAuthUserFromSupabase(sbUser, effectiveRole, effectiveCategory);
         setUser(resolvedUser);
+        fetchIsManager(sbUser.id).then((managerFlag) => {
+          if (managerFlag && isMounted) {
+            setUser((prev) => (prev && prev.id === sbUser.id ? { ...prev, isManager: true } : prev));
+          }
+        });
 
         if (pending && (pending.role !== metaRole || (pending.category && pending.category !== sbUser.user_metadata?.partner_category))) {
           client.auth
@@ -398,6 +423,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         name: (name && name.trim()) || cleanEmail.split('@')[0],
         accountRole: role,
         partnerCategory: role === 'partner' ? partnerCategory : undefined,
+        isManager: false,
         isDemoSession: true,
       };
       try {

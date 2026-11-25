@@ -19,6 +19,70 @@ export const supabase = isSupabaseConfigured
     })
   : null;
 
+const CATALOG_LEAN_COLUMNS = [
+  'id',
+  'source',
+  'source_property_id',
+  'title',
+  'state',
+  'city',
+  'neighborhood',
+  'address',
+  'property_type',
+  'sale_modality',
+  'appraisal_value',
+  'sale_value',
+  'current_minimum_value',
+  'first_auction_value',
+  'second_auction_value',
+  'discount_percentage',
+  'calculated_discount_percentage',
+  'private_area',
+  'total_area',
+  'land_area',
+  'useful_area',
+  'bedrooms',
+  'bathrooms',
+  'parking_spaces',
+  'accepts_financing',
+  'accepts_fgts',
+  'occupancy_status',
+  'occupied',
+  'description',
+  'source_url',
+  'main_photo_url',
+  'latitude',
+  'longitude',
+  'first_auction_date',
+  'second_auction_date',
+  'auction_date',
+  'auctioneer',
+  'payment_conditions',
+  'registration_number',
+  'status',
+  'first_seen_at',
+  'last_seen_at',
+  'source_generated_at',
+  'created_at',
+  'updated_at',
+].join(',');
+
+const DROPDOWN_CACHE_TTL_MS = 5 * 60 * 1000;
+const dropdownCache = new Map<string, { data: any; expiresAt: number }>();
+
+function getCachedDropdown<T>(key: string): T | null {
+  const entry = dropdownCache.get(key);
+  if (entry && entry.expiresAt > Date.now()) {
+    return entry.data as T;
+  }
+  return null;
+}
+
+function setCachedDropdown<T>(key: string, data: T): T {
+  dropdownCache.set(key, { data, expiresAt: Date.now() + DROPDOWN_CACHE_TTL_MS });
+  return data;
+}
+
 const CACHE_KEY_PROPERTIES = 'g2_caixa_properties_store_v1';
 
 const memoryStore = {
@@ -516,11 +580,6 @@ export async function queryPropertiesFromSupabase(
   totalPages: number;
   isMemoryFallback: boolean;
 }> {
-  const hasCaixa = Array.from(memoryStore.properties.keys()).some(k => k.startsWith('CAIXA_'));
-  if (!hasCaixa || memoryStore.properties.size < 1000) {
-    await autoSeedDefaultCsvFromPublic();
-  }
-
   const page = filters.page || 1;
   const pageSize = filters.pageSize || 24;
   const fromIndex = (page - 1) * pageSize;
@@ -530,7 +589,7 @@ export async function queryPropertiesFromSupabase(
     try {
       let query = supabase
         .from('properties')
-        .select('*', { count: 'exact' })
+        .select(CATALOG_LEAN_COLUMNS, { count: 'exact' })
         .eq('status', 'ACTIVE');
 
       // Filtro de Múltiplos Bancos / Origens
@@ -612,6 +671,10 @@ export async function queryPropertiesFromSupabase(
   }
 
   // Fallback para memory store (Múltiplos Bancos)
+  const hasCaixa = Array.from(memoryStore.properties.keys()).some(k => k.startsWith('CAIXA_'));
+  if (!hasCaixa || memoryStore.properties.size < 1000) {
+    await autoSeedDefaultCsvFromPublic();
+  }
   let filtered = Array.from(memoryStore.properties.values()).filter((p) => !p.status || p.status === 'ACTIVE' || p.status === 'active');
 
   if (filters.sources && filters.sources.length > 0) {
@@ -692,17 +755,27 @@ export async function queryPropertiesFromSupabase(
  * BUSCAR ESTADOS (Garante SEMPRE a presença de todas as 27 UFs brasileiras no select)
  */
 export async function fetchDistinctStatesFromSupabase(): Promise<string[]> {
+  const cached = getCachedDropdown<string[]>('states');
+  if (cached) return cached;
+
   const activeStates = new Set<string>();
 
   if (supabase) {
     try {
-      const { data } = await supabase
-        .from('properties')
-        .select('state')
-        .eq('status', 'ACTIVE');
-
-      if (data) {
-        data.forEach((d) => { if (d.state) activeStates.add(d.state.toUpperCase()); });
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('get_distinct_states');
+      if (!rpcErr && Array.isArray(rpcData)) {
+        rpcData.forEach((d: any) => {
+          if (d?.state) activeStates.add(String(d.state).toUpperCase());
+        });
+      } else {
+        const { data } = await supabase
+          .from('properties')
+          .select('state')
+          .eq('status', 'ACTIVE')
+          .limit(2000);
+        if (data) {
+          data.forEach((d) => { if (d.state) activeStates.add(d.state.toUpperCase()); });
+        }
       }
     } catch (e: any) {
       console.warn('[Fetch States Error]', e.message);
@@ -722,46 +795,49 @@ export async function fetchDistinctStatesFromSupabase(): Promise<string[]> {
     return a.localeCompare(b);
   });
 
-  return sorted;
+  return setCachedDropdown('states', sorted);
 }
 
 /**
- * BUSCAR CIDADES DEPENDENTES DO ESTADO (Combina Supabase com limit(10000) + MemoryStore)
+ * BUSCAR CIDADES DEPENDENTES DO ESTADO (RPC DISTINCT no Postgres + cache)
  */
 export async function fetchDistinctCitiesByStateFromSupabase(uf: string): Promise<string[]> {
   const ufUpper = (uf || '').trim().toUpperCase();
   if (!ufUpper) return [];
 
-  const hasCaixa = Array.from(memoryStore.properties.keys()).some(k => k.startsWith('CAIXA_'));
-  if (!hasCaixa || memoryStore.properties.size < 1000) {
-    await autoSeedDefaultCsvFromPublic();
-  }
+  const cached = getCachedDropdown<string[]>(`cities:${ufUpper}`);
+  if (cached) return cached;
 
   const cityMap = new Map<string, string>(); // normKey -> displayString
 
   if (supabase) {
     try {
-      const { data } = await supabase
-        .from('properties')
-        .select('city')
-        .eq('state', ufUpper)
-        .eq('status', 'ACTIVE')
-        .limit(10000);
-
-      if (data) {
-        data.forEach((d) => {
-          if (d.city && d.city.trim()) {
-            const clean = d.city.trim();
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('get_distinct_cities', {
+        p_uf: ufUpper,
+      });
+      if (!rpcErr && Array.isArray(rpcData)) {
+        rpcData.forEach((d: any) => {
+          if (d?.city && String(d.city).trim()) {
+            const clean = String(d.city).trim();
             const norm = stripAccents(clean);
             if (!cityMap.has(norm)) {
               cityMap.set(norm, formatCityDisplayName(clean));
             }
           }
         });
+        return setCachedDropdown(
+          `cities:${ufUpper}`,
+          Array.from(cityMap.values()).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+        );
       }
     } catch (e: any) {
-      console.warn('[Fetch Cities Error]', e.message);
+      console.warn('[Fetch Cities RPC Error]', e.message);
     }
+  }
+
+  const hasCaixa = Array.from(memoryStore.properties.keys()).some(k => k.startsWith('CAIXA_'));
+  if (!hasCaixa || memoryStore.properties.size < 1000) {
+    await autoSeedDefaultCsvFromPublic();
   }
 
   memoryStore.properties.forEach((p) => {
@@ -774,25 +850,29 @@ export async function fetchDistinctCitiesByStateFromSupabase(uf: string): Promis
     }
   });
 
-  return Array.from(cityMap.values()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  return setCachedDropdown(
+    `cities:${ufUpper}`,
+    Array.from(cityMap.values()).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  );
 }
 
 /**
- * BUSCAR TIPOS DE IMÓVEIS (Garante os tipos padrão + os presentes na base)
+ * BUSCAR TIPOS DE IMÓVEIS (RPC DISTINCT no Postgres + cache)
  */
 export async function fetchDistinctPropertyTypesFromSupabase(): Promise<string[]> {
+  const cached = getCachedDropdown<string[]>('property_types');
+  if (cached) return cached;
+
   const defaultTypes = ['Apartamento', 'Casa', 'Terreno', 'Comercial', 'Sala', 'Loja', 'Galpão', 'Prédio'];
   const typeSet = new Set<string>(defaultTypes);
 
   if (supabase) {
     try {
-      const { data } = await supabase
-        .from('properties')
-        .select('property_type')
-        .eq('status', 'ACTIVE');
-
-      if (data) {
-        data.forEach((d) => { if (d.property_type) typeSet.add(d.property_type); });
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('get_distinct_property_types');
+      if (!rpcErr && Array.isArray(rpcData)) {
+        rpcData.forEach((d: any) => {
+          if (d?.property_type) typeSet.add(d.property_type);
+        });
       }
     } catch (e: any) {
       console.warn('[Fetch Types Error]', e.message);
@@ -803,13 +883,16 @@ export async function fetchDistinctPropertyTypesFromSupabase(): Promise<string[]
     if (p.property_type && p.status === 'ACTIVE') typeSet.add(p.property_type);
   });
 
-  return Array.from(typeSet).sort();
+  return setCachedDropdown('property_types', Array.from(typeSet).sort());
 }
 
 /**
- * BUSCAR MODALIDADES DE VENDA
+ * BUSCAR MODALIDADES DE VENDA (RPC DISTINCT no Postgres + cache)
  */
 export async function fetchDistinctSaleModalitiesFromSupabase(): Promise<string[]> {
+  const cached = getCachedDropdown<string[]>('sale_modalities');
+  if (cached) return cached;
+
   const defaultMods = [
     'Leilão SFI - Edital Único',
     '1º Leilão Caixa',
@@ -823,13 +906,11 @@ export async function fetchDistinctSaleModalitiesFromSupabase(): Promise<string[
 
   if (supabase) {
     try {
-      const { data } = await supabase
-        .from('properties')
-        .select('sale_modality')
-        .eq('status', 'ACTIVE');
-
-      if (data) {
-        data.forEach((d) => { if (d.sale_modality) modSet.add(d.sale_modality); });
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('get_distinct_sale_modalities');
+      if (!rpcErr && Array.isArray(rpcData)) {
+        rpcData.forEach((d: any) => {
+          if (d?.sale_modality) modSet.add(d.sale_modality);
+        });
       }
     } catch (e: any) {
       console.warn('[Fetch Modalities Error]', e.message);
@@ -840,7 +921,7 @@ export async function fetchDistinctSaleModalitiesFromSupabase(): Promise<string[
     if (p.sale_modality && p.status === 'ACTIVE') modSet.add(p.sale_modality);
   });
 
-  return Array.from(modSet).sort();
+  return setCachedDropdown('sale_modalities', Array.from(modSet).sort());
 }
 
 /**
@@ -895,39 +976,34 @@ export interface BankFreshnessInfo {
  * FREQUÊNCIA E ATUALIZAÇÃO REAL POR BANCO NO SUPABASE
  */
 export async function fetchBankFreshnessFromSupabase(): Promise<BankFreshnessInfo[]> {
+  const cached = getCachedDropdown<BankFreshnessInfo[]>('bank_freshness');
+  if (cached) return cached;
+
   const sources = ['CAIXA', 'BRADESCO', 'SANTANDER', 'ITAU', 'BB', 'JUDICIAL', 'ZUK', 'MEGA'];
 
   if (supabase) {
     try {
-      const results = await Promise.all(
-        sources.map(async (source) => {
-          const [countRes, latestRes] = await Promise.all([
-            supabase
-              .from('properties')
-              .select('id', { count: 'exact', head: true })
-              .eq('source', source)
-              .eq('status', 'ACTIVE'),
-            supabase
-              .from('properties')
-              .select('last_seen_at, source_generated_at')
-              .eq('source', source)
-              .eq('status', 'ACTIVE')
-              .order('last_seen_at', { ascending: false })
-              .limit(1)
-              .maybeSingle(),
-          ]);
-
-          return {
-            source,
-            activeCount: countRes.count ?? 0,
-            lastSyncedAt: latestRes.data?.last_seen_at || null,
-            sourceGeneratedAt: latestRes.data?.source_generated_at || null,
-          };
-        })
-      );
-      return results;
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('get_bank_freshness');
+      if (!rpcErr && Array.isArray(rpcData)) {
+        const bySource = new Map<string, any>();
+        rpcData.forEach((row: any) => {
+          if (row?.source) bySource.set(String(row.source).toUpperCase(), row);
+        });
+        return setCachedDropdown(
+          'bank_freshness',
+          sources.map((source) => {
+            const r = bySource.get(source);
+            return {
+              source,
+              activeCount: Number(r?.active_count ?? 0),
+              lastSyncedAt: r?.last_synced_at || null,
+              sourceGeneratedAt: r?.source_generated_at || null,
+            };
+          })
+        );
+      }
     } catch (e: any) {
-      console.warn('[Bank Freshness Error]', e.message);
+      console.warn('[Bank Freshness RPC Error]', e.message);
     }
   }
 
