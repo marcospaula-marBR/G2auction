@@ -35,7 +35,7 @@ import {
 } from './utils/radarMatchEngine';
 import { Wallet, Wrench, Users, PieChart, Route, Landmark, CheckCircle2, AlertCircle, X } from 'lucide-react';
 
-const APP_VERSION = 'v3.12.0';
+const APP_VERSION = 'v3.13.0';
 const INTRO_SEEN_KEY = 'auction_intro_seen_v1';
 
 function AppContent() {
@@ -204,7 +204,7 @@ function AppContent() {
       { id: 'partners', label: 'Parceiros', icon: Users, visible: tenant.features.partners },
       { id: 'ledger', label: 'Livro Caixa', icon: Wallet, visible: tenant.features.ledger },
       { id: 'renovation', label: 'Campo & Obra', icon: Wrench, visible: tenant.features.renovation },
-      { id: 'portfolio', label: 'Carteira', icon: PieChart, visible: tenant.features.portfolio },
+      { id: 'portfolio', label: 'Área do Investidor', icon: PieChart, visible: tenant.features.portfolio },
     ];
     return items.filter((item) => item.visible);
   }, [tenant.features]);
@@ -397,6 +397,8 @@ function AppContent() {
               setSelectedProperty(p);
               setIsDetailModalOpen(true);
             }}
+            onOpenAuth={() => setIsAuthOpen(true)}
+            ledgerEntries={ledgerEntries}
           />
         )}
       </main>
