@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { Partner, PartnerService } from '../types/auction';
 import {
   ShieldCheck, Star, Phone, MapPin, UserCheck, Search,
@@ -6,6 +6,8 @@ import {
   Briefcase, Percent, Split, Building2,
 } from 'lucide-react';
 import { useTenant } from '../config/tenant';
+import { useAuth } from '../config/auth';
+import { supabase } from '../lib/supabaseClient';
 import { formatCurrencyBRL } from '../utils/financial';
 
 interface PartnerNetworkProps {
@@ -46,10 +48,24 @@ function matchesRoleFilter(role: Partner['role'], filterId: string): boolean {
   return true;
 }
 
+function mapPartnerRoleToCategory(role: Partner['role']): string {
+  const r = role.toLowerCase();
+  if (r.includes('advogado')) return 'ADVOGADO';
+  if (r.includes('despachante')) return 'DESPACHANTE';
+  if (r.includes('administrador')) return 'ADMINISTRADOR';
+  if (r.includes('pedreiro') || r.includes('reforma')) return 'PEDREIRO_REFORMA';
+  if (r.includes('avaliador')) return 'AVALIADOR';
+  if (r.includes('engenheiro') || r.includes('arquiteto')) return 'ENGENHEIRO_ARQUITETO';
+  return 'CORRETOR';
+}
+
 export const PartnerNetwork: React.FC<PartnerNetworkProps> = ({ partners: initialPartners }) => {
   const { tenant } = useTenant();
+  const { user, switchAccountRole } = useAuth();
   const [partners, setPartners] = useState<Partner[]>(initialPartners);
-  const [subTab, setSubTab] = useState<'marketplace' | 'onboarding'>('marketplace');
+  const [subTab, setSubTab] = useState<'marketplace' | 'onboarding'>(() =>
+    user?.accountRole === 'partner' ? 'onboarding' : 'marketplace'
+  );
   const [roleFilter, setRoleFilter] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState<string>('');
 
@@ -74,6 +90,16 @@ export const PartnerNetwork: React.FC<PartnerNetworkProps> = ({ partners: initia
     startingPrice: '500',
   });
   const [onboardingSuccess, setOnboardingSuccess] = useState(false);
+
+  useEffect(() => {
+    if (user?.accountRole === 'partner') {
+      setSubTab('onboarding');
+      setNewPartnerForm((prev) => ({
+        ...prev,
+        name: prev.name || user.name || '',
+      }));
+    }
+  }, [user?.id, user?.accountRole, user?.name]);
 
   const filteredPartners = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
@@ -135,7 +161,7 @@ export const PartnerNetwork: React.FC<PartnerNetworkProps> = ({ partners: initia
     setCheckoutPartner(null);
   };
 
-  const handleSubmitOnboarding = (e: React.FormEvent) => {
+  const handleSubmitOnboarding = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPartnerForm.name.trim() || !newPartnerForm.city.trim()) return;
 
@@ -171,6 +197,29 @@ export const PartnerNetwork: React.FC<PartnerNetworkProps> = ({ partners: initia
       ],
     };
 
+    if (supabase && user && !user.isDemoSession) {
+      try {
+        await supabase.from('partners').insert({
+          tenant_id: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenant.id)
+            ? tenant.id
+            : null,
+          user_id: user.id,
+          name: created.name,
+          category: mapPartnerRoleToCategory(newPartnerForm.role),
+          registration_code: newPartnerForm.registrationCode || null,
+          city: created.city,
+          state: created.state.slice(0, 2),
+          phone: newPartnerForm.phone || null,
+          email: user.email || null,
+          specialty: created.specialty,
+          pix_key: newPartnerForm.pixKey || null,
+          approval_status: 'PENDING',
+        });
+      } catch {
+        // Fallback local mantido
+      }
+    }
+
     setPartners((prev) => [created, ...prev]);
     setOnboardingSuccess(true);
     setNewPartnerForm({
@@ -193,6 +242,28 @@ export const PartnerNetwork: React.FC<PartnerNetworkProps> = ({ partners: initia
 
   return (
     <div className="space-y-6">
+      {/* Faixa Portal do Parceiro Autenticado */}
+      {user?.accountRole === 'partner' && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5 text-indigo-950">
+            <Briefcase className="w-4 h-4 text-indigo-600 shrink-0" />
+            <span>
+              <strong>Portal do Parceiro Autenticado:</strong> {user.name} ({user.email}) — preencha seu credenciamento abaixo para entrar no catálogo e receber via Split.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              switchAccountRole('investor');
+              setSubTab('marketplace');
+            }}
+            className="px-3 py-1.5 rounded-xl bg-white hover:bg-indigo-100 border border-indigo-200 text-indigo-800 font-bold text-[11px] transition-colors"
+          >
+            Alternar para Visão Investidor
+          </button>
+        </div>
+      )}
+
       {/* Header do Marketplace de Parceiros */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="space-y-1.5">

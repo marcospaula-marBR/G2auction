@@ -18,6 +18,7 @@ import {
   requestAndSubscribeWebPush,
   sendTestLocalNotification,
 } from '../utils/pwaManager';
+import { getTenantIconUrl } from '../utils/brandingIcons';
 
 interface RadarIAModalProps {
   isOpen: boolean;
@@ -102,7 +103,7 @@ export const RadarIAModal: React.FC<RadarIAModalProps> = ({
       ? `${top.property.title} — ${formatCurrencyBRL(top.property.secondAuctionPrice)} (${top.property.apparentDiscountPercentage}% desc.)`
       : 'Você receberá alertas no celular assim que novos imóveis coincidirem com seu perfil.';
 
-    const sent = await sendTestLocalNotification(title, body);
+    const sent = await sendTestLocalNotification(title, body, getTenantIconUrl(tenant));
     setNotifPerm(getNotificationPermission());
     setPushStatus(
       sent

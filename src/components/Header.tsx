@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bot, Bell, Palette, ShieldCheck, Building2, LogIn, LogOut, Download } from 'lucide-react';
+import { Bot, Bell, Palette, ShieldCheck, Building2, LogIn, LogOut, Download, Briefcase } from 'lucide-react';
 import { useTenant } from '../config/tenant';
 import { useAuth } from '../config/auth';
 import type { UserProfile } from '../types/auction';
@@ -27,7 +27,7 @@ export const Header: React.FC<HeaderProps> = ({
   onInstallPwa,
   onReplayIntro,
   unreadNotifications,
-  version = 'v3.11.3',
+  version = 'v3.12.0',
 }) => {
   const { tenant } = useTenant();
   const { user, signOut } = useAuth();
@@ -124,16 +124,39 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Login / Conta do Usuário */}
             {user ? (
               <div
-                className="flex items-center bg-emerald-50 border border-emerald-200 rounded-xl pl-2.5 pr-1.5 py-1.5 gap-2"
-                title={`Conectado como ${user.email}`}
+                className={`flex items-center border rounded-xl pl-2.5 pr-1.5 py-1.5 gap-2 ${
+                  user.accountRole === 'partner'
+                    ? 'bg-indigo-50 border-indigo-200'
+                    : 'bg-emerald-50 border-emerald-200'
+                }`}
+                title={`Conectado como ${user.email} (${user.accountRole === 'partner' ? 'Parceiro' : 'Investidor'})`}
               >
-                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                <span className="text-[11px] font-bold text-emerald-900 max-w-[110px] truncate">
+                {user.accountRole === 'partner' ? (
+                  <Briefcase className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                ) : (
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                )}
+                <span
+                  className={`text-[11px] font-bold max-w-[110px] truncate ${
+                    user.accountRole === 'partner' ? 'text-indigo-950' : 'text-emerald-900'
+                  }`}
+                >
                   {user.name}
+                </span>
+                <span
+                  className={`hidden md:inline text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md text-white ${
+                    user.accountRole === 'partner' ? 'bg-indigo-600' : 'bg-emerald-600'
+                  }`}
+                >
+                  {user.accountRole === 'partner' ? 'Parceiro' : 'Investidor'}
                 </span>
                 <button
                   onClick={signOut}
-                  className="text-emerald-700 hover:text-red-600 p-1 rounded-lg hover:bg-white transition-colors"
+                  className={`p-1 rounded-lg hover:bg-white transition-colors ${
+                    user.accountRole === 'partner'
+                      ? 'text-indigo-700 hover:text-red-600'
+                      : 'text-emerald-700 hover:text-red-600'
+                  }`}
                   title={`Sair (${user.email})`}
                 >
                   <LogOut className="w-3.5 h-3.5" />

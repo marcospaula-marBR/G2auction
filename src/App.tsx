@@ -35,7 +35,7 @@ import {
 } from './utils/radarMatchEngine';
 import { Wallet, Wrench, Users, PieChart, Route, Landmark, CheckCircle2, AlertCircle, X } from 'lucide-react';
 
-const APP_VERSION = 'v3.11.3';
+const APP_VERSION = 'v3.12.0';
 const INTRO_SEEN_KEY = 'auction_intro_seen_v1';
 
 function AppContent() {
@@ -214,6 +214,12 @@ function AppContent() {
       setActiveMainTab('imoveis');
     }
   }, [navItems, activeMainTab]);
+
+  useEffect(() => {
+    if (authNotice?.type === 'success' && user?.accountRole === 'partner' && tenant.features.partners) {
+      setActiveMainTab('partners');
+    }
+  }, [authNotice, user?.accountRole, tenant.features.partners]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">

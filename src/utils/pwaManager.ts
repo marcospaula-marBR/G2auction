@@ -144,7 +144,11 @@ export async function requestAndSubscribeWebPush(
   };
 }
 
-export async function sendTestLocalNotification(title: string, body: string): Promise<boolean> {
+export async function sendTestLocalNotification(
+  title: string,
+  body: string,
+  iconUrl = '/icon-192.png'
+): Promise<boolean> {
   if (typeof window === 'undefined' || !('Notification' in window)) return false;
 
   let permission = Notification.permission;
@@ -155,9 +159,9 @@ export async function sendTestLocalNotification(title: string, body: string): Pr
 
   const options: NotificationOptions & { vibrate?: number[] } = {
     body,
-    icon: '/icon-192.svg',
-    badge: '/icon-192.svg',
-    tag: 'radar-ia-test',
+    icon: iconUrl,
+    badge: '/icon-192.png',
+    tag: `radar-ia-test-${Date.now()}`,
     vibrate: [150, 80, 150],
     data: { url: '/' },
   };

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import {
   X, Palette, EyeOff, Eye, Copy, Check, Sparkles, Building2,
-  Percent, Sliders, RotateCcw, Shield,
+  Percent, Sliders, RotateCcw, Shield, Upload,
 } from 'lucide-react';
 import { useTenant, type TenantFeatures } from '../config/tenant';
+import { getTenantIconUrl } from '../utils/brandingIcons';
 
 interface WhiteLabelStudioModalProps {
   isOpen: boolean;
@@ -180,16 +181,58 @@ export const WhiteLabelStudioModal: React.FC<WhiteLabelStudioModalProps> = ({ is
 
               {tenant.showLogo && (
                 <div className="space-y-1.5">
-                  <label className="font-bold text-slate-700 block">URL do Logotipo do Cliente</label>
-                  <input
-                    type="text"
-                    value={tenant.logoUrl || ''}
-                    onChange={(e) => updateTenant({ logoUrl: e.target.value || null })}
-                    placeholder="https://cliente.com.br/logo.png"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 font-medium text-slate-800"
-                  />
+                  <label className="font-bold text-slate-700 block">Logotipo da Contratante (URL ou Upload)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={tenant.logoUrl || ''}
+                      onChange={(e) => updateTenant({ logoUrl: e.target.value || null })}
+                      placeholder="https://cliente.com.br/logo.png"
+                      className="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 font-medium text-slate-800"
+                    />
+                    <label
+                      className="px-3 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold cursor-pointer flex items-center gap-1.5 shrink-0 transition-colors"
+                      title="Enviar imagem PNG, JPG, SVG ou WebP (máx. 500 KB)"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Upload</span>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > 512000) {
+                            window.alert('Escolha um logotipo com no máximo 500 KB.');
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onload = () => {
+                            if (typeof reader.result === 'string') {
+                              updateTenant({ logoUrl: reader.result, showLogo: true });
+                            }
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                    </label>
+                  </div>
                 </div>
               )}
+            </div>
+
+            {/* Preview automático Favicon + Ícone PWA */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 flex items-center gap-3">
+              <img
+                src={getTenantIconUrl(tenant)}
+                alt="Ícone do app"
+                className="w-9 h-9 rounded-xl object-contain bg-white border border-slate-200 p-0.5 shrink-0"
+              />
+              <div className="text-[11px] text-slate-600 leading-snug">
+                <strong className="text-slate-900 block">Favicon e Ícone PWA automáticos</strong>
+                Atualiza em tempo real a aba do navegador, notificações e o ícone instalável conforme a empresa contratante.
+              </div>
             </div>
 
             {/* Paleta de Cores */}

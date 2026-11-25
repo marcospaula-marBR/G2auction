@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { applyTenantDocumentBranding } from '../utils/brandingIcons';
 
 export interface TenantFeatures {
   map: boolean;
@@ -154,11 +155,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // ignore storage quota errors
     }
 
-    if (typeof document !== 'undefined') {
-      document.title = `${tenant.brandName} — ${tenant.tagline}`;
-      document.documentElement.style.setProperty('--brand-primary', tenant.primaryColor);
-      document.documentElement.style.setProperty('--brand-accent', tenant.accentColor);
-    }
+    return applyTenantDocumentBranding(tenant);
   }, [tenant]);
 
   const updateTenant = useCallback(

@@ -1,12 +1,20 @@
 import React, { useState } from 'react';
-import { X, Mail, Lock, Sparkles, ShieldCheck, AlertCircle, CheckCircle2, User } from 'lucide-react';
-import { useAuth } from '../config/auth';
+import { X, Mail, Lock, Sparkles, ShieldCheck, AlertCircle, CheckCircle2, User, Briefcase } from 'lucide-react';
+import { useAuth, type AccountRole } from '../config/auth';
 import { useTenant } from '../config/tenant';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
+
+const PARTNER_CATEGORIES = [
+  { id: 'CORRETOR', label: 'Corretor de Imóveis' },
+  { id: 'ADVOGADO', label: 'Advogado Imobiliário' },
+  { id: 'ADMINISTRADOR', label: 'Administrador / Despachante' },
+  { id: 'PEDREIRO_REFORMA', label: 'Pedreiro / Reforma' },
+  { id: 'ENGENHEIRO_ARQUITETO', label: 'Engenheiro / Arquiteto / Avaliador' },
+];
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const { tenant } = useTenant();
@@ -19,6 +27,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     signInDemoLocal,
   } = useAuth();
 
+  const [accountRole, setAccountRole] = useState<AccountRole>('investor');
+  const [partnerCategory, setPartnerCategory] = useState<string>('CORRETOR');
   const [mode, setMode] = useState<'magic' | 'password'>('magic');
   const [isSignUp, setIsSignUp] = useState(false);
   const [name, setName] = useState('');
@@ -29,6 +39,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
+  const isPartner = accountRole === 'partner';
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) return;
@@ -37,16 +49,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
     try {
       if (!isSupabaseConnected) {
-        signInDemoLocal(email, name);
+        signInDemoLocal(email, name, accountRole, partnerCategory);
         onClose();
         return;
       }
 
       if (mode === 'magic') {
-        const res = await signInWithMagicLink(email);
+        const res = await signInWithMagicLink(email, accountRole, partnerCategory);
         setFeedback({ type: res.success ? 'success' : 'error', text: res.message });
       } else if (isSignUp) {
-        const res = await signUpWithPassword(email, password, name);
+        const res = await signUpWithPassword(email, password, name, accountRole, partnerCategory);
         setFeedback({ type: res.success ? 'success' : 'error', text: res.message });
       } else {
         const res = await signInWithPassword(email, password);
@@ -64,7 +76,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const handleGoogle = async () => {
     setBusy(true);
     setFeedback(null);
-    const res = await signInWithGoogle();
+    const res = await signInWithGoogle(accountRole, partnerCategory);
     if (!res.success) {
       setFeedback({ type: 'error', text: res.message });
       setBusy(false);
@@ -77,10 +89,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         {/* Header */}
         <div className="p-5 bg-slate-900 text-white flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-black uppercase tracking-wider text-sky-400 block">
-              Acesso do Investidor • {tenant.brandName}
+            <span
+              className={`text-[10px] font-black uppercase tracking-wider block ${
+                isPartner ? 'text-indigo-400' : 'text-sky-400'
+              }`}
+            >
+              {isPartner ? 'Portal do Parceiro' : 'Acesso do Investidor'} • {tenant.brandName}
             </span>
-            <h2 className="text-base font-black text-white">Entrar ou Criar Conta</h2>
+            <h2 className="text-base font-black text-white">
+              {isPartner ? 'Acesso de Especialista / Parceiro' : 'Entrar ou Criar Conta'}
+            </h2>
           </div>
           <button
             onClick={onClose}
@@ -91,6 +109,50 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         </div>
 
         <div className="p-5 space-y-4 text-xs">
+          {/* Seletor Investidor vs Parceiro */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setAccountRole('investor');
+                setFeedback(null);
+              }}
+              className={`p-2.5 rounded-2xl border-2 text-left transition-all flex items-start gap-2 ${
+                !isPartner
+                  ? 'border-slate-900 bg-slate-50 shadow-2xs'
+                  : 'border-slate-200 bg-white hover:border-slate-300 text-slate-600'
+              }`}
+            >
+              <User className={`w-4 h-4 shrink-0 mt-0.5 ${!isPartner ? 'text-emerald-600' : 'text-slate-400'}`} />
+              <div>
+                <span className="font-black text-slate-900 block text-[11px]">Sou Investidor</span>
+                <span className="text-[10px] text-slate-500 leading-tight block">
+                  Buscar imóveis, Radar IA e jornada
+                </span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setAccountRole('partner');
+                setFeedback(null);
+              }}
+              className={`p-2.5 rounded-2xl border-2 text-left transition-all flex items-start gap-2 ${
+                isPartner
+                  ? 'border-indigo-600 bg-indigo-50/70 shadow-2xs'
+                  : 'border-slate-200 bg-white hover:border-slate-300 text-slate-600'
+              }`}
+            >
+              <Briefcase className={`w-4 h-4 shrink-0 mt-0.5 ${isPartner ? 'text-indigo-600' : 'text-slate-400'}`} />
+              <div>
+                <span className="font-black text-slate-900 block text-[11px]">Sou Parceiro</span>
+                <span className="text-[10px] text-slate-500 leading-tight block">
+                  Prestar serviços e receber via Split
+                </span>
+              </div>
+            </button>
+          </div>
           {!isSupabaseConnected && (
             <div className="bg-amber-50 border border-amber-200 text-amber-900 p-3.5 rounded-2xl space-y-1.5">
               <div className="font-black flex items-center gap-1.5">
@@ -164,6 +226,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-9 pr-3 py-2.5 font-medium"
                   />
                 </div>
+              </div>
+            )}
+
+            {isPartner && (!isSupabaseConnected || mode === 'magic' || isSignUp) && (
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 block">Especialidade do Parceiro</label>
+                <select
+                  value={partnerCategory}
+                  onChange={(e) => setPartnerCategory(e.target.value)}
+                  className="w-full bg-indigo-50/50 border border-indigo-200 rounded-xl px-3 py-2.5 font-bold text-slate-800"
+                >
+                  {PARTNER_CATEGORIES.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.label}
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
 

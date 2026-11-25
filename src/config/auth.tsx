@@ -1,10 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 
+export type AccountRole = 'investor' | 'partner';
+
 export interface AuthUser {
   id: string;
   email: string;
   name: string;
+  accountRole: AccountRole;
+  partnerCategory?: string;
   isDemoSession: boolean;
 }
 
@@ -24,15 +28,24 @@ interface AuthContextValue {
   isSupabaseConnected: boolean;
   authNotice: AuthNotice | null;
   clearAuthNotice: () => void;
-  signInWithMagicLink: (email: string) => Promise<AuthResult>;
+  signInWithMagicLink: (email: string, role?: AccountRole, partnerCategory?: string) => Promise<AuthResult>;
   signInWithPassword: (email: string, password: string) => Promise<AuthResult>;
-  signUpWithPassword: (email: string, password: string, name: string) => Promise<AuthResult>;
-  signInWithGoogle: () => Promise<AuthResult>;
-  signInDemoLocal: (email: string, name?: string) => void;
+  signUpWithPassword: (
+    email: string,
+    password: string,
+    name: string,
+    role?: AccountRole,
+    partnerCategory?: string
+  ) => Promise<AuthResult>;
+  signInWithGoogle: (role?: AccountRole, partnerCategory?: string) => Promise<AuthResult>;
+  signInDemoLocal: (email: string, name?: string, role?: AccountRole, partnerCategory?: string) => void;
+  switchAccountRole: (role: AccountRole) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
 const DEMO_USER_STORAGE_KEY = 'auction_demo_user_v1';
+const PENDING_ROLE_STORAGE_KEY = 'auction_pending_role_v1';
+const DEFAULT_G2_TENANT_ID = '00000000-0000-4000-8000-000000000002';
 
 function formatAuthError(msg: string): string {
   const lower = msg.toLowerCase();
@@ -47,12 +60,95 @@ function formatAuthError(msg: string): string {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function savePendingRole(role: AccountRole, partnerCategory?: string) {
+  try {
+    localStorage.setItem(
+      PENDING_ROLE_STORAGE_KEY,
+      JSON.stringify({ role, category: partnerCategory || null, ts: Date.now() })
+    );
+  } catch {
+    // ignore
+  }
+}
+
+function readPendingRole(): { role: AccountRole; category?: string } | null {
+  try {
+    const raw = localStorage.getItem(PENDING_ROLE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed?.role === 'partner' || parsed?.role === 'investor') {
+      return {
+        role: parsed.role,
+        category: typeof parsed.category === 'string' ? parsed.category : undefined,
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function clearPendingRole() {
+  try {
+    localStorage.removeItem(PENDING_ROLE_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+async function syncRoleMembership(userId: string, role: AccountRole) {
+  if (!supabase || !userId) return;
+  try {
+    await supabase.from('tenant_members').upsert(
+      {
+        tenant_id: DEFAULT_G2_TENANT_ID,
+        user_id: userId,
+        role,
+      },
+      { onConflict: 'tenant_id,user_id' }
+    );
+  } catch {
+    // best-effort sync
+  }
+}
+
+function buildAuthUserFromSupabase(
+  sbUser: { id: string; email?: string; user_metadata?: Record<string, any> },
+  overrideRole?: AccountRole,
+  overrideCategory?: string
+): AuthUser {
+  const metaRole = sbUser.user_metadata?.account_type === 'partner' ? 'partner' : 'investor';
+  const accountRole = overrideRole || metaRole;
+  const partnerCategory =
+    overrideCategory ||
+    (typeof sbUser.user_metadata?.partner_category === 'string'
+      ? sbUser.user_metadata.partner_category
+      : undefined);
+
+  return {
+    id: sbUser.id,
+    email: sbUser.email || '',
+    name:
+      (sbUser.user_metadata?.full_name as string) ||
+      (sbUser.user_metadata?.name as string) ||
+      (sbUser.email ? sbUser.email.split('@')[0] : accountRole === 'partner' ? 'Parceiro' : 'Investidor'),
+    accountRole,
+    partnerCategory,
+    isDemoSession: false,
+  };
+}
+
 function loadLocalDemoUser(): AuthUser | null {
   try {
     const raw = localStorage.getItem(DEMO_USER_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (parsed && parsed.email) return parsed as AuthUser;
+    if (parsed && parsed.email) {
+      return {
+        ...parsed,
+        accountRole: parsed.accountRole === 'partner' ? 'partner' : 'investor',
+      } as AuthUser;
+    }
   } catch {
     // ignore storage errors
   }
@@ -110,27 +206,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
       return;
     }
-
+    const client = supabase;
     let isMounted = true;
 
-    supabase.auth.getSession().then(({ data }) => {
+    client.auth.getSession().then(({ data }) => {
       if (!isMounted) return;
       const sbUser = data.session?.user;
       if (sbUser) {
-        setUser({
-          id: sbUser.id,
-          email: sbUser.email || '',
-          name:
-            (sbUser.user_metadata?.full_name as string) ||
-            (sbUser.user_metadata?.name as string) ||
-            (sbUser.email ? sbUser.email.split('@')[0] : 'Investidor'),
-          isDemoSession: false,
-        });
+        const pending = readPendingRole();
+        const resolved = buildAuthUserFromSupabase(sbUser, pending?.role, pending?.category);
+        setUser(resolved);
       }
       setLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: listener } = client.auth.onAuthStateChange((event, session) => {
       const sbUser = session?.user;
       if (sbUser) {
         try {
@@ -138,24 +228,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch {
           // ignore
         }
-        setUser({
-          id: sbUser.id,
-          email: sbUser.email || '',
-          name:
-            (sbUser.user_metadata?.full_name as string) ||
-            (sbUser.user_metadata?.name as string) ||
-            (sbUser.email ? sbUser.email.split('@')[0] : 'Investidor'),
-          isDemoSession: false,
-        });
+
+        const pending = readPendingRole();
+        const metaRole: AccountRole =
+          sbUser.user_metadata?.account_type === 'partner' ? 'partner' : 'investor';
+        const effectiveRole: AccountRole = pending?.role || metaRole;
+        const effectiveCategory =
+          pending?.category ||
+          (typeof sbUser.user_metadata?.partner_category === 'string'
+            ? sbUser.user_metadata.partner_category
+            : undefined);
+
+        const resolvedUser = buildAuthUserFromSupabase(sbUser, effectiveRole, effectiveCategory);
+        setUser(resolvedUser);
+
+        if (pending && (pending.role !== metaRole || (pending.category && pending.category !== sbUser.user_metadata?.partner_category))) {
+          client.auth
+            .updateUser({
+              data: {
+                account_type: effectiveRole,
+                ...(effectiveCategory ? { partner_category: effectiveCategory } : {}),
+              },
+            })
+            .catch(() => {});
+        }
+        clearPendingRole();
+
+        if (event === 'SIGNED_IN') {
+          syncRoleMembership(sbUser.id, effectiveRole);
+        }
 
         const hasUrlToken =
           typeof window !== 'undefined' &&
           (window.location.hash.includes('access_token=') || window.location.search.includes('code='));
 
         if (event === 'SIGNED_IN' && (arrivedFromAuthLinkRef.current || hasUrlToken)) {
+          const perfilLabel = effectiveRole === 'partner' ? 'Parceiro' : 'Investidor';
           setAuthNotice({
             type: 'success',
-            text: `Login confirmado! Conectado como ${sbUser.email || 'Investidor'}.`,
+            text: `Login confirmado (${perfilLabel})! Conectado como ${sbUser.email || perfilLabel}.`,
           });
           arrivedFromAuthLinkRef.current = false;
           if (typeof window !== 'undefined') {
@@ -173,27 +284,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const signInWithMagicLink = useCallback(async (email: string): Promise<AuthResult> => {
-    if (!supabase) {
+  const signInWithMagicLink = useCallback(
+    async (
+      email: string,
+      role: AccountRole = 'investor',
+      partnerCategory?: string
+    ): Promise<AuthResult> => {
+      if (!supabase) {
+        return {
+          success: false,
+          message: 'Supabase não configurado no .env. Use o Modo Local (Demo) para testar.',
+        };
+      }
+      savePendingRole(role, role === 'partner' ? partnerCategory : undefined);
+      const { error } = await supabase.auth.signInWithOtp({
+        email: email.trim(),
+        options: {
+          emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+          data: {
+            account_type: role,
+            ...(role === 'partner' && partnerCategory ? { partner_category: partnerCategory } : {}),
+          },
+        },
+      });
+      if (error) {
+        clearPendingRole();
+        return { success: false, message: formatAuthError(error.message) };
+      }
       return {
-        success: false,
-        message: 'Supabase não configurado no .env. Use o Modo Local (Demo) para testar.',
+        success: true,
+        message: `Enviamos um link mágico de acesso (${role === 'partner' ? 'Parceiro' : 'Investidor'}) para o seu e-mail. Verifique sua caixa de entrada!`,
       };
-    }
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: {
-        emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
-      },
-    });
-    if (error) {
-      return { success: false, message: formatAuthError(error.message) };
-    }
-    return {
-      success: true,
-      message: 'Enviamos um link mágico de acesso para o seu e-mail. Verifique sua caixa de entrada!',
-    };
-  }, []);
+    },
+    []
+  );
 
   const signInWithPassword = useCallback(async (email: string, password: string): Promise<AuthResult> => {
     if (!supabase) {
@@ -210,19 +334,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signUpWithPassword = useCallback(
-    async (email: string, password: string, name: string): Promise<AuthResult> => {
+    async (
+      email: string,
+      password: string,
+      name: string,
+      role: AccountRole = 'investor',
+      partnerCategory?: string
+    ): Promise<AuthResult> => {
       if (!supabase) {
         return { success: false, message: 'Supabase não configurado no .env.' };
       }
+      savePendingRole(role, role === 'partner' ? partnerCategory : undefined);
       const { error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
         options: {
-          data: { full_name: name.trim() },
+          data: {
+            full_name: name.trim(),
+            account_type: role,
+            ...(role === 'partner' && partnerCategory ? { partner_category: partnerCategory } : {}),
+          },
         },
       });
       if (error) {
-        return { success: false, message: error.message };
+        clearPendingRole();
+        return { success: false, message: formatAuthError(error.message) };
       }
       return {
         success: true,
@@ -232,39 +368,78 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     []
   );
 
-  const signInWithGoogle = useCallback(async (): Promise<AuthResult> => {
-    if (!supabase) {
-      return { success: false, message: 'Supabase não configurado no .env.' };
-    }
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
-      },
-    });
-    if (error) {
-      return { success: false, message: formatAuthError(error.message) };
-    }
-    return { success: true, message: 'Redirecionando para o Google...' };
-  }, []);
+  const signInWithGoogle = useCallback(
+    async (role: AccountRole = 'investor', partnerCategory?: string): Promise<AuthResult> => {
+      if (!supabase) {
+        return { success: false, message: 'Supabase não configurado no .env.' };
+      }
+      savePendingRole(role, role === 'partner' ? partnerCategory : undefined);
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+        },
+      });
+      if (error) {
+        clearPendingRole();
+        return { success: false, message: formatAuthError(error.message) };
+      }
+      return { success: true, message: 'Redirecionando para o Google...' };
+    },
+    []
+  );
 
-  const signInDemoLocal = useCallback((email: string, name?: string) => {
-    const cleanEmail = email.trim() || 'investidor@demo.local';
-    const demoUser: AuthUser = {
-      id: `demo-${cleanEmail.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
-      email: cleanEmail,
-      name: (name && name.trim()) || cleanEmail.split('@')[0],
-      isDemoSession: true,
-    };
-    try {
-      localStorage.setItem(DEMO_USER_STORAGE_KEY, JSON.stringify(demoUser));
-    } catch {
-      // ignore
+  const signInDemoLocal = useCallback(
+    (email: string, name?: string, role: AccountRole = 'investor', partnerCategory?: string) => {
+      const cleanEmail = email.trim() || (role === 'partner' ? 'parceiro@demo.local' : 'investidor@demo.local');
+      const demoUser: AuthUser = {
+        id: `demo-${cleanEmail.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+        email: cleanEmail,
+        name: (name && name.trim()) || cleanEmail.split('@')[0],
+        accountRole: role,
+        partnerCategory: role === 'partner' ? partnerCategory : undefined,
+        isDemoSession: true,
+      };
+      try {
+        localStorage.setItem(DEMO_USER_STORAGE_KEY, JSON.stringify(demoUser));
+      } catch {
+        // ignore
+      }
+      setUser(demoUser);
+    },
+    []
+  );
+
+  const switchAccountRole = useCallback(async (role: AccountRole) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, accountRole: role };
+      if (prev.isDemoSession) {
+        try {
+          localStorage.setItem(DEMO_USER_STORAGE_KEY, JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+      }
+      return next;
+    });
+
+    if (supabase) {
+      try {
+        const { data } = await supabase.auth.updateUser({
+          data: { account_type: role },
+        });
+        if (data?.user?.id) {
+          await syncRoleMembership(data.user.id, role);
+        }
+      } catch {
+        // ignore
+      }
     }
-    setUser(demoUser);
   }, []);
 
   const signOut = useCallback(async () => {
+    clearPendingRole();
     try {
       localStorage.removeItem(DEMO_USER_STORAGE_KEY);
     } catch {
@@ -289,6 +464,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signUpWithPassword,
         signInWithGoogle,
         signInDemoLocal,
+        switchAccountRole,
         signOut,
       }}
     >
