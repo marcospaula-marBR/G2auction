@@ -10,6 +10,7 @@ Uso:
     python scripts/run_radar_matcher.py --dry-run
 """
 import argparse
+import html as html_lib
 import json
 import os
 import re
@@ -87,15 +88,27 @@ def build_summary(profile: dict[str, Any], prop: dict[str, Any], match_type: str
     disc = float(prop.get("discount_percentage") or 0)
     city = prop.get("city") or ""
     uf = prop.get("state") or ""
+    neigh = (prop.get("neighborhood") or "").strip()
+    loc_label = f"{neigh}, {city}/{uf}" if neigh else f"{city}/{uf}"
     if match_type == "EXACT":
         return (
-            f"Match direto em {city}/{uf}: lance mínimo de {format_brl(price)} "
+            f"Match direto em {loc_label}: lance mínimo de {format_brl(price)} "
             f"({disc:.0f}% abaixo da avaliação de {format_brl(appraisal)})."
         )
     return (
-        f"Oportunidade próxima do seu radar em {city}/{uf}: {format_brl(price)} "
+        f"Oportunidade próxima do seu radar em {loc_label}: {format_brl(price)} "
         f"com {disc:.0f}% de deságio — dentro da sua margem de tolerância."
     )
+
+
+def format_property_location(prop: dict[str, Any]) -> str:
+    addr = " ".join(str(prop.get("address") or "").split())
+    neigh = " ".join(str(prop.get("neighborhood") or "").split())
+    if addr and neigh:
+        if neigh.lower() in addr.lower():
+            return addr
+        return f"{addr} — {neigh}"
+    return addr or neigh
 
 
 def normalize_text(val: str | None) -> str:
@@ -185,9 +198,13 @@ def send_telegram_alert(chat_id: str, matches: list[dict[str, Any]]) -> bool:
     for m in matches[:5]:
         p = m["prop"]
         price = format_brl(float(p.get("current_minimum_value") or 0))
+        loc = format_property_location(p)
+        code = p.get("source_property_id") or ""
+        loc_line = f"\n  📍 {loc}" if loc else ""
+        code_tag = f" [Cód. {code}]" if code else ""
         lines.append(
-            f"• *{p.get('source')}* | {p.get('city')}/{p.get('state')} — {price} "
-            f"({p.get('discount_percentage')}% desc.) [Score {m['score']}]\n  _{m['summary']}_"
+            f"• *{p.get('source')}* | {p.get('property_type')} em {p.get('city')}/{p.get('state')} — {price} "
+            f"({p.get('discount_percentage')}% desc.) [Score {m['score']}]{code_tag}{loc_line}\n  _{m['summary']}_"
         )
     text = "\n".join(lines)
 
@@ -214,14 +231,31 @@ def build_matches_html(matches: list[dict[str, Any]]) -> tuple[str, str]:
         p = m["prop"]
         url_link = p.get("source_url") or ""
         link_html = (
-            f' · <a href="{url_link}" target="_blank" rel="noopener">Ver edital/imóvel</a>'
+            f' · <a href="{html_lib.escape(url_link, quote=True)}" target="_blank" rel="noopener">Ver edital/imóvel</a>'
             if url_link
             else ""
         )
+        loc = format_property_location(p)
+        code = str(p.get("source_property_id") or "").strip()
+        meta_parts = []
+        if loc:
+            meta_parts.append(f"<strong>Endereço:</strong> {html_lib.escape(loc)}")
+        if code:
+            meta_parts.append(f"<strong>Cód.:</strong> {html_lib.escape(code)}")
+        meta_html = (
+            f"<div style='color:#334155;font-size:12px;margin-top:2px;'>{' · '.join(meta_parts)}</div>"
+            if meta_parts
+            else ""
+        )
         items.append(
-            f"<li style='margin-bottom:10px;'><strong>{p.get('source')} • {p.get('property_type')} em {p.get('city')}/{p.get('state')}</strong> — "
+            f"<li style='margin-bottom:12px;'>"
+            f"<strong>{html_lib.escape(str(p.get('source') or ''))} • {html_lib.escape(str(p.get('property_type') or ''))} "
+            f"em {html_lib.escape(str(p.get('city') or ''))}/{html_lib.escape(str(p.get('state') or ''))}</strong> — "
             f"{format_brl(float(p.get('current_minimum_value') or 0))} ({p.get('discount_percentage')}% desc.) "
-            f"[Score {m['score']}/100]{link_html}<br/><small>{m['summary']}</small></li>"
+            f"[Score {m['score']}/100]{link_html}"
+            f"{meta_html}"
+            f"<div style='color:#475569;font-size:12px;margin-top:2px;'>{html_lib.escape(m['summary'])}</div>"
+            f"</li>"
         )
     items_html = "".join(items)
     subject = f"Radar IA: {len(matches)} novas oportunidades para o seu perfil"
@@ -308,12 +342,19 @@ def send_resend_email(to_email: str, matches: list[dict[str, Any]]) -> bool:
 def send_alert_email(to_email: str, matches: list[dict[str, Any]]) -> bool:
     if os.getenv("SMTP_USER", "").strip() and os.getenv("SMTP_PASS", "").strip():
         subject, html = build_matches_html(matches)
-        plain_lines = [
-            f"- {m['prop'].get('source')} | {m['prop'].get('city')}/{m['prop'].get('state')} "
-            f"({format_brl(float(m['prop'].get('current_minimum_value') or 0))}, "
-            f"{m['prop'].get('discount_percentage')}% desc.): {m['summary']}"
-            for m in matches[:8]
-        ]
+        plain_lines = []
+        for m in matches[:8]:
+            p = m["prop"]
+            loc = format_property_location(p)
+            code = p.get("source_property_id") or ""
+            extra = f" | End.: {loc}" if loc else ""
+            if code:
+                extra += f" | Cód.: {code}"
+            plain_lines.append(
+                f"- {p.get('source')} | {p.get('property_type')} em {p.get('city')}/{p.get('state')} "
+                f"({format_brl(float(p.get('current_minimum_value') or 0))}, "
+                f"{p.get('discount_percentage')}% desc.){extra}: {m['summary']}"
+            )
         ok, _ = send_smtp_email(to_email, subject, html, text_fallback="\n".join(plain_lines))
         return ok
     if os.getenv("RESEND_API_KEY", "").strip():
@@ -359,7 +400,7 @@ def run_radar_matcher(dry_run: bool = False) -> dict[str, int]:
                 params.append(min_disc_tol)
 
             sql = f"""
-                SELECT id, source, source_property_id, title, state, city, property_type,
+                SELECT id, source, source_property_id, title, state, city, neighborhood, address, property_type,
                        current_minimum_value, sale_value, appraisal_value, discount_percentage,
                        accepts_financing, occupancy_status, source_url
                 FROM public.properties
