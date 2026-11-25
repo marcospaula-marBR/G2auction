@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 
 export interface AuthUser {
@@ -6,6 +6,11 @@ export interface AuthUser {
   email: string;
   name: string;
   isDemoSession: boolean;
+}
+
+export interface AuthNotice {
+  type: 'success' | 'error';
+  text: string;
 }
 
 interface AuthResult {
@@ -17,6 +22,8 @@ interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
   isSupabaseConnected: boolean;
+  authNotice: AuthNotice | null;
+  clearAuthNotice: () => void;
   signInWithMagicLink: (email: string) => Promise<AuthResult>;
   signInWithPassword: (email: string, password: string) => Promise<AuthResult>;
   signUpWithPassword: (email: string, password: string, name: string) => Promise<AuthResult>;
@@ -55,6 +62,48 @@ function loadLocalDemoUser(): AuthUser | null {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(() => loadLocalDemoUser());
   const [loading, setLoading] = useState<boolean>(isSupabaseConfigured);
+  const [authNotice, setAuthNotice] = useState<AuthNotice | null>(null);
+  const arrivedFromAuthLinkRef = useRef<boolean>(false);
+
+  const clearAuthNotice = useCallback(() => setAuthNotice(null), []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const searchParams = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+
+    const hasTokenOrCode =
+      hashParams.has('access_token') ||
+      searchParams.has('code') ||
+      hashParams.get('type') === 'signup' ||
+      hashParams.get('type') === 'magiclink' ||
+      searchParams.get('type') === 'signup' ||
+      searchParams.get('type') === 'magiclink';
+    if (hasTokenOrCode) {
+      arrivedFromAuthLinkRef.current = true;
+    }
+
+    const err = searchParams.get('error') || hashParams.get('error');
+    const errCode = searchParams.get('error_code') || hashParams.get('error_code') || '';
+    const errDesc =
+      searchParams.get('error_description') || hashParams.get('error_description') || err || '';
+
+    if (err || errCode || errDesc) {
+      const lower = `${errCode} ${errDesc}`.toLowerCase();
+      if (errCode === 'otp_expired' || lower.includes('invalid or has expired')) {
+        setAuthNotice({
+          type: 'error',
+          text: 'O link de confirmação expirou ou já foi consumido (muito comum no Outlook/Safe Links ou quando o SMTP do Supabase falha após enviar). Tente entrar novamente ou use E-mail e Senha.',
+        });
+      } else {
+        setAuthNotice({
+          type: 'error',
+          text: `Não foi possível concluir o login pelo link: ${decodeURIComponent(errDesc.replace(/\+/g, ' '))}`,
+        });
+      }
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   useEffect(() => {
     if (!supabase) {
@@ -81,7 +130,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       const sbUser = session?.user;
       if (sbUser) {
         try {
@@ -98,6 +147,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             (sbUser.email ? sbUser.email.split('@')[0] : 'Investidor'),
           isDemoSession: false,
         });
+
+        const hasUrlToken =
+          typeof window !== 'undefined' &&
+          (window.location.hash.includes('access_token=') || window.location.search.includes('code='));
+
+        if (event === 'SIGNED_IN' && (arrivedFromAuthLinkRef.current || hasUrlToken)) {
+          setAuthNotice({
+            type: 'success',
+            text: `Login confirmado! Conectado como ${sbUser.email || 'Investidor'}.`,
+          });
+          arrivedFromAuthLinkRef.current = false;
+          if (typeof window !== 'undefined') {
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        }
       } else {
         setUser(loadLocalDemoUser());
       }
@@ -218,6 +282,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         loading,
         isSupabaseConnected: isSupabaseConfigured,
+        authNotice,
+        clearAuthNotice,
         signInWithMagicLink,
         signInWithPassword,
         signUpWithPassword,

@@ -33,14 +33,14 @@ import {
   scorePropertiesAgainstRadar,
   type UserRadarProfile,
 } from './utils/radarMatchEngine';
-import { Wallet, Wrench, Users, PieChart, Route, Landmark } from 'lucide-react';
+import { Wallet, Wrench, Users, PieChart, Route, Landmark, CheckCircle2, AlertCircle, X } from 'lucide-react';
 
-const APP_VERSION = 'v3.11.2';
+const APP_VERSION = 'v3.11.3';
 const INTRO_SEEN_KEY = 'auction_intro_seen_v1';
 
 function AppContent() {
   const { tenant } = useTenant();
-  const { user } = useAuth();
+  const { user, authNotice, clearAuthNotice } = useAuth();
 
   const [properties, setProperties] = useState<Property[]>(mockProperties);
   const [selectedProperty, setSelectedProperty] = useState<Property | undefined>(mockProperties[0]);
@@ -272,6 +272,47 @@ function AppContent() {
 
       {/* Main Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6 space-y-6">
+        {authNotice && (
+          <div
+            className={`rounded-2xl border px-4 py-3 flex items-start justify-between gap-3 text-xs shadow-2xs ${
+              authNotice.type === 'success'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                : 'bg-red-50 border-red-200 text-red-900'
+            }`}
+          >
+            <div className="flex items-start gap-2.5">
+              {authNotice.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+              )}
+              <div className="space-y-1.5">
+                <p className="font-bold leading-relaxed">{authNotice.text}</p>
+                {authNotice.type === 'error' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearAuthNotice();
+                      setIsAuthOpen(true);
+                    }}
+                    className="inline-flex items-center px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-[11px] transition-colors"
+                  >
+                    Abrir Login
+                  </button>
+                )}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={clearAuthNotice}
+              className="p-1 rounded-lg hover:bg-black/5 text-current opacity-70 hover:opacity-100 shrink-0"
+              title="Fechar aviso"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {activeMainTab === 'imoveis' && (
           <PropertyCatalogPage
             onPropertiesLoaded={(adapted) => {

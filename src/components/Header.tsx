@@ -27,7 +27,7 @@ export const Header: React.FC<HeaderProps> = ({
   onInstallPwa,
   onReplayIntro,
   unreadNotifications,
-  version = 'v3.11.2',
+  version = 'v3.11.3',
 }) => {
   const { tenant } = useTenant();
   const { user, signOut } = useAuth();
@@ -123,8 +123,12 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* Login / Conta do Usuário */}
             {user ? (
-              <div className="flex items-center bg-emerald-50 border border-emerald-200 rounded-xl pl-2.5 pr-1.5 py-1.5 gap-2">
-                <span className="text-[11px] font-bold text-emerald-900 max-w-[90px] truncate hidden sm:inline">
+              <div
+                className="flex items-center bg-emerald-50 border border-emerald-200 rounded-xl pl-2.5 pr-1.5 py-1.5 gap-2"
+                title={`Conectado como ${user.email}`}
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                <span className="text-[11px] font-bold text-emerald-900 max-w-[110px] truncate">
                   {user.name}
                 </span>
                 <button
