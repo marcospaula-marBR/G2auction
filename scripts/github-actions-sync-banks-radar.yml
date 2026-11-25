@@ -1,4 +1,4 @@
-name: Sincronização Automática Bancos + Radar IA
+name: Sincronização Automática Bancos + Radar IA + Cotas
 
 on:
   schedule:
@@ -10,6 +10,10 @@ on:
         description: 'UFs separadas por vírgula'
         required: false
         default: 'SP,RJ,MG,PR,RS,SC,BA,DF,GO,PE,CE'
+      notify_quotas:
+        description: 'Enviar alertas de chamadas de capital em cotas por e-mail'
+        required: false
+        default: 'true'
 
 jobs:
   sync-and-notify:
@@ -26,7 +30,7 @@ jobs:
       - name: Instalar dependências de sincronização
         run: pip install psycopg2-binary python-dotenv
 
-      - name: Sincronizar bancos reais -> Supabase e executar Radar IA
+      - name: Sincronizar bancos reais -> Supabase, executar Radar IA e alertar cotistas
         env:
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -41,3 +45,6 @@ jobs:
         run: |
           UFS="${{ github.event.inputs.ufs || 'SP,RJ,MG,PR,RS,SC,BA,DF,GO,PE,CE' }}"
           python scripts/sync_banks_to_supabase.py --banks bradesco,caixa,mega,zuk --ufs "$UFS" --run-radar
+          if [ "${{ github.event.inputs.notify_quotas || 'true' }}" != "false" ]; then
+            python scripts/run_radar_matcher.py --notify-quota-alerts
+          fi

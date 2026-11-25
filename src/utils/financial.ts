@@ -153,25 +153,32 @@ export function generateScenarios(property: Property, customBidPrice?: number): 
  * Calculador de Benchmark de Rendimento Financeiro Tradicional
  * Comparativo com CDI (10.5% a.a.), CDB (100% CDI), IPCA + 6%, Selic (10.5%), Poupança (6.17%) e Ibovespa (~12%)
  */
-export function calculateBenchmarkReturns(initialCapital: number, months: number) {
+export function calculateBenchmarkReturns(
+  initialCapital: number,
+  months: number,
+  customRates?: { cdiAnnualPct?: number; ipcaPlus6AnnualPct?: number }
+) {
   const years = months / 12;
-  
-  // Taxas anuais estimadas para o mercado brasileiro
-  const cdiAnnualRate = 0.105;
-  const ipcaPlusRate = 0.055 + 0.06; // IPCA (5.5%) + 6%
+
+  const cdiAnnualRate =
+    customRates?.cdiAnnualPct !== undefined ? customRates.cdiAnnualPct / 100 : 0.1365;
+  const ipcaPlusRate =
+    customRates?.ipcaPlus6AnnualPct !== undefined ? customRates.ipcaPlus6AnnualPct / 100 : 0.1077;
   const poupancaRate = 0.0617;
   const ibovespaEstimatedRate = 0.12;
 
-  const cdiTotal = initialCapital * Math.pow((1 + cdiAnnualRate), years);
-  const ipcaTotal = initialCapital * Math.pow((1 + ipcaPlusRate), years);
-  const poupancaTotal = initialCapital * Math.pow((1 + poupancaRate), years);
-  const ibovTotal = initialCapital * Math.pow((1 + ibovespaEstimatedRate), years);
+  const cdiTotal = initialCapital * Math.pow(1 + cdiAnnualRate, years);
+  const ipcaTotal = initialCapital * Math.pow(1 + ipcaPlusRate, years);
+  const poupancaTotal = initialCapital * Math.pow(1 + poupancaRate, years);
+  const ibovTotal = initialCapital * Math.pow(1 + ibovespaEstimatedRate, years);
+
+  const safeDiv = initialCapital > 0 ? initialCapital : 1;
 
   return [
-    { name: 'Poupança', finalValue: Math.round(poupancaTotal), profit: Math.round(poupancaTotal - initialCapital), roiPercent: Number(((poupancaTotal / initialCapital - 1) * 100).toFixed(1)) },
-    { name: 'CDB 100% CDI', finalValue: Math.round(cdiTotal), profit: Math.round(cdiTotal - initialCapital), roiPercent: Number(((cdiTotal / initialCapital - 1) * 100).toFixed(1)) },
-    { name: 'IPCA + 6%', finalValue: Math.round(ipcaTotal), profit: Math.round(ipcaTotal - initialCapital), roiPercent: Number(((ipcaTotal / initialCapital - 1) * 100).toFixed(1)) },
-    { name: 'Ibovespa (Méd.)', finalValue: Math.round(ibovTotal), profit: Math.round(ibovTotal - initialCapital), roiPercent: Number(((ibovTotal / initialCapital - 1) * 100).toFixed(1)) },
+    { name: 'Poupança', finalValue: Math.round(poupancaTotal), profit: Math.round(poupancaTotal - initialCapital), roiPercent: Number(((poupancaTotal / safeDiv - 1) * 100).toFixed(1)) },
+    { name: 'CDB 100% CDI', finalValue: Math.round(cdiTotal), profit: Math.round(cdiTotal - initialCapital), roiPercent: Number(((cdiTotal / safeDiv - 1) * 100).toFixed(1)) },
+    { name: 'IPCA + 6%', finalValue: Math.round(ipcaTotal), profit: Math.round(ipcaTotal - initialCapital), roiPercent: Number(((ipcaTotal / safeDiv - 1) * 100).toFixed(1)) },
+    { name: 'Ibovespa (Méd.)', finalValue: Math.round(ibovTotal), profit: Math.round(ibovTotal - initialCapital), roiPercent: Number(((ibovTotal / safeDiv - 1) * 100).toFixed(1)) },
   ];
 }
 

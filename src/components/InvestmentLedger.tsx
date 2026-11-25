@@ -1,7 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { LedgerEntry, Property } from '../types/auction';
 import { calculateBenchmarkReturns, formatCurrencyBRL } from '../utils/financial';
-import { Wallet, Plus, Mic, ShieldCheck, TrendingUp, BarChart2 } from 'lucide-react';
+import { useTenant } from '../config/tenant';
+import { useAuth } from '../config/auth';
+import { fetchOfficialBcbRates, type OfficialBcbRates } from '../utils/bcbRatesService';
+import { fetchInvestorPortalData, createCapitalCallOrExpense } from '../utils/investorService';
+import { formatQuotas, type InvestmentVehicle } from '../utils/quotaEngine';
+import { Wallet, Plus, Mic, ShieldCheck, TrendingUp, BarChart2, Layers, CheckCircle2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 
 interface InvestmentLedgerProps {
@@ -17,17 +22,74 @@ export const InvestmentLedger: React.FC<InvestmentLedgerProps> = ({
   onAddEntry,
   onOpenVoiceModal,
 }) => {
+  const { tenant } = useTenant();
+  const { user } = useAuth();
+
   const [category, setCategory] = useState<LedgerEntry['category']>('Mão de Obra Reforma');
   const [amount, setAmount] = useState<number>(0);
   const [supplier, setSupplier] = useState('');
   const [description, setDescription] = useState('');
 
-  const propertyEntries = entries.filter((e) => e.propertyId === property.id);
-  const totalExpenses = propertyEntries.reduce((acc, curr) => acc + curr.amount, 0);
-  const initialInvested = property.secondAuctionPrice + (property.secondAuctionPrice * 0.09); // Lance + leiloeiro/cartório
+  const [bcbRates, setBcbRates] = useState<OfficialBcbRates | null>(null);
+  const [vehicles, setVehicles] = useState<InvestmentVehicle[]>([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>('');
+  const [cloudExpenses, setCloudExpenses] = useState<LedgerEntry[]>([]);
+  const [syncNotice, setSyncNotice] = useState<string>('');
 
-  // Benchmark financeiro tradicional
-  const benchmarks = calculateBenchmarkReturns(initialInvested, 10);
+  useEffect(() => {
+    let active = true;
+    fetchOfficialBcbRates().then((r) => {
+      if (active) setBcbRates(r);
+    });
+    fetchInvestorPortalData(user?.id, user?.isDemoSession, user?.isManager).then((data) => {
+      if (!active) return;
+      setVehicles(data.vehicles);
+      if (!selectedVehicleId && data.vehicles.length > 0) {
+        setSelectedVehicleId(data.vehicles[0].id);
+      }
+      const mapped: LedgerEntry[] = data.ledgerEvents
+        .filter((ev) => ev.event_type === 'EXPENSE')
+        .map((ev) => ({
+          id: ev.id,
+          propertyId: ev.vehicle_id,
+          category: (ev.category as LedgerEntry['category']) || 'Outros',
+          amount: Math.abs(ev.amount_brl),
+          date: ev.event_date,
+          supplier: 'Rateio Cotas (Supabase)',
+          description: ev.description,
+          provenance: 'MANUAL',
+        }));
+      setCloudExpenses(mapped);
+    });
+    return () => {
+      active = false;
+    };
+  }, [user?.id, user?.isDemoSession, user?.isManager, selectedVehicleId]);
+
+  const selectedVehicle = useMemo(
+    () => vehicles.find((v) => v.id === selectedVehicleId) || null,
+    [vehicles, selectedVehicleId]
+  );
+
+  const propertyEntries = useMemo(() => {
+    const local = entries.filter((e) => e.propertyId === property.id);
+    if (!selectedVehicleId) return local;
+    const fromVehicle = cloudExpenses.filter((e) => e.propertyId === selectedVehicleId);
+    return [...fromVehicle, ...local];
+  }, [entries, property.id, selectedVehicleId, cloudExpenses]);
+
+  const totalExpenses = propertyEntries.reduce((acc, curr) => acc + curr.amount, 0);
+  const expensePerQuota =
+    selectedVehicle && selectedVehicle.total_quotas_issued > 0
+      ? totalExpenses / selectedVehicle.total_quotas_issued
+      : 0;
+  const initialInvested = property.secondAuctionPrice + property.secondAuctionPrice * 0.09; // Lance + leiloeiro/cartório
+
+  // Benchmark financeiro oficial (BCB CDI / IPCA+6%)
+  const benchmarks = calculateBenchmarkReturns(initialInvested, 10, {
+    cdiAnnualPct: bcbRates?.cdiAnnualPct,
+    ipcaPlus6AnnualPct: bcbRates?.ipcaPlus6AnnualPct,
+  });
   
   // Lucro imobiliário projetado vs renda fixa
   const expectedPropertyProfit = property.estimatedMarketPrice * 0.95 - (initialInvested + property.renovationEstimate);
@@ -41,7 +103,7 @@ export const InvestmentLedger: React.FC<InvestmentLedgerProps> = ({
     { name: 'Imóvel G2 (Base)', ret: Number(propertyRoi.toFixed(1)), fill: '#f97316' },
   ];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (amount <= 0 || !description) return;
 
@@ -55,6 +117,34 @@ export const InvestmentLedger: React.FC<InvestmentLedgerProps> = ({
       provenance: 'MANUAL',
     });
 
+    if (selectedVehicle && (user?.isManager || tenant.features.adminSync)) {
+      const res = await createCapitalCallOrExpense({
+        vehicle: selectedVehicle,
+        kind: 'EXPENSE',
+        title: `${category}: ${description}${supplier ? ` (${supplier})` : ''}`,
+        amountBrl: amount,
+        category,
+        createdByUserId: user?.id,
+      });
+      if (res.ok && res.ledgerEvent) {
+        setCloudExpenses((prev) => [
+          {
+            id: res.ledgerEvent!.id,
+            propertyId: selectedVehicle.id,
+            category,
+            amount,
+            date: res.ledgerEvent!.event_date,
+            supplier: supplier || 'Rateio Cotas (Supabase)',
+            description: res.ledgerEvent!.description,
+            provenance: 'MANUAL',
+          },
+          ...prev,
+        ]);
+        setSyncNotice(`Despesa persistida no Livro-Razão de Cotas (${selectedVehicle.name}).`);
+        setTimeout(() => setSyncNotice(''), 4000);
+      }
+    }
+
     setAmount(0);
     setSupplier('');
     setDescription('');
@@ -62,6 +152,46 @@ export const InvestmentLedger: React.FC<InvestmentLedgerProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Barra de Vínculo com Operação em Cotas + Benchmark BCB */}
+      <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2.5">
+          <Layers className="w-4 h-4 text-sky-600 shrink-0" />
+          <div>
+            <span className="font-black text-slate-900 block">Vínculo com Operação em Cotas (Supabase)</span>
+            <span className="text-[11px] text-slate-500">
+              {selectedVehicle
+                ? `${formatQuotas(selectedVehicle.total_quotas_issued, 2)} emitidas · Impacto: ${formatCurrencyBRL(expensePerQuota)} por cota`
+                : 'Selecione uma operação para ratear despesas no extrato dos cotistas.'}
+            </span>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {bcbRates && (
+            <span className="bg-sky-50 text-sky-800 border border-sky-200 px-2.5 py-1 rounded-full font-bold text-[10px]">
+              BCB CDI: {bcbRates.cdiAnnualPct.toFixed(2).replace('.', ',')}% a.a.
+            </span>
+          )}
+          <select
+            value={selectedVehicleId}
+            onChange={(e) => setSelectedVehicleId(e.target.value)}
+            className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 font-bold text-slate-800"
+          >
+            <option value="">Somente lançamento local</option>
+            {vehicles.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {syncNotice && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{syncNotice}</span>
+        </div>
+      )}
       
       {/* Cards de Métricas do Livro Caixa */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

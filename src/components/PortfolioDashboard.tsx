@@ -35,6 +35,13 @@ import {
   type CapitalCall,
 } from '../utils/investorService';
 import {
+  fetchOfficialBcbRates,
+  fetchBcbPeriodBenchmark,
+  type OfficialBcbRates,
+  type BcbPeriodBenchmark,
+} from '../utils/bcbRatesService';
+import { openInvestorDossierPdf } from '../utils/investorPdfReport';
+import {
   PieChart as PieChartIcon,
   Layers,
   Calculator,
@@ -132,7 +139,18 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
   const [simAdminFeePct, setSimAdminFeePct] = useState<number>(0);
   const [simPerfFeePct, setSimPerfFeePct] = useState<number>(20);
   const [simHurdleType, setSimHurdleType] = useState<HurdleType>('CDI');
-  const [simHurdleAnnualPct, setSimHurdleAnnualPct] = useState<number>(10.75);
+  const [simHurdleAnnualPct, setSimHurdleAnnualPct] = useState<number>(13.65);
+
+  // Taxas Oficiais do Banco Central (BCB SGS 4389 / 433 / 12)
+  const [bcbRates, setBcbRates] = useState<OfficialBcbRates | null>(null);
+  const [liqStartDate, setLiqStartDate] = useState<string>(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 10);
+    return d.toISOString().slice(0, 10);
+  });
+  const [liqEndDate, setLiqEndDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [periodBenchmark, setPeriodBenchmark] = useState<BcbPeriodBenchmark | null>(null);
+  const [loadingPeriodCdi, setLoadingPeriodCdi] = useState<boolean>(false);
 
   // Fase 3: Estados do Painel do Gestor
   const [managerMsg, setManagerMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -196,6 +214,19 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
   useEffect(() => {
     loadPortalData();
   }, [loadPortalData]);
+
+  useEffect(() => {
+    let active = true;
+    fetchOfficialBcbRates().then((rates) => {
+      if (!active) return;
+      setBcbRates(rates);
+      setSimHurdleAnnualPct((prev) => (prev === 13.65 || prev === 10.75 ? rates.cdiAnnualPct : prev));
+      setNewOpHurdlePct((prev) => (prev === 10.75 ? rates.cdiAnnualPct : prev));
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const vehiclesById = useMemo(() => {
     const map: Record<string, InvestmentVehicle> = {};
@@ -298,8 +329,10 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
 
   const simBenchmarkChart = useMemo(() => {
     const years = Math.max(1, simMonths) / 12;
-    const cdiRoi = (Math.pow(1 + 0.1075, years) - 1) * 100;
-    const ipca6Roi = (Math.pow(1 + 0.105, years) - 1) * 100;
+    const cdiRate = (bcbRates?.cdiAnnualPct ?? 13.65) / 100;
+    const ipca6Rate = (bcbRates?.ipcaPlus6AnnualPct ?? 10.77) / 100;
+    const cdiRoi = (Math.pow(1 + cdiRate, years) - 1) * 100;
+    const ipca6Roi = (Math.pow(1 + ipca6Rate, years) - 1) * 100;
     const poupancaRoi = (Math.pow(1 + 0.068, years) - 1) * 100;
     return [
       { name: 'Poupança', roi: Number(poupancaRoi.toFixed(1)), fill: '#94a3b8' },
@@ -311,9 +344,11 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
         fill: tenant.primaryColor || '#ea580c',
       },
     ];
-  }, [simMonths, simWaterfall.netRoiPct, tenant.primaryColor]);
+  }, [simMonths, simWaterfall.netRoiPct, tenant.primaryColor, bcbRates]);
 
   const applySimulatorPreset = (preset: 'single' | 'pool') => {
+    const liveCdi = bcbRates?.cdiAnnualPct ?? 13.65;
+    const liveIpca6 = bcbRates?.ipcaPlus6AnnualPct ?? 10.77;
     if (preset === 'single') {
       setSimQuotaNominal(1000);
       setSimMonths(10);
@@ -321,7 +356,7 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
       setSimAdminFeePct(0);
       setSimPerfFeePct(20);
       setSimHurdleType('CDI');
-      setSimHurdleAnnualPct(10.75);
+      setSimHurdleAnnualPct(liveCdi);
     } else {
       setSimQuotaNominal(100);
       setSimMonths(14);
@@ -329,7 +364,7 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
       setSimAdminFeePct(1.5);
       setSimPerfFeePct(20);
       setSimHurdleType('IPCA_PLUS_6');
-      setSimHurdleAnnualPct(10.5);
+      setSimHurdleAnnualPct(liveIpca6);
     }
   };
 
@@ -549,6 +584,12 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
     const proceeds = Math.max(0, Number(liqSaleProceeds) || 0);
     const invested = selectedMgrVehicle.raised_capital || 0;
     const grossProfit = proceeds - invested;
+    const overridePct =
+      periodBenchmark && selectedMgrVehicle.performance_hurdle_type !== 'NONE'
+        ? selectedMgrVehicle.performance_hurdle_type === 'IPCA_PLUS_6'
+          ? periodBenchmark.periodIpcaPlus6Pct
+          : periodBenchmark.periodCdiPct
+        : null;
     return computeExitFeeWaterfall({
       investedCapital: invested,
       grossProfitBrl: grossProfit,
@@ -557,8 +598,36 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
       performanceFeePct: selectedMgrVehicle.performance_fee_pct,
       hurdleType: selectedMgrVehicle.performance_hurdle_type,
       hurdleAnnualPct: selectedMgrVehicle.performance_hurdle_annual_pct,
+      overrideHurdlePeriodPct: overridePct,
     });
-  }, [selectedMgrVehicle, liqSaleProceeds, liqMonths]);
+  }, [selectedMgrVehicle, liqSaleProceeds, liqMonths, periodBenchmark]);
+
+  const handleFetchPeriodCdi = async () => {
+    if (!liqStartDate || !liqEndDate) return;
+    setLoadingPeriodCdi(true);
+    try {
+      const bm = await fetchBcbPeriodBenchmark(liqStartDate, liqEndDate);
+      setPeriodBenchmark(bm);
+      const monthsCalc = Math.max(1, Math.round(bm.elapsedDays / 30.4));
+      setLiqMonths(monthsCalc);
+    } finally {
+      setLoadingPeriodCdi(false);
+    }
+  };
+
+  const handleOpenDossierPdf = () => {
+    openInvestorDossierPdf({
+      tenant,
+      investorName: user?.name || 'Investidor Visitante',
+      investorEmail: user?.email || tenant.supportEmail,
+      vehicles,
+      quotasByVehicle: positionSummary.quotasByVehicle,
+      ledgerEvents,
+      intents,
+      capitalCalls,
+      bcbRates,
+    });
+  };
 
   const handleExecuteLiquidation = async () => {
     if (!selectedMgrVehicle) return;
@@ -637,6 +706,12 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
                   Modo Gestor Ativo
                 </span>
               )}
+              {bcbRates && (
+                <span className="bg-sky-50 text-sky-800 border border-sky-200 text-[10px] font-bold px-2.5 py-1 rounded-full">
+                  BCB Oficial: CDI {bcbRates.cdiAnnualPct.toFixed(2).replace('.', ',')}% a.a. · IPCA+6%{' '}
+                  {bcbRates.ipcaPlus6AnnualPct.toFixed(2).replace('.', ',')}%
+                </span>
+              )}
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-slate-900">
               Área do Investidor · {tenant.brandName}
@@ -646,23 +721,33 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
             </p>
           </div>
 
-          {!user ? (
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={onOpenAuth}
-              className="px-4 py-2.5 rounded-xl text-white font-black text-xs flex items-center gap-2 shadow-sm hover:opacity-95"
-              style={{ backgroundColor: tenant.primaryColor }}
+              onClick={handleOpenDossierPdf}
+              className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs"
             >
-              <LogIn className="w-4 h-4" />
-              <span>Entrar para Registrar Intenção</span>
+              <FileText className="w-3.5 h-3.5" />
+              <span>Dossiê PDF</span>
             </button>
-          ) : (
-            <div className="bg-white/85 border border-slate-200 rounded-2xl px-3.5 py-2 text-xs">
-              <span className="text-[10px] font-bold uppercase text-slate-400 block">Cotista Conectado</span>
-              <span className="font-black text-slate-900">{user.name}</span>
-              <span className="text-[11px] text-slate-500 block">{user.email}</span>
-            </div>
-          )}
+            {!user ? (
+              <button
+                type="button"
+                onClick={onOpenAuth}
+                className="px-4 py-2 rounded-xl text-white font-black text-xs flex items-center gap-2 shadow-sm hover:opacity-95"
+                style={{ backgroundColor: tenant.primaryColor }}
+              >
+                <LogIn className="w-4 h-4" />
+                <span>Entrar para Registrar Intenção</span>
+              </button>
+            ) : (
+              <div className="bg-white/85 border border-slate-200 rounded-2xl px-3.5 py-2 text-xs">
+                <span className="text-[10px] font-bold uppercase text-slate-400 block">Cotista Conectado</span>
+                <span className="font-black text-slate-900">{user.name}</span>
+                <span className="text-[11px] text-slate-500 block">{user.email}</span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* 4 KPIs Reais do Investidor */}
@@ -1211,8 +1296,8 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
                   onChange={(e) => {
                     const next = e.target.value as HurdleType;
                     setSimHurdleType(next);
-                    if (next === 'CDI') setSimHurdleAnnualPct(10.75);
-                    if (next === 'IPCA_PLUS_6') setSimHurdleAnnualPct(10.5);
+                    if (next === 'CDI') setSimHurdleAnnualPct(bcbRates?.cdiAnnualPct ?? 13.65);
+                    if (next === 'IPCA_PLUS_6') setSimHurdleAnnualPct(bcbRates?.ipcaPlus6AnnualPct ?? 10.77);
                     if (next === 'FIXED_ANNUAL') setSimHurdleAnnualPct(12);
                     if (next === 'NONE') setSimHurdleAnnualPct(0);
                   }}
@@ -1371,17 +1456,28 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() =>
-                  exportQuotaLedgerCsv(ledgerEvents, vehiclesById, user?.email || 'investidor@g2auction.com.br')
-                }
-                disabled={ledgerEvents.length === 0}
-                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold flex items-center gap-1.5 disabled:opacity-40"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Exportar Extrato CSV (IR)</span>
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleOpenDossierPdf}
+                  className="px-4 py-2 rounded-xl text-white font-bold flex items-center gap-1.5"
+                  style={{ backgroundColor: tenant.primaryColor }}
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Gerar Dossiê PDF White-Label</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    exportQuotaLedgerCsv(ledgerEvents, vehiclesById, user?.email || 'investidor@g2auction.com.br')
+                  }
+                  disabled={ledgerEvents.length === 0}
+                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold flex items-center gap-1.5 disabled:opacity-40"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Exportar Extrato CSV (IR)</span>
+                </button>
+              </div>
             </div>
           )}
 
@@ -1897,6 +1993,41 @@ export const PortfolioDashboard: React.FC<PortfolioDashboardProps> = ({
               {selectedMgrVehicle && liquidationPreview && (
                 <div className="bg-slate-900 text-white p-5 rounded-3xl space-y-3">
                   <span className="font-black text-sm block">5. Liquidação Final na Venda (Exit Waterfall)</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+                    <div>
+                      <label className="text-[10px] uppercase text-slate-400 block mb-1">Data Aporte</label>
+                      <input
+                        type="date"
+                        value={liqStartDate}
+                        onChange={(e) => setLiqStartDate(e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-2 font-bold text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase text-slate-400 block mb-1">Data Venda</label>
+                      <input
+                        type="date"
+                        value={liqEndDate}
+                        onChange={(e) => setLiqEndDate(e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-2 font-bold text-white"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={loadingPeriodCdi}
+                      onClick={handleFetchPeriodCdi}
+                      className="py-2 px-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-black text-[11px] disabled:opacity-50"
+                    >
+                      {loadingPeriodCdi ? 'Buscando BCB...' : 'Buscar CDI Real (BCB)'}
+                    </button>
+                  </div>
+                  {periodBenchmark && (
+                    <div className="bg-sky-500/15 border border-sky-400/30 rounded-xl px-3 py-2 text-[11px] text-sky-200">
+                      <strong>{periodBenchmark.source}:</strong> CDI composto de{' '}
+                      <strong>{periodBenchmark.periodCdiPct.toFixed(2).replace('.', ',')}%</strong> ({periodBenchmark.businessDays} dias úteis) · IPCA+6%:{' '}
+                      <strong>{periodBenchmark.periodIpcaPlus6Pct.toFixed(2).replace('.', ',')}%</strong>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
                       <label className="text-[10px] uppercase text-slate-400 block mb-1">Valor Bruto Venda (R$)</label>

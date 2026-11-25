@@ -111,6 +111,7 @@ export interface FeeWaterfallInput {
   performanceFeePct: number;
   hurdleType: HurdleType;
   hurdleAnnualPct: number;
+  overrideHurdlePeriodPct?: number | null;
   irTaxPct?: number;
 }
 
@@ -194,6 +195,8 @@ export function computeExitFeeWaterfall(input: FeeWaterfallInput): FeeWaterfallR
   const hurdleBenchmarkBrl =
     input.hurdleType === 'NONE'
       ? 0
+      : typeof input.overrideHurdlePeriodPct === 'number' && input.overrideHurdlePeriodPct > 0
+      ? round2(invested * (input.overrideHurdlePeriodPct / 100))
       : round2(invested * (Math.pow(1 + hurdleAnnualPct / 100, months / 12) - 1));
 
   const excessAboveHurdleBrl = Math.max(0, round2(profitAfterAdminBrl - hurdleBenchmarkBrl));
