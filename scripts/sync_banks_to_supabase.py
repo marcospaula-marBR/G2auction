@@ -14,6 +14,7 @@ import argparse
 import csv
 import datetime as dt
 import hashlib
+import html as html_lib
 import json
 import os
 import re
@@ -442,6 +443,373 @@ def fetch_caixa_uf(uf: str, csv_path: Path | None = None) -> tuple[str, list[dic
 
 
 # =====================================================================
+# CONECTORES REAIS: MEGA LEILÕES E PORTAL ZUK (SANTANDER, ITAÚ, BB, JUDICIAIS)
+# =====================================================================
+def parse_br_datetime_to_iso(text: str | None) -> str | None:
+    if not text:
+        return None
+    m = re.search(r"(\d{2})/(\d{2})/(\d{4})(?:[^\d]+(\d{2}):(\d{2}))?", text)
+    if not m:
+        return None
+    day, month, year = m.group(1), m.group(2), m.group(3)
+    hh = m.group(4) or "10"
+    mm = m.group(5) or "00"
+    return f"{year}-{month}-{day}T{hh}:{mm}:00-03:00"
+
+
+def classify_source_from_text(text: str, is_judicial: bool, fallback_source: str) -> str:
+    low = (text or "").lower()
+    if "santander" in low:
+        return "SANTANDER"
+    if "itaú" in low or "itau" in low:
+        return "ITAU"
+    if "banco do brasil" in low or "bb" in re.findall(r"\bbb\b", low):
+        return "BB"
+    if "bradesco" in low:
+        return "BRADESCO"
+    if "caixa" in low or "cef" in re.findall(r"\bcef\b", low):
+        return "CAIXA"
+    if is_judicial:
+        return "JUDICIAL"
+    return fallback_source
+
+
+def infer_property_type(text: str | None) -> str:
+    low = (text or "").lower()
+    if "apartamento" in low or "apto" in low:
+        return "Apartamento"
+    if "casa" in low or "sobrado" in low:
+        return "Casa"
+    if "terreno" in low or "lote" in low or "gleba" in low:
+        return "Terreno"
+    if "galpão" in low or "galpao" in low:
+        return "Galpão"
+    if "loja" in low:
+        return "Loja"
+    if "sala" in low or "conjunto" in low:
+        return "Sala"
+    if "comercial" in low or "industrial" in low or "prédio" in low or "predio" in low:
+        return "Comercial"
+    if "rural" in low or "fazenda" in low or "sítio" in low or "chácara" in low:
+        return "Rural"
+    return "Imóvel"
+
+
+def strip_html_tags(raw: str | None) -> str:
+    if not raw:
+        return ""
+    cleaned = re.sub(r"<[^>]+>", " ", raw)
+    return re.sub(r"\s+", " ", html_lib.unescape(cleaned)).strip()
+
+
+def fetch_mega_leiloes_uf(uf: str, max_pages: int = 8) -> list[dict[str, Any]]:
+    uf_upper = uf.strip().upper()
+    uf_lower = uf_upper.lower()
+    items: list[dict[str, Any]] = []
+    page = 1
+    total_pages = 1
+    today_iso = dt.date.today().isoformat()
+
+    while page <= min(total_pages, max_pages):
+        url = f"https://www.megaleiloes.com.br/imoveis/{uf_lower}?pagina={page}"
+        try:
+            req = urllib.request.Request(url, headers={**BROWSER_HEADERS, "Accept": "text/html,application/xhtml+xml"})
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                if resp.status != 200:
+                    break
+                html_text = resp.read().decode("utf-8", errors="ignore")
+        except Exception as exc:
+            print(f"[MEGA {uf_upper} pág {page}] aviso: {exc}")
+            break
+
+        if page == 1:
+            m_last = re.search(r'pagina=(\d+)["\']\s+rel=["\']last["\']', html_text)
+            if not m_last:
+                m_last = re.search(r'rel=["\']last["\'][^>]+pagina=(\d+)', html_text)
+            if m_last:
+                total_pages = max(1, int(m_last.group(1)))
+
+        blocks = re.split(r'<div[^>]+class="col-sm-6 col-md-4 col-lg-3"[^>]+data-key="(\d+)"[^>]*>', html_text)
+        # re.split com grupo retorna [prefix, key1, block1, key2, block2, ...]
+        for idx in range(1, len(blocks) - 1, 2):
+            data_key = blocks[idx]
+            card = blocks[idx + 1]
+
+            m_title = re.search(r'<a[^>]+class="card-title"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)</a>', card)
+            if not m_title:
+                continue
+            raw_url = html_lib.unescape(m_title.group(1)).split("?")[0]
+            title = strip_html_tags(m_title.group(2))
+
+            m_num = re.search(r'<div class="card-number[^"]*">([^<]+)</div>', card)
+            card_num = strip_html_tags(m_num.group(1)) if m_num else data_key
+            prop_id = f"MEGA-{card_num}"
+
+            m_img = re.search(r'data-bg="([^"]+)"', card)
+            photo_url = html_lib.unescape(m_img.group(1)) if m_img else None
+
+            m_bank = re.search(r'bank_icons/leilao-banco-([^.]+)\.png', card)
+            bank_hint = m_bank.group(1) if m_bank else ""
+
+            m_mod = re.search(r'<div class="card-instance-title">\s*<a[^>]*>([^<]+)</a>', card)
+            mod_label = strip_html_tags(m_mod.group(1)) if m_mod else "Extrajudicial"
+            is_judicial = "judicial" in mod_label.lower() and "extra" not in mod_label.lower()
+
+            source = classify_source_from_text(f"{bank_hint} {title}", is_judicial, "MEGA")
+
+            m_loc = re.search(r'<a class="card-locality"[^>]*>([^<]+)</a>', card)
+            loc_str = strip_html_tags(m_loc.group(1)) if m_loc else ""
+            city = loc_str.split(",")[0].strip() if "," in loc_str else loc_str
+            state = loc_str.split(",")[1].strip().upper()[:2] if "," in loc_str else uf_upper
+
+            m_down = re.search(r'<div class="card-down">[\s\S]*?<span class="value">(\d+(?:[.,]\d+)?)%</span>', card)
+            disc_val = parse_br_number(m_down.group(1)) if m_down else None
+
+            m_card_price = re.search(r'<div class="card-price">([^<]+)</div>', card)
+            card_price = parse_br_number(m_card_price.group(1)) if m_card_price else None
+
+            inst_vals = [parse_br_number(v) for v in re.findall(r'<span class="card-instance-value">([^<]+)</span>', card)]
+            inst_vals = [v for v in inst_vals if v and v > 0]
+            first_val = inst_vals[0] if len(inst_vals) >= 1 else card_price
+            second_val = inst_vals[1] if len(inst_vals) >= 2 else None
+
+            m_d1 = re.search(r'<span class="card-first-instance-date">([\s\S]*?)</span>', card)
+            m_d2 = re.search(r'<span class="card-second-instance-date">([\s\S]*?)</span>', card)
+            d1_iso = parse_br_datetime_to_iso(strip_html_tags(m_d1.group(1))) if m_d1 else None
+            d2_iso = parse_br_datetime_to_iso(strip_html_tags(m_d2.group(1))) if m_d2 else None
+
+            sale_val = second_val or first_val or card_price
+            appraisal_val = first_val
+            if sale_val and appraisal_val and appraisal_val <= sale_val and disc_val and 0 < disc_val < 99:
+                appraisal_val = round(sale_val / (1 - disc_val / 100.0), 2)
+            elif sale_val and not appraisal_val and disc_val and 0 < disc_val < 99:
+                appraisal_val = round(sale_val / (1 - disc_val / 100.0), 2)
+
+            if sale_val and appraisal_val and appraisal_val > sale_val and not disc_val:
+                disc_val = round(((appraisal_val - sale_val) / appraisal_val) * 100.0, 2)
+
+            m_area = re.search(r'(\d+(?:[.,]\d+)?)\s*m²', title, re.IGNORECASE)
+            area_val = parse_br_number(m_area.group(1)) if m_area else None
+            m_vagas = re.search(r'(\d+)\s*vaga', title, re.IGNORECASE)
+            vagas_val = int(m_vagas.group(1)) if m_vagas else None
+
+            modality = f"Leilão {mod_label} (Mega Leilões)"
+            record = {
+                "source": source,
+                "source_property_id": prop_id,
+                "title": title,
+                "state": state,
+                "city": city,
+                "neighborhood": None,
+                "address": title,
+                "property_type": infer_property_type(title),
+                "sale_value": sale_val,
+                "current_minimum_value": sale_val,
+                "appraisal_value": appraisal_val,
+                "first_auction_value": first_val,
+                "second_auction_value": second_val,
+                "discount_percentage": disc_val if (disc_val and 0 < disc_val < 100) else None,
+                "calculated_discount_percentage": disc_val if (disc_val and 0 < disc_val < 100) else None,
+                "accepts_financing": None,
+                "occupancy_status": "UNKNOWN",
+                "description": f"{title} — {modality}. Comitente/Origem: {bank_hint or source}.",
+                "sale_modality": modality,
+                "source_url": raw_url,
+                "total_area": area_val,
+                "private_area": area_val,
+                "land_area": None,
+                "bedrooms": None,
+                "parking_spaces": vagas_val,
+                "main_photo_url": photo_url,
+                "first_auction_date": d1_iso,
+                "second_auction_date": d2_iso,
+                "auction_date": d2_iso or d1_iso,
+                "auctioneer": "Mega Leilões",
+                "payment_conditions": None,
+                "max_installments": None,
+                "min_down_payment": None,
+                "min_installment_value": None,
+                "status": "ACTIVE",
+                "source_generated_at": today_iso,
+                "source_file_url": url,
+                "raw_list_data": {"auctioneer": "Mega Leilões", "bank_hint": bank_hint, "card_number": card_num},
+            }
+            record["source_hash"] = compute_hash(record)
+            items.append(record)
+
+        page += 1
+        if page <= min(total_pages, max_pages):
+            time.sleep(0.25)
+
+    return items
+
+
+def fetch_portal_zuk_uf(uf: str) -> list[dict[str, Any]]:
+    uf_upper = uf.strip().upper()
+    url = f"https://www.portalzuk.com.br/leilao-de-imoveis/u/todos-imoveis/{uf_upper.lower()}"
+    today_iso = dt.date.today().isoformat()
+
+    try:
+        req = urllib.request.Request(url, headers={**BROWSER_HEADERS, "Accept": "text/html,application/xhtml+xml"})
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            if resp.status != 200:
+                return []
+            html_text = resp.read().decode("utf-8", errors="ignore")
+    except Exception as exc:
+        print(f"[ZUK {uf_upper}] aviso: {exc}")
+        return []
+
+    blocks = html_text.split('class="card-property card_lotes_div"')
+    items: list[dict[str, Any]] = []
+
+    for card in blocks[1:]:
+        m_link = re.search(r'<a[^>]+href="(https://www\.portalzuk\.com\.br/imovel/[^"]+)"[^>]*title="([^"]*)"', card)
+        if not m_link:
+            m_link = re.search(r'<a[^>]+href="(https://www\.portalzuk\.com\.br/imovel/[^"]+)"', card)
+        if not m_link:
+            continue
+
+        item_url = html_lib.unescape(m_link.group(1)).split("?")[0]
+        title_attr = html_lib.unescape(m_link.group(2)) if m_link.lastindex and m_link.lastindex >= 2 else ""
+
+        m_id = re.search(r'-(\d+)$', item_url)
+        if not m_id:
+            m_id = re.search(r'id="(\d+)"', card)
+        lot_id = m_id.group(1) if m_id else hashlib.md5(item_url.encode("utf-8")).hexdigest()[:10]
+        prop_id = f"ZUK-{lot_id}"
+
+        m_img = re.search(r'<img[^>]+src="(https://imagens\.portalzuk\.com\.br/[^"]+)"', card)
+        photo_url = html_lib.unescape(m_img.group(1)) if m_img else None
+
+        m_type = re.search(r'<span class="card-property-price-lote">([^<]+)</span>', card)
+        raw_type = strip_html_tags(m_type.group(1)) if m_type else "Imóvel"
+
+        m_addr_block = re.search(r'<address class="card-property-address">([\s\S]*?)</address>', card)
+        city, state, neigh, street = "", uf_upper, None, None
+        if m_addr_block:
+            addr_blk = m_addr_block.group(1)
+            m_city_st = re.search(r'<a[^>]*>([^<]+)</a>\s*(?:-\s*([^<]+))?</span>', addr_blk)
+            if m_city_st:
+                city_st = strip_html_tags(m_city_st.group(1))
+                if "/" in city_st:
+                    city = city_st.split("/")[0].strip()
+                    state = city_st.split("/")[1].strip().upper()[:2]
+                else:
+                    city = city_st
+                if m_city_st.group(2):
+                    neigh = strip_html_tags(m_city_st.group(2))
+            spans = re.findall(r'<span[^>]*>([\s\S]*?)</span>', addr_blk)
+            if spans:
+                last_span = strip_html_tags(spans[-1])
+                if last_span and city not in last_span:
+                    street = last_span
+
+        m_area = re.search(r'<span class="card-property-info-label">([^<]+)</span>', card)
+        area_val = None
+        if m_area:
+            m_a_num = re.search(r'([\d.,]+)\s*m²', m_area.group(1))
+            if m_a_num:
+                area_val = parse_br_number(m_a_num.group(1))
+
+        # Preços, descontos e datas das praças
+        price_matches = re.findall(
+            r'<span class="card-property-price-value">R\$\s*([\d.,]+)(?:[\s\S]*?<span class="card-property-price-percent">[\s\S]*?(\d+)[\s\S]*?</span>)?',
+            card,
+        )
+        parsed_prices = [(parse_br_number(p), parse_br_number(d) if d else None) for p, d in price_matches]
+        parsed_prices = [(p, d) for p, d in parsed_prices if p and p > 0]
+
+        first_val = parsed_prices[0][0] if len(parsed_prices) >= 1 else None
+        second_val = parsed_prices[1][0] if len(parsed_prices) >= 2 else None
+        sale_val = second_val or first_val
+
+        discounts = [d for _, d in parsed_prices if d and 0 < d < 100]
+        disc_val = discounts[-1] if discounts else None
+
+        appraisal_val = first_val
+        if sale_val and appraisal_val and appraisal_val <= sale_val and disc_val and 0 < disc_val < 99:
+            appraisal_val = round(sale_val / (1 - disc_val / 100.0), 2)
+
+        date_matches = re.findall(r'<span class="card-property-price-data">([^<]+)</span>', card)
+        d1_iso = parse_br_datetime_to_iso(date_matches[0]) if len(date_matches) >= 1 else None
+        d2_iso = parse_br_datetime_to_iso(date_matches[1]) if len(date_matches) >= 2 else None
+
+        is_judicial = "judicial" in (title_attr + " " + item_url).lower() and "extrajudicial" not in (title_attr + " " + item_url).lower()
+        source = classify_source_from_text(title_attr, is_judicial, "ZUK")
+
+        clean_title = f"{raw_type} — {street or neigh or city}, {city}/{state}".strip(" —,")
+        if title_attr and "|" in title_attr:
+            comitente_part = title_attr.split("|")[0].replace("em leilão -", "").strip()
+        else:
+            comitente_part = title_attr or "Portal Zuk"
+
+        record = {
+            "source": source,
+            "source_property_id": prop_id,
+            "title": clean_title,
+            "state": state,
+            "city": city,
+            "neighborhood": neigh,
+            "address": street or neigh or f"{city}/{state}",
+            "property_type": infer_property_type(raw_type),
+            "sale_value": sale_val,
+            "current_minimum_value": sale_val,
+            "appraisal_value": appraisal_val,
+            "first_auction_value": first_val,
+            "second_auction_value": second_val,
+            "discount_percentage": disc_val,
+            "calculated_discount_percentage": disc_val,
+            "accepts_financing": None,
+            "occupancy_status": "UNKNOWN",
+            "description": f"{comitente_part} (Portal Zuk)".strip(),
+            "sale_modality": "Leilão Judicial (Portal Zuk)" if is_judicial else "Leilão Extrajudicial (Portal Zuk)",
+            "source_url": item_url,
+            "total_area": area_val,
+            "private_area": area_val,
+            "land_area": None,
+            "bedrooms": None,
+            "parking_spaces": None,
+            "main_photo_url": photo_url,
+            "first_auction_date": d1_iso,
+            "second_auction_date": d2_iso,
+            "auction_date": d2_iso or d1_iso,
+            "auctioneer": "Portal Zuk",
+            "payment_conditions": None,
+            "max_installments": None,
+            "min_down_payment": None,
+            "min_installment_value": None,
+            "status": "ACTIVE",
+            "source_generated_at": today_iso,
+            "source_file_url": url,
+            "raw_list_data": {"auctioneer": "Portal Zuk", "title_attr": title_attr},
+        }
+        record["source_hash"] = compute_hash(record)
+        items.append(record)
+
+    return items
+
+
+def reconcile_auctioneer_uf(conn, id_prefix: str, uf: str, active_ids: set[str]) -> int:
+    if not active_ids:
+        return 0
+    cur = conn.cursor()
+    cur.execute(
+        """
+        UPDATE public.properties
+        SET status = 'POSSIBLY_REMOVED', updated_at = NOW()
+        WHERE source_property_id LIKE %s
+          AND state = %s
+          AND status = 'ACTIVE'
+          AND NOT (source_property_id = ANY(%s));
+        """,
+        (f"{id_prefix}%", uf.upper(), list(active_ids)),
+    )
+    removed = cur.rowcount
+    conn.commit()
+    return removed
+
+
+# =====================================================================
 # PERSISTÊNCIA EM LOTE NO SUPABASE
 # =====================================================================
 UPSERT_COLUMNS = [
@@ -553,7 +921,7 @@ def log_import_run(conn, uf: str, status: str, meta: dict[str, Any], written: in
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Sincronização real multi-bancos para o Supabase.")
-    parser.add_argument("--banks", default="bradesco,caixa", help="Bancos separados por vírgula (ex: bradesco,caixa)")
+    parser.add_argument("--banks", default="bradesco,caixa,mega,zuk", help="Fontes separadas por vírgula (ex: bradesco,caixa,mega,zuk)")
     parser.add_argument("--ufs", default="SP,RJ,MG,PR,RS,SC", help="UFs separadas por vírgula")
     parser.add_argument("--caixa-csv", default=None, help="Caminho opcional para CSV oficial da Caixa (ex: public/Lista_imoveis_SP.csv)")
     parser.add_argument("--run-radar", action="store_true", help="Executa o Radar IA após sincronizar")
@@ -593,6 +961,30 @@ def main() -> int:
                 else:
                     log_import_run(conn, uf, status, meta, 0, 0, time.time() - t0, f"Lista_imoveis_{uf}.csv")
                     print(f"[CAIXA {uf}] {status}: {meta.get('error', 'sem registros')}")
+
+        if "mega" in banks:
+            for uf in ufs:
+                t0 = time.time()
+                rows = fetch_mega_leiloes_uf(uf)
+                if rows:
+                    written = upsert_properties_batch(conn, rows)
+                    removed = reconcile_auctioneer_uf(conn, "MEGA-", uf, {r["source_property_id"] for r in rows})
+                    grand_total += written
+                    print(f"[MEGA LEILÕES {uf}] {written} imóveis sincronizados (removidos: {removed}) em {time.time() - t0:.1f}s")
+                else:
+                    print(f"[MEGA LEILÕES {uf}] 0 lotes encontrados.")
+
+        if "zuk" in banks:
+            for uf in ufs:
+                t0 = time.time()
+                rows = fetch_portal_zuk_uf(uf)
+                if rows:
+                    written = upsert_properties_batch(conn, rows)
+                    removed = reconcile_auctioneer_uf(conn, "ZUK-", uf, {r["source_property_id"] for r in rows})
+                    grand_total += written
+                    print(f"[PORTAL ZUK {uf}] {written} imóveis sincronizados (removidos: {removed}) em {time.time() - t0:.1f}s")
+                else:
+                    print(f"[PORTAL ZUK {uf}] 0 lotes encontrados.")
 
         print(f"[SYNC FINALIZADO] Total sincronizado nesta execução: {grand_total} imóveis reais.")
     finally:

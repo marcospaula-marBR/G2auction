@@ -36,9 +36,13 @@ interface RadarIAModalProps {
 const UFS = ['SP', 'RJ', 'MG', 'PR', 'RS', 'SC', 'BA', 'GO', 'DF', 'PE', 'CE'];
 const BANKS = [
   { id: 'CAIXA', label: 'Caixa' },
-  { id: 'SANTANDER', label: 'Santander' },
   { id: 'BRADESCO', label: 'Bradesco' },
+  { id: 'SANTANDER', label: 'Santander' },
+  { id: 'ITAU', label: 'Itaú' },
   { id: 'BB', label: 'Banco do Brasil' },
+  { id: 'JUDICIAL', label: 'Judicial' },
+  { id: 'ZUK', label: 'Portal Zuk' },
+  { id: 'MEGA', label: 'Mega Leilões' },
 ];
 const TYPES = ['Apartamento', 'Casa', 'Comercial', 'Terreno'];
 

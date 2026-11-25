@@ -61,7 +61,11 @@ function normalizeBankTag(property: Property): string {
   if (b.includes('CAIXA')) return 'CAIXA';
   if (b.includes('SANTANDER')) return 'SANTANDER';
   if (b.includes('BRADESCO')) return 'BRADESCO';
+  if (b.includes('ITAÚ') || b.includes('ITAU')) return 'ITAU';
   if (b.includes('BRASIL') || b.includes('BB')) return 'BB';
+  if (b.includes('JUDICIAL')) return 'JUDICIAL';
+  if (b.includes('ZUK')) return 'ZUK';
+  if (b.includes('MEGA')) return 'MEGA';
   return b || 'OUTRO';
 }
 

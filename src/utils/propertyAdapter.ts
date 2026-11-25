@@ -149,11 +149,24 @@ export function adaptCatalogItemToProperty(raw: any, index: number = 0): Propert
   const bedrooms = raw.bedrooms ?? descFields?.bedrooms ?? (category === 'Apartamento' ? 2 : category === 'Casa' ? 3 : 0);
   const parkingSpaces = raw.parking_spaces ?? descFields?.parking_spaces ?? 1;
 
-  // Identificação do Banco de Origem
-  const sourceBank = raw.source === 'SANTANDER' ? 'BANCO SANTANDER'
-    : raw.source === 'BRADESCO' ? 'BANCO BRADESCO'
-    : raw.source === 'CAIXA' ? 'CAIXA ECONÔMICA FEDERAL'
+  // Identificação do Banco / Origem
+  const sourceCode = (raw.source || '').toUpperCase();
+  const sourceBank = sourceCode === 'SANTANDER' ? 'BANCO SANTANDER'
+    : sourceCode === 'BRADESCO' ? 'BANCO BRADESCO'
+    : sourceCode === 'ITAU' ? 'BANCO ITAÚ'
+    : sourceCode === 'BB' ? 'BANCO DO BRASIL'
+    : sourceCode === 'JUDICIAL' ? 'LEILÃO JUDICIAL'
+    : sourceCode === 'ZUK' ? 'PORTAL ZUK'
+    : sourceCode === 'MEGA' ? 'MEGA LEILÕES'
+    : sourceCode === 'CAIXA' ? 'CAIXA ECONÔMICA FEDERAL'
     : (raw.originBank || 'CAIXA ECONÔMICA FEDERAL');
+
+  const mappedOriginBank: Property['originBank'] = sourceCode === 'SANTANDER' ? 'Santander'
+    : sourceCode === 'BRADESCO' ? 'Bradesco'
+    : sourceCode === 'ITAU' ? 'Itaú'
+    : sourceCode === 'BB' ? 'Banco do Brasil'
+    : sourceCode === 'CAIXA' ? 'Caixa Econômica Federal'
+    : 'Outro Banco';
 
   // Foto oficial ou fallback
   const hdnImovel = extractHdnImovelFromUrl(raw.source_url || '') || raw.source_property_id;
@@ -195,7 +208,7 @@ export function adaptCatalogItemToProperty(raw: any, index: number = 0): Propert
     auctioneerSite: raw.source_url || 'https://venda-imoveis.caixa.gov.br',
     isAuctioneerVerified: true,
     bankName: sourceBank,
-    originBank: sourceBank,
+    originBank: mappedOriginBank,
     debts: {
       iptu: Math.round(saleValue * 0.012),
       condominium: Math.round(saleValue * 0.008),

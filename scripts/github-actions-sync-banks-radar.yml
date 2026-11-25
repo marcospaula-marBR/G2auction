@@ -35,4 +35,4 @@ jobs:
           RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
         run: |
           UFS="${{ github.event.inputs.ufs || 'SP,RJ,MG,PR,RS,SC,BA,DF,GO,PE,CE' }}"
-          python scripts/sync_banks_to_supabase.py --banks bradesco,caixa --ufs "$UFS" --run-radar
+          python scripts/sync_banks_to_supabase.py --banks bradesco,caixa,mega,zuk --ufs "$UFS" --run-radar

@@ -343,14 +343,18 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
               Oportunidades da Caixa Econômica, Santander, Bradesco e Banco do Brasil.
             </p>
 
-            {/* Pills Únicas de Bancos */}
-            <div className="flex flex-wrap items-center gap-2 mt-3">
+            {/* Pills Únicas de Bancos e Origens */}
+            <div className="flex flex-wrap items-center gap-1.5 mt-3">
               {[
-                { id: 'ALL', label: 'Todos os Bancos' },
-                { id: 'CAIXA', label: 'Caixa Econômica' },
-                { id: 'SANTANDER', label: 'Santander' },
+                { id: 'ALL', label: 'Todos' },
+                { id: 'CAIXA', label: 'Caixa' },
                 { id: 'BRADESCO', label: 'Bradesco' },
+                { id: 'SANTANDER', label: 'Santander' },
+                { id: 'ITAU', label: 'Itaú' },
                 { id: 'BB', label: 'Banco do Brasil' },
+                { id: 'JUDICIAL', label: 'Judicial' },
+                { id: 'ZUK', label: 'Portal Zuk' },
+                { id: 'MEGA', label: 'Mega Leilões' },
               ].map((b) => (
                 <button
                   key={b.id}
@@ -391,7 +395,9 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
             <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mr-1">
               Última Atualização dos Bancos:
             </span>
-            {bankFreshness.map((b) => {
+            {bankFreshness
+              .filter((b) => b.activeCount > 0 || ['CAIXA', 'BRADESCO', 'SANTANDER', 'ITAU'].includes(b.source))
+              .map((b) => {
               const syncDate = b.lastSyncedAt ? new Date(b.lastSyncedAt) : null;
               const isRecent =
                 syncDate !== null && !isNaN(syncDate.getTime()) && Date.now() - syncDate.getTime() < 48 * 3600 * 1000;
@@ -928,7 +934,27 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
                             )}
                             {(prop.source === 'BB' || prop.source === 'BRASIL') && (
                               <span className="bg-yellow-400 text-blue-950 font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider border border-yellow-500">
-                                🟡 Banco do Brasil
+                                Banco do Brasil
+                              </span>
+                            )}
+                            {prop.source === 'ITAU' && (
+                              <span className="bg-orange-600 text-white font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                Itaú
+                              </span>
+                            )}
+                            {prop.source === 'JUDICIAL' && (
+                              <span className="bg-purple-700 text-white font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                Judicial
+                              </span>
+                            )}
+                            {prop.source === 'ZUK' && (
+                              <span className="bg-indigo-600 text-white font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                Portal Zuk
+                              </span>
+                            )}
+                            {prop.source === 'MEGA' && (
+                              <span className="bg-sky-700 text-white font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                Mega Leilões
                               </span>
                             )}
                             {(!prop.source || prop.source === 'CAIXA') && (

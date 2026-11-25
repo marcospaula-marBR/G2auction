@@ -889,7 +889,7 @@ export interface BankFreshnessInfo {
  * FREQUÊNCIA E ATUALIZAÇÃO REAL POR BANCO NO SUPABASE
  */
 export async function fetchBankFreshnessFromSupabase(): Promise<BankFreshnessInfo[]> {
-  const sources = ['CAIXA', 'BRADESCO', 'SANTANDER', 'BB'];
+  const sources = ['CAIXA', 'BRADESCO', 'SANTANDER', 'ITAU', 'BB', 'JUDICIAL', 'ZUK', 'MEGA'];
 
   if (supabase) {
     try {

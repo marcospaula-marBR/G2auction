@@ -7,7 +7,7 @@ interface IntroSplashProps {
   version?: string;
 }
 
-export const IntroSplash: React.FC<IntroSplashProps> = ({ onComplete, version = 'v3.10.0' }) => {
+export const IntroSplash: React.FC<IntroSplashProps> = ({ onComplete, version = 'v3.11.0' }) => {
   const { tenant } = useTenant();
 
   return (
