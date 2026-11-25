@@ -12,8 +12,13 @@ Uso:
 import argparse
 import json
 import os
+import smtplib
+import ssl
 import sys
 import urllib.request
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.utils import formataddr
 from pathlib import Path
 from typing import Any
 
@@ -175,24 +180,83 @@ def send_telegram_alert(chat_id: str, matches: list[dict[str, Any]]) -> bool:
         return False
 
 
-def send_resend_email(to_email: str, matches: list[dict[str, Any]]) -> bool:
-    api_key = os.getenv("RESEND_API_KEY", "").strip()
-    from_email = os.getenv("RESEND_FROM_EMAIL", "Radar IA <onboarding@resend.dev>").strip()
-    if not api_key or not to_email:
-        return False
+def is_email_configured() -> bool:
+    has_smtp = bool(os.getenv("SMTP_USER", "").strip() and os.getenv("SMTP_PASS", "").strip())
+    has_resend = bool(os.getenv("RESEND_API_KEY", "").strip())
+    return has_smtp or has_resend
 
+
+def build_matches_html(matches: list[dict[str, Any]]) -> tuple[str, str]:
     items_html = "".join(
         f"<li><strong>{m['prop'].get('source')} • {m['prop'].get('city')}/{m['prop'].get('state')}</strong> — "
         f"{format_brl(float(m['prop'].get('current_minimum_value') or 0))} ({m['prop'].get('discount_percentage')}% desc.) "
         f"[Score {m['score']}/100]<br/><small>{m['summary']}</small></li>"
         for m in matches[:8]
     )
+    subject = f"Radar IA: {len(matches)} novas oportunidades para o seu perfil"
     html = f"<h2>Radar IA — Novas Oportunidades Compatíveis</h2><ul>{items_html}</ul>"
+    return subject, html
+
+
+def send_smtp_email(to_email: str, subject: str, html: str, text_fallback: str = "") -> tuple[bool, str]:
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com").strip() or "smtp.gmail.com"
+    smtp_port = int((os.getenv("SMTP_PORT", "587") or "587").strip())
+    smtp_user = os.getenv("SMTP_USER", "").strip()
+    smtp_pass = "".join(os.getenv("SMTP_PASS", "").split())
+    from_email = os.getenv("SMTP_FROM_EMAIL", smtp_user).strip() or smtp_user
+    from_name = os.getenv("SMTP_FROM_NAME", "G2 Auction • Radar IA").strip() or "G2 Auction • Radar IA"
+
+    if not smtp_user or not smtp_pass or not to_email:
+        return False, "SMTP_USER ou SMTP_PASS não configurado no .env."
+
+    msg = MIMEMultipart("alternative")
+    msg["From"] = formataddr((from_name, from_email))
+    msg["To"] = to_email
+    msg["Subject"] = subject
+
+    plain = text_fallback or "Novas oportunidades do Radar IA G2 Auction. Abra a versão HTML deste e-mail para ver os detalhes."
+    msg.attach(MIMEText(plain, "plain", "utf-8"))
+    msg.attach(MIMEText(html, "html", "utf-8"))
+
+    context = ssl.create_default_context()
+    try:
+        if smtp_port == 465:
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context, timeout=15) as server:
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(from_email, [to_email], msg.as_string())
+        else:
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+                server.ehlo()
+                server.starttls(context=context)
+                server.ehlo()
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(from_email, [to_email], msg.as_string())
+        return True, f"E-mail enviado via {smtp_host}:{smtp_port} para {to_email}"
+    except smtplib.SMTPAuthenticationError as exc:
+        err = (
+            "Falha de autenticação SMTP no Google/Gmail. Verifique se a Verificação em 2 etapas está ativa "
+            f"e se SMTP_PASS usa uma Senha de App de 16 caracteres (não a senha normal). Detalhe: {exc}"
+        )
+        print(f"[Radar SMTP Erro] {err}")
+        return False, err
+    except Exception as exc:
+        err = f"Erro SMTP ({smtp_host}:{smtp_port}): {exc}"
+        print(f"[Radar SMTP Erro] {err}")
+        return False, err
+
+
+def send_resend_email(to_email: str, matches: list[dict[str, Any]]) -> bool:
+    api_key = os.getenv("RESEND_API_KEY", "").strip()
+    from_email = os.getenv("RESEND_FROM_EMAIL", "Radar IA <onboarding@resend.dev>").strip()
+    if not api_key or not to_email:
+        return False
+
+    subject, html = build_matches_html(matches)
 
     payload = json.dumps({
         "from": from_email,
         "to": [to_email],
-        "subject": f"Radar IA: {len(matches)} novas oportunidades para o seu perfil",
+        "subject": subject,
         "html": html,
     }).encode("utf-8")
 
@@ -208,6 +272,22 @@ def send_resend_email(to_email: str, matches: list[dict[str, Any]]) -> bool:
     except Exception as exc:
         print(f"[Radar Email Erro] {exc}")
         return False
+
+
+def send_alert_email(to_email: str, matches: list[dict[str, Any]]) -> bool:
+    if os.getenv("SMTP_USER", "").strip() and os.getenv("SMTP_PASS", "").strip():
+        subject, html = build_matches_html(matches)
+        plain_lines = [
+            f"- {m['prop'].get('source')} | {m['prop'].get('city')}/{m['prop'].get('state')} "
+            f"({format_brl(float(m['prop'].get('current_minimum_value') or 0))}, "
+            f"{m['prop'].get('discount_percentage')}% desc.): {m['summary']}"
+            for m in matches[:8]
+        ]
+        ok, _ = send_smtp_email(to_email, subject, html, text_fallback="\n".join(plain_lines))
+        return ok
+    if os.getenv("RESEND_API_KEY", "").strip():
+        return send_resend_email(to_email, matches)
+    return False
 
 
 def run_radar_matcher(dry_run: bool = False) -> dict[str, int]:
@@ -287,12 +367,12 @@ def run_radar_matcher(dry_run: bool = False) -> dict[str, int]:
                     dispatched_channels.append("TELEGRAM")
                     stats["telegram_sent"] += 1
 
-            # Busca e-mail do auth.users caso Resend esteja configurado
-            if prof.get("notify_email") and os.getenv("RESEND_API_KEY"):
+            # Busca e-mail do auth.users caso SMTP (Gmail) ou Resend esteja configurado
+            if prof.get("notify_email") and is_email_configured():
                 cur.execute("SELECT email FROM auth.users WHERE id = %s;", (user_id,))
                 u_row = cur.fetchone()
                 if u_row and u_row.get("email"):
-                    if send_resend_email(u_row["email"], top_matches):
+                    if send_alert_email(u_row["email"], top_matches):
                         dispatched_channels.append("EMAIL")
                         stats["emails_sent"] += 1
 
@@ -337,5 +417,47 @@ def run_radar_matcher(dry_run: bool = False) -> dict[str, int]:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Executar Radar IA e disparos de alertas.")
     parser.add_argument("--dry-run", action="store_true", help="Simula sem gravar nem enviar mensagens.")
+    parser.add_argument(
+        "--test-email",
+        type=str,
+        default=None,
+        help="Envia um e-mail de teste via SMTP/Resend configurado no .env e encerra.",
+    )
     args = parser.parse_args()
+    if args.test_email:
+        load_dotenv(BASE_DIR / ".env")
+        if os.getenv("SMTP_USER", "").strip() and os.getenv("SMTP_PASS", "").strip():
+            ok, detail = send_smtp_email(
+                args.test_email.strip(),
+                "Teste G2 Auction • Radar IA (Gmail SMTP)",
+                (
+                    "<h2>Conexão Gmail SMTP funcionando!</h2>"
+                    "<p>O envio centralizado de notificações do <strong>Radar IA (G2 Auction)</strong> está ativo.</p>"
+                ),
+                text_fallback="Conexão Gmail SMTP funcionando! O envio de notificações do Radar IA (G2 Auction) está ativo.",
+            )
+            print(f"[Teste E-mail] {'OK' if ok else 'FALHA'} — {detail}")
+            sys.exit(0 if ok else 1)
+        elif os.getenv("RESEND_API_KEY", "").strip():
+            ok = send_resend_email(
+                args.test_email.strip(),
+                [
+                    {
+                        "prop": {
+                            "source": "CAIXA",
+                            "city": "Teste",
+                            "state": "SP",
+                            "current_minimum_value": 250000,
+                            "discount_percentage": 40,
+                        },
+                        "score": 95.0,
+                        "summary": "Teste de disparo via Resend API.",
+                    }
+                ],
+            )
+            print(f"[Teste E-mail Resend] {'OK' if ok else 'FALHA'}")
+            sys.exit(0 if ok else 1)
+        else:
+            print("[Teste E-mail] FALHA — Defina SMTP_USER e SMTP_PASS (ou RESEND_API_KEY) no .env.")
+            sys.exit(1)
     run_radar_matcher(dry_run=args.dry_run)

@@ -27,6 +27,17 @@ interface AuthContextValue {
 
 const DEMO_USER_STORAGE_KEY = 'auction_demo_user_v1';
 
+function formatAuthError(msg: string): string {
+  const lower = msg.toLowerCase();
+  if (
+    lower.includes('error sending confirmation email') ||
+    lower.includes('error sending magic link email')
+  ) {
+    return 'Erro ao enviar e-mail pelo SMTP do Supabase. Confira no painel do Supabase (Authentication → SMTP Settings) se a Porta está em 587 (ou 465), o usuário é o e-mail completo e a senha é uma Senha de App de 16 caracteres do Google.';
+  }
+  return msg;
+}
+
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function loadLocalDemoUser(): AuthUser | null {
@@ -112,7 +123,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       },
     });
     if (error) {
-      return { success: false, message: error.message };
+      return { success: false, message: formatAuthError(error.message) };
     }
     return {
       success: true,
@@ -129,7 +140,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       password,
     });
     if (error) {
-      return { success: false, message: error.message };
+      return { success: false, message: formatAuthError(error.message) };
     }
     return { success: true, message: 'Login realizado com sucesso!' };
   }, []);
@@ -168,7 +179,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       },
     });
     if (error) {
-      return { success: false, message: error.message };
+      return { success: false, message: formatAuthError(error.message) };
     }
     return { success: true, message: 'Redirecionando para o Google...' };
   }, []);
