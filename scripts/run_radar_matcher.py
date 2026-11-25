@@ -12,9 +12,11 @@ Uso:
 import argparse
 import json
 import os
+import re
 import smtplib
 import ssl
 import sys
+import unicodedata
 import urllib.request
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -96,6 +98,25 @@ def build_summary(profile: dict[str, Any], prop: dict[str, Any], match_type: str
     )
 
 
+def normalize_text(val: str | None) -> str:
+    if not val:
+        return ""
+    nfd = unicodedata.normalize("NFD", str(val))
+    return "".join(ch for ch in nfd if unicodedata.category(ch) != "Mn").lower().strip()
+
+
+def expand_cities(raw_cities: list[str] | None) -> list[str]:
+    result: list[str] = []
+    for item in raw_cities or []:
+        if not item:
+            continue
+        for part in re.split(r"[,;|\n]+", str(item)):
+            norm = normalize_text(part)
+            if norm:
+                result.append(norm)
+    return result
+
+
 def score_candidate(profile: dict[str, Any], prop: dict[str, Any]) -> tuple[float, str] | None:
     price = float(prop.get("current_minimum_value") or prop.get("sale_value") or 0)
     if price <= 0:
@@ -113,8 +134,8 @@ def score_candidate(profile: dict[str, Any], prop: dict[str, Any]) -> tuple[floa
     if disc < max(0.0, min_disc - disc_tol_pp):
         return None
 
-    cities = [c.strip().lower() for c in (profile.get("cities") or []) if c and c.strip()]
-    prop_city = (prop.get("city") or "").lower()
+    cities = expand_cities(profile.get("cities") or [])
+    prop_city = normalize_text(prop.get("city"))
     if cities and not any(c in prop_city for c in cities):
         return None
 
@@ -128,8 +149,9 @@ def score_candidate(profile: dict[str, Any], prop: dict[str, Any]) -> tuple[floa
     if banks and (prop.get("source") or "").upper() not in banks:
         return None
 
-    ptypes = [t.lower() for t in (profile.get("property_types") or []) if t]
-    if ptypes and not any(t in (prop.get("property_type") or "").lower() for t in ptypes):
+    ptypes = [normalize_text(t) for t in (profile.get("property_types") or []) if t]
+    prop_type_norm = normalize_text(prop.get("property_type"))
+    if ptypes and not any(t in prop_type_norm for t in ptypes):
         return None
 
     price_exact = max_price <= 0 or price <= max_price
@@ -187,12 +209,21 @@ def is_email_configured() -> bool:
 
 
 def build_matches_html(matches: list[dict[str, Any]]) -> tuple[str, str]:
-    items_html = "".join(
-        f"<li><strong>{m['prop'].get('source')} • {m['prop'].get('city')}/{m['prop'].get('state')}</strong> — "
-        f"{format_brl(float(m['prop'].get('current_minimum_value') or 0))} ({m['prop'].get('discount_percentage')}% desc.) "
-        f"[Score {m['score']}/100]<br/><small>{m['summary']}</small></li>"
-        for m in matches[:8]
-    )
+    items = []
+    for m in matches[:8]:
+        p = m["prop"]
+        url_link = p.get("source_url") or ""
+        link_html = (
+            f' · <a href="{url_link}" target="_blank" rel="noopener">Ver edital/imóvel</a>'
+            if url_link
+            else ""
+        )
+        items.append(
+            f"<li style='margin-bottom:10px;'><strong>{p.get('source')} • {p.get('property_type')} em {p.get('city')}/{p.get('state')}</strong> — "
+            f"{format_brl(float(p.get('current_minimum_value') or 0))} ({p.get('discount_percentage')}% desc.) "
+            f"[Score {m['score']}/100]{link_html}<br/><small>{m['summary']}</small></li>"
+        )
+    items_html = "".join(items)
     subject = f"Radar IA: {len(matches)} novas oportunidades para o seu perfil"
     html = f"<h2>Radar IA — Novas Oportunidades Compatíveis</h2><ul>{items_html}</ul>"
     return subject, html
@@ -304,20 +335,40 @@ def run_radar_matcher(dry_run: bool = False) -> dict[str, int]:
             print("[Radar IA] Nenhum perfil ativo em public.user_alert_profiles ainda.")
             return stats
 
-        cur.execute("""
-            SELECT id, source, source_property_id, title, state, city, property_type,
-                   current_minimum_value, sale_value, appraisal_value, discount_percentage,
-                   accepts_financing, occupancy_status, source_url
-            FROM public.properties
-            WHERE status = 'ACTIVE'
-            ORDER BY discount_percentage DESC NULLS LAST
-            LIMIT 3000;
-        """)
-        active_props = cur.fetchall()
-
         for prof in profiles:
             user_id = str(prof["user_id"])
             states = [s.upper() for s in (prof.get("states") or []) if s]
+            max_price = float(prof.get("max_price") or 0)
+            price_tol_pct = float(prof.get("price_tolerance_pct") or 0)
+            max_price_tol = max_price * (1 + price_tol_pct / 100.0) if max_price > 0 else 0
+            min_disc = float(prof.get("min_discount_pct") or 0)
+            disc_tol_pp = float(prof.get("discount_tolerance_pp") or 0)
+            min_disc_tol = max(0.0, min_disc - disc_tol_pp)
+
+            where_clauses = ["status = 'ACTIVE'"]
+            params: list[Any] = []
+            if states:
+                where_clauses.append("upper(state) = ANY(%s)")
+                params.append(states)
+            if max_price_tol > 0:
+                where_clauses.append("coalesce(current_minimum_value, sale_value, 0) > 0")
+                where_clauses.append("coalesce(current_minimum_value, sale_value, 0) <= %s")
+                params.append(max_price_tol)
+            if min_disc_tol > 0:
+                where_clauses.append("coalesce(discount_percentage, 0) >= %s")
+                params.append(min_disc_tol)
+
+            sql = f"""
+                SELECT id, source, source_property_id, title, state, city, property_type,
+                       current_minimum_value, sale_value, appraisal_value, discount_percentage,
+                       accepts_financing, occupancy_status, source_url
+                FROM public.properties
+                WHERE {' AND '.join(where_clauses)}
+                ORDER BY discount_percentage DESC NULLS LAST
+                LIMIT 5000;
+            """
+            cur.execute(sql, tuple(params))
+            active_props = cur.fetchall()
 
             cur.execute(
                 "SELECT property_id::text, last_notified_price FROM public.user_property_alerts WHERE user_id = %s;",
@@ -327,9 +378,6 @@ def run_radar_matcher(dry_run: bool = False) -> dict[str, int]:
 
             matched_batch = []
             for prop in active_props:
-                if states and (prop.get("state") or "").upper() not in states:
-                    continue
-
                 pid = str(prop["id"])
                 cur_price = float(prop.get("current_minimum_value") or prop.get("sale_value") or 0)
                 prev_price = already_alerted.get(pid)

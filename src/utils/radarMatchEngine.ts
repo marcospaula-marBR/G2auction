@@ -56,6 +56,21 @@ export const DEFAULT_RADAR_PROFILE: UserRadarProfile = {
 
 const LOCAL_RADAR_KEY = 'auction_radar_profile_v2';
 
+function normalizeText(str: string): string {
+  return str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function parseCityList(cityQuery: string): string[] {
+  return (cityQuery || '')
+    .split(/[,;|\n]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 function normalizeBankTag(property: Property): string {
   const b = (property.bankName || property.originBank || '').toUpperCase();
   if (b.includes('CAIXA')) return 'CAIXA';
@@ -80,7 +95,7 @@ export function scorePropertiesAgainstRadar(
     maxPrice === Infinity ? Infinity : maxPrice * (1 + (profile.priceTolerancePct || 0) / 100);
   const minDisc = profile.minDiscountPct || 0;
   const minDiscWithTolerance = Math.max(0, minDisc - (profile.discountTolerancePp || 0));
-  const cityTarget = profile.cityQuery.trim().toLowerCase();
+  const cityTargets = parseCityList(profile.cityQuery).map(normalizeText);
 
   const results: RadarMatchResult[] = [];
 
@@ -98,8 +113,14 @@ export function scorePropertiesAgainstRadar(
       if (!profile.banks.includes(bankTag)) continue;
     }
 
-    if (profile.propertyTypes.length > 0 && !profile.propertyTypes.includes(prop.category)) {
-      continue;
+    if (profile.propertyTypes.length > 0) {
+      const propCat = normalizeText(prop.category || '');
+      const propTitle = normalizeText(prop.title || '');
+      const matchesType = profile.propertyTypes.some((t) => {
+        const nt = normalizeText(t);
+        return propCat.includes(nt) || propTitle.includes(nt);
+      });
+      if (!matchesType) continue;
     }
 
     if (profile.requireFinancing && !prop.isFinancable) {
@@ -116,10 +137,10 @@ export function scorePropertiesAgainstRadar(
     const discount = prop.apparentDiscountPercentage || 0;
     if (discount < minDiscWithTolerance) continue;
 
-    const cityName = (prop.address.city || '').toLowerCase();
-    const cityExact = !cityTarget || cityName.includes(cityTarget);
-    if (cityTarget && !cityExact) {
-      // Caso o usuário digite cidade específica, mantém apenas correspondências da cidade
+    const cityName = normalizeText(prop.address.city || '');
+    const cityExact = cityTargets.length === 0 || cityTargets.some((c) => cityName.includes(c));
+    if (cityTargets.length > 0 && !cityExact) {
+      // Caso o usuário digite cidade(s) específica(s), mantém apenas correspondências da lista
       continue;
     }
 
@@ -195,7 +216,7 @@ export async function loadRadarProfile(userId?: string, isDemo?: boolean): Promi
         const mapped: UserRadarProfile = {
           name: data.name || 'Meu Radar Principal',
           states: Array.isArray(data.states) && data.states.length > 0 ? data.states : ['SP'],
-          cityQuery: Array.isArray(data.cities) && data.cities.length > 0 ? data.cities[0] : '',
+          cityQuery: Array.isArray(data.cities) && data.cities.length > 0 ? data.cities.join(', ') : '',
           banks: Array.isArray(data.banks) ? data.banks : [],
           propertyTypes: Array.isArray(data.property_types) ? data.property_types : [],
           maxPrice: Number(data.max_price) || 450000,
@@ -259,7 +280,7 @@ export async function saveRadarProfile(
         user_id: userId,
         name: profile.name || 'Meu Radar Principal',
         states: profile.states,
-        cities: profile.cityQuery.trim() ? [profile.cityQuery.trim()] : [],
+        cities: parseCityList(profile.cityQuery),
         property_types: profile.propertyTypes,
         banks: profile.banks,
         max_price: profile.maxPrice,

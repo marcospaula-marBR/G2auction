@@ -27,7 +27,7 @@ export const Header: React.FC<HeaderProps> = ({
   onInstallPwa,
   onReplayIntro,
   unreadNotifications,
-  version = 'v3.15.0',
+  version = 'v3.15.1',
 }) => {
   const { tenant } = useTenant();
   const { user, signOut } = useAuth();
