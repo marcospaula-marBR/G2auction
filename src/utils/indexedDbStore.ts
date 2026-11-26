@@ -53,6 +53,27 @@ export async function savePropertiesToIndexedDB(propertiesMap: Map<string, any>)
   }
 }
 
+export async function replacePropertiesInIndexedDB(propertiesMap: Map<string, any>): Promise<boolean> {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(STORE_PROPERTIES, 'readwrite');
+    const store = tx.objectStore(STORE_PROPERTIES);
+
+    store.clear();
+    propertiesMap.forEach((val, key) => {
+      store.put({ compositeKey: key, ...val });
+    });
+
+    return new Promise((resolve) => {
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+    });
+  } catch (err) {
+    console.warn('[IndexedDB Replace Error]', err);
+    return false;
+  }
+}
+
 export async function loadPropertiesFromIndexedDB(): Promise<Map<string, any>> {
   const map = new Map<string, any>();
   try {

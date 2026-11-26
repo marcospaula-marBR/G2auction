@@ -1,8 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 import { parseCaixaCsv } from '../utils/caixaListImporter';
-import { savePropertiesToIndexedDB, loadPropertiesFromIndexedDB } from '../utils/indexedDbStore';
+import {
+  savePropertiesToIndexedDB,
+  replacePropertiesInIndexedDB,
+  loadPropertiesFromIndexedDB,
+} from '../utils/indexedDbStore';
 import { stripAccents, formatCityDisplayName } from '../utils/textUtils';
-import { getPropertyFilterPrice } from '../utils/propertyAuctionHelper';
+import { getPropertyFilterPrice, formatStandardPropertyId } from '../utils/propertyAuctionHelper';
 
 const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY || '';
@@ -42,7 +46,6 @@ const CATALOG_LEAN_COLUMNS = [
   'land_area',
   'useful_area',
   'bedrooms',
-  'bathrooms',
   'parking_spaces',
   'accepts_financing',
   'accepts_fgts',
@@ -51,8 +54,6 @@ const CATALOG_LEAN_COLUMNS = [
   'description',
   'source_url',
   'main_photo_url',
-  'latitude',
-  'longitude',
   'first_auction_date',
   'second_auction_date',
   'auction_date',
@@ -63,9 +64,27 @@ const CATALOG_LEAN_COLUMNS = [
   'first_seen_at',
   'last_seen_at',
   'source_generated_at',
-  'created_at',
   'updated_at',
 ].join(',');
+
+function getCanonicalPropertyKey(p: any): string {
+  const source = String(p?.source || 'CAIXA').trim().toUpperCase();
+  const stdId = formatStandardPropertyId(source, p?.source_property_id || p?.id, p);
+  return `${source}__${stdId}`;
+}
+
+function deduplicateProperties(list: any[]): any[] {
+  const seen = new Set<string>();
+  const out: any[] = [];
+  for (const item of list) {
+    if (!item) continue;
+    const key = getCanonicalPropertyKey(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
 
 const DROPDOWN_CACHE_TTL_MS = 5 * 60 * 1000;
 const dropdownCache = new Map<string, { data: any; expiresAt: number }>();
@@ -95,7 +114,7 @@ const memoryStore = {
 let seedPromise: Promise<void> | null = null;
 
 export async function autoSeedDefaultCsvFromPublic(): Promise<void> {
-  const hasCaixaProperties = Array.from(memoryStore.properties.keys()).some(k => k.startsWith('CAIXA_'));
+  const hasCaixaProperties = Array.from(memoryStore.properties.values()).some((p) => p?.source === 'CAIXA');
   if (hasCaixaProperties && memoryStore.properties.size >= 1000) return;
   if (seedPromise) return seedPromise;
 
@@ -107,7 +126,7 @@ export async function autoSeedDefaultCsvFromPublic(): Promise<void> {
         const parseResult = parseCaixaCsv(csvText, 'SP', '/Lista_imoveis_SP.csv');
         if (parseResult.rows && parseResult.rows.length > 0) {
           parseResult.rows.forEach((p) => {
-            const compositeKey = `${p.source}_${p.source_property_id}`;
+            const compositeKey = getCanonicalPropertyKey(p);
             memoryStore.properties.set(compositeKey, {
               id: `sb-seed-${p.source_property_id}`,
               ...p,
@@ -116,7 +135,7 @@ export async function autoSeedDefaultCsvFromPublic(): Promise<void> {
               updated_at: new Date().toISOString(),
             });
           });
-          saveMemoryStoreToLocalStorage();
+          saveMemoryStoreToLocalStorage(true);
           console.log(`[Auto-Seed SP] ${parseResult.rows.length} imóveis e cidades populados de /Lista_imoveis_SP.csv.`);
         }
       }
@@ -130,9 +149,13 @@ export async function autoSeedDefaultCsvFromPublic(): Promise<void> {
   return seedPromise;
 }
 
-export function saveMemoryStoreToLocalStorage() {
+export function saveMemoryStoreToLocalStorage(replaceStore: boolean = false) {
   // Salva no IndexedDB (sem limite de 5MB)
-  savePropertiesToIndexedDB(memoryStore.properties);
+  if (replaceStore) {
+    replacePropertiesInIndexedDB(memoryStore.properties);
+  } else {
+    savePropertiesToIndexedDB(memoryStore.properties);
+  }
 
   // Fallback rápido no localStorage para listas pequenas
   try {
@@ -146,20 +169,32 @@ export function saveMemoryStoreToLocalStorage() {
 }
 
 export async function loadMemoryStoreFromLocalStorage() {
-  // 1. Tenta carregar do IndexedDB primeiro
+  const sanitizeProperty = (p: any) => {
+    const minVal = p.current_minimum_value || p.sale_value || 0;
+    if (minVal <= 0 || (p.discount_percentage && p.discount_percentage >= 100)) {
+      p.discount_percentage = null;
+      p.calculated_discount_percentage = null;
+    }
+    return p;
+  };
+
+  let hadDuplicates = false;
+
+  // 1. Tenta carregar do IndexedDB primeiro (deduplicando chaves legadas)
   const idbMap = await loadPropertiesFromIndexedDB();
   if (idbMap.size > 0) {
-    const sanitizeProperty = (p: any) => {
-      const minVal = p.current_minimum_value || p.sale_value || 0;
-      if (minVal <= 0 || (p.discount_percentage && p.discount_percentage >= 100)) {
-        p.discount_percentage = null;
-        p.calculated_discount_percentage = null;
+    idbMap.forEach((v) => {
+      const clean = sanitizeProperty(v);
+      const canonicalKey = getCanonicalPropertyKey(clean);
+      if (memoryStore.properties.has(canonicalKey)) {
+        hadDuplicates = true;
       }
-      return p;
-    };
-
-    idbMap.forEach((v, k) => memoryStore.properties.set(k, sanitizeProperty(v)));
-    console.log(`[IndexedDB Load] ${idbMap.size} imóveis carregados com sucesso.`);
+      memoryStore.properties.set(canonicalKey, clean);
+    });
+    if (hadDuplicates || memoryStore.properties.size !== idbMap.size) {
+      replacePropertiesInIndexedDB(memoryStore.properties);
+    }
+    console.log(`[IndexedDB Load] ${memoryStore.properties.size} imóveis únicos carregados com sucesso.`);
   }
 
   // 2. Fallback para localStorage
@@ -168,13 +203,10 @@ export async function loadMemoryStoreFromLocalStorage() {
     if (raw) {
       const entries = JSON.parse(raw);
       if (Array.isArray(entries)) {
-        entries.forEach(([k, v]: [string, any]) => {
-          const minVal = v.current_minimum_value || v.sale_value || 0;
-          if (minVal <= 0 || (v.discount_percentage && v.discount_percentage >= 100)) {
-            v.discount_percentage = null;
-            v.calculated_discount_percentage = null;
-          }
-          memoryStore.properties.set(k, v);
+        entries.forEach(([, v]: [string, any]) => {
+          const clean = sanitizeProperty(v);
+          const canonicalKey = getCanonicalPropertyKey(clean);
+          memoryStore.properties.set(canonicalKey, clean);
         });
       }
     }
@@ -182,7 +214,7 @@ export async function loadMemoryStoreFromLocalStorage() {
     console.warn('[LocalStorage Load Error]', e);
   }
 
-  const hasCaixa = Array.from(memoryStore.properties.keys()).some(k => k.startsWith('CAIXA_'));
+  const hasCaixa = Array.from(memoryStore.properties.values()).some((p) => p?.source === 'CAIXA');
   if (!hasCaixa || memoryStore.properties.size < 1000) {
     await autoSeedDefaultCsvFromPublic();
   }
@@ -272,7 +304,7 @@ export async function upsertPropertyToSupabase(
   photos: PhotoUpsertPayload[] = [],
   documents: DocumentUpsertPayload[] = []
 ): Promise<{ success: boolean; propertyId: string; record: any; isMemoryFallback: boolean; error?: string }> {
-  const compositeKey = `${propertyData.source}_${propertyData.source_property_id}`;
+  const compositeKey = getCanonicalPropertyKey(propertyData);
 
   // Sempre armazena no memoryStore local para garantia imediata de filtros no frontend
   const mockId = `sb-uuid-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
@@ -345,15 +377,17 @@ export async function batchUpsertPropertiesToSupabase(
   let isMemoryFallback = false;
   const errorMessages: string[] = [];
 
+  const uniquePayloads = deduplicateProperties(propertiesPayload);
+
   // 1. Gravação obrigatória no MemoryStore local (garante que os filtros nunca fiquem vazios no frontend)
-  propertiesPayload.forEach((p) => {
+  uniquePayloads.forEach((p) => {
     const minVal = p.current_minimum_value || p.sale_value || 0;
     if (minVal <= 0 || (p.discount_percentage !== null && p.discount_percentage !== undefined && p.discount_percentage >= 100)) {
       p.discount_percentage = null;
       p.calculated_discount_percentage = null;
     }
 
-    const compositeKey = `${p.source}_${p.source_property_id}`;
+    const compositeKey = getCanonicalPropertyKey(p);
     const existing = memoryStore.properties.get(compositeKey);
     const internalId = existing?.id || `sb-mem-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     
@@ -369,13 +403,13 @@ export async function batchUpsertPropertiesToSupabase(
     totalProcessed++;
   });
 
-  // Salvar a memória no armazenamento do navegador
-  saveMemoryStoreToLocalStorage();
+  // Salvar a memória no armazenamento do navegador (substituindo chaves antigas duplicadas)
+  saveMemoryStoreToLocalStorage(true);
 
   // 2. Gravação no Supabase Postgres (se configurado)
   if (supabase) {
-    for (let i = 0; i < propertiesPayload.length; i += batchSize) {
-      const chunk = propertiesPayload.slice(i, i + batchSize);
+    for (let i = 0; i < uniquePayloads.length; i += batchSize) {
+      const chunk = uniquePayloads.slice(i, i + batchSize);
       try {
         const { error } = await supabase
           .from('properties')
@@ -654,10 +688,15 @@ export async function queryPropertiesFromSupabase(
 
       const { data, count, error } = await query;
 
+      if (error) {
+        console.warn('[Catalog Query Error]', error.message);
+      }
+
       if (!error && data && data.length > 0) {
-        const total = count || data.length;
+        const deduped = deduplicateProperties(data);
+        const total = count || deduped.length;
         return {
-          data,
+          data: deduped,
           totalCount: total,
           page,
           pageSize,
@@ -671,11 +710,13 @@ export async function queryPropertiesFromSupabase(
   }
 
   // Fallback para memory store (Múltiplos Bancos)
-  const hasCaixa = Array.from(memoryStore.properties.keys()).some(k => k.startsWith('CAIXA_'));
+  const hasCaixa = Array.from(memoryStore.properties.values()).some((p) => p?.source === 'CAIXA');
   if (!hasCaixa || memoryStore.properties.size < 1000) {
     await autoSeedDefaultCsvFromPublic();
   }
-  let filtered = Array.from(memoryStore.properties.values()).filter((p) => !p.status || p.status === 'ACTIVE' || p.status === 'active');
+  let filtered = deduplicateProperties(
+    Array.from(memoryStore.properties.values()).filter((p) => !p.status || p.status === 'ACTIVE' || p.status === 'active')
+  );
 
   if (filters.sources && filters.sources.length > 0) {
     filtered = filtered.filter((p) => filters.sources!.includes(p.source));

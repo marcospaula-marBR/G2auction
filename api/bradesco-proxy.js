@@ -267,6 +267,14 @@ export default async function handler(req, res) {
         console.warn('[Bradesco Proxy API Error]', err);
       }
 
+      const seenIds = new Set();
+      const uniqueProperties = [];
+      for (const prop of realProperties) {
+        if (!prop?.id || seenIds.has(prop.id)) continue;
+        seenIds.add(prop.id);
+        uniqueProperties.push(prop);
+      }
+
       return res.status(200).json({
         bank: 'BRADESCO',
         uf,
@@ -275,12 +283,12 @@ export default async function handler(req, res) {
         page,
         totalPages,
         status: 200,
-        properties: realProperties,
-        totalFound: totalFound || realProperties.length,
+        properties: uniqueProperties,
+        totalFound: totalFound || uniqueProperties.length,
         responseTimeMs: Date.now() - startTime,
         note:
-          realProperties.length > 0
-            ? `${realProperties.length} oportunidades reais Bradesco em ${uf} (${targetSearchUrl}).`
+          uniqueProperties.length > 0
+            ? `${uniqueProperties.length} oportunidades reais Bradesco em ${uf} (${targetSearchUrl}).`
             : `Nenhum leilão ativo encontrado no Bradesco para ${uf} neste momento.`,
         alternativeAuctioneers: BRADESCO_AUCTIONEERS.filter(a => a.ufs.includes(uf) || a.ufs.length === 0),
       });

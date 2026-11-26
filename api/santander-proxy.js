@@ -199,6 +199,14 @@ export default async function handler(req, res) {
         console.warn('[Santander Proxy Fetch Error]', err);
       }
 
+      const seenIds = new Set();
+      const uniqueProperties = [];
+      for (const prop of realProperties) {
+        if (!prop?.id || seenIds.has(prop.id)) continue;
+        seenIds.add(prop.id);
+        uniqueProperties.push(prop);
+      }
+
       return res.status(200).json({
         bank: 'SANTANDER',
         uf,
@@ -207,12 +215,12 @@ export default async function handler(req, res) {
         isLiveFetched,
         page,
         status: 200,
-        properties: realProperties,
-        totalFound: totalFound || realProperties.length,
+        properties: uniqueProperties,
+        totalFound: totalFound || uniqueProperties.length,
         responseTimeMs: Date.now() - startTime,
         note:
-          realProperties.length > 0
-            ? `${realProperties.length} oportunidades reais Santander em ${uf} (${targetPageUrl}).`
+          uniqueProperties.length > 0
+            ? `${uniqueProperties.length} oportunidades reais Santander em ${uf} (${targetPageUrl}).`
             : `O portal Santander migrou para API autenticada (api.shi.santander.com.br); nenhum dado sintético foi gerado.`,
         auctioneers: SANTANDER_AUCTIONEERS.filter(a => a.ufs.includes(uf) || a.ufs.length === 0),
       });

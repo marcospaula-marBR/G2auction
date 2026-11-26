@@ -20,6 +20,7 @@ import os
 import re
 import sys
 import time
+import unicodedata
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -871,6 +872,115 @@ def upsert_properties_batch(conn, rows: list[dict[str, Any]], batch_size: int = 
     return total_written
 
 
+def _strip_accents_lower(text: str | None) -> str:
+    if not text:
+        return ""
+    nfkd = unicodedata.normalize("NFKD", str(text).strip())
+    return "".join(ch for ch in nfkd if not unicodedata.combining(ch)).lower()
+
+
+def _aggregator_priority(spid: str) -> tuple[int, str]:
+    s = str(spid or "")
+    if s.startswith("BRD-"):
+        return (0, s)
+    if s.startswith("ZUK-"):
+        return (1, s)
+    if s.startswith("MEGA-"):
+        return (2, s)
+    return (3, s)
+
+
+def _aggregator_kind(spid: str) -> str:
+    s = str(spid or "")
+    if s.startswith("BRD-"):
+        return "BRD"
+    if s.startswith("ZUK-"):
+        return "ZUK"
+    if s.startswith("MEGA-"):
+        return "MEGA"
+    return "OTHER"
+
+
+def deduplicate_cross_aggregator_active(conn) -> int:
+    """
+    Remove duplicidade cruzada entre a Vitrine oficial (ex: BRD-...) e leiloeiros (MEGA-... / ZUK-...)
+    mantendo o registro de maior prioridade (BRD > ZUK > MEGA) e preservando area/vagas se faltarem.
+    """
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id, source, source_property_id, state, city,
+               current_minimum_value, appraisal_value,
+               private_area, total_area, parking_spaces
+        FROM public.properties
+        WHERE status = 'ACTIVE'
+          AND source <> 'CAIXA'
+          AND current_minimum_value > 0
+          AND appraisal_value > 0;
+        """
+    )
+    groups: dict[tuple[Any, ...], list[tuple[Any, ...]]] = {}
+    for row in cur.fetchall():
+        _, source, _, state, city, min_val, eval_val, _, _, _ = row
+        key = (
+            str(source or "").upper(),
+            str(state or "").upper(),
+            _strip_accents_lower(city),
+            round(float(min_val) / 10.0),
+            round(float(eval_val) / 10.0),
+        )
+        groups.setdefault(key, []).append(row)
+
+    dup_ids: list[str] = []
+    for items in groups.values():
+        if len(items) <= 1:
+            continue
+        kinds = {_aggregator_kind(it[2]) for it in items}
+        if len(kinds) <= 1:
+            continue
+
+        items_sorted = sorted(items, key=lambda it: _aggregator_priority(it[2]))
+        winner = items_sorted[0]
+        w_id, _, _, _, _, _, _, w_priv, w_tot, w_park = winner
+
+        best_priv = w_priv
+        best_tot = w_tot
+        best_park = w_park
+        for loser in items_sorted[1:]:
+            if best_priv is None and loser[7] is not None:
+                best_priv = loser[7]
+            if best_tot is None and loser[8] is not None:
+                best_tot = loser[8]
+            if best_park is None and loser[9] is not None:
+                best_park = loser[9]
+            dup_ids.append(str(loser[0]))
+
+        if (best_priv != w_priv) or (best_tot != w_tot) or (best_park != w_park):
+            cur.execute(
+                """
+                UPDATE public.properties
+                SET private_area = COALESCE(private_area, %s),
+                    total_area = COALESCE(total_area, %s),
+                    parking_spaces = COALESCE(parking_spaces, %s),
+                    updated_at = NOW()
+                WHERE id = %s;
+                """,
+                (best_priv, best_tot, best_park, str(w_id)),
+            )
+
+    if dup_ids:
+        cur.execute(
+            """
+            UPDATE public.properties
+            SET status = 'DUPLICATE', updated_at = NOW()
+            WHERE id = ANY(%s::uuid[]);
+            """,
+            (dup_ids,),
+        )
+    conn.commit()
+    return len(dup_ids)
+
+
 def reconcile_source_uf(conn, source: str, uf: str, active_ids: set[str]) -> int:
     if not active_ids:
         return 0
@@ -941,7 +1051,7 @@ def main() -> int:
                 rows = fetch_bradesco_uf(uf)
                 if rows:
                     written = upsert_properties_batch(conn, rows)
-                    removed = reconcile_source_uf(conn, "BRADESCO", uf, {r["source_property_id"] for r in rows})
+                    removed = reconcile_auctioneer_uf(conn, "BRD-", uf, {r["source_property_id"] for r in rows})
                     grand_total += written
                     print(f"[BRADESCO {uf}] {written} imóveis sincronizados (removidos: {removed}) em {time.time() - t0:.1f}s")
                 else:
@@ -986,6 +1096,8 @@ def main() -> int:
                 else:
                     print(f"[PORTAL ZUK {uf}] 0 lotes encontrados.")
 
+        dedup_removed = deduplicate_cross_aggregator_active(conn)
+        print(f"[DEDUP CRUZADA] {dedup_removed} registro(s) duplicado(s) entre Vitrine/Leiloeiros marcados como DUPLICATE.")
         print(f"[SYNC FINALIZADO] Total sincronizado nesta execução: {grand_total} imóveis reais.")
     finally:
         conn.close()

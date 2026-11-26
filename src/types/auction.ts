@@ -33,7 +33,7 @@ export interface Property {
   category: 'Apartamento' | 'Casa' | 'Terreno' | 'Comercial' | 'Galpão';
   acquisitionType: AcquisitionType;
   occupancyStatus: OccupancyStatus;
-  
+
   // Endereço e Geolocalização
   address: {
     street: string;
@@ -53,14 +53,14 @@ export interface Property {
   secondAuctionPrice: number; // Mínimo no 2º leilão
   secondAuctionDate: string;
   currentBid?: number;
-  
+
   // Características Físicas
   area: number;
   bedrooms: number;
   bathrooms: number;
   parkingSpaces: number;
   floor?: number;
-  
+
   // Leiloeiro e Antifraude
   auctioneerName: string;
   auctioneerSite: string;
@@ -78,7 +78,7 @@ export interface Property {
   caixaContractNumber?: string;
   processNumber?: string;
   courtName?: string;
-  
+
   // Passivos e Débitos
   debts: {
     iptu: number;
@@ -87,14 +87,14 @@ export interface Property {
     utilityDebts: number;
     isBuyerResponsible: boolean;
   };
-  
+
   // Inteligência de Mercado e Preço/m²
   estimatedMarketPrice: number;
   askingPricePerM2Range: [number, number];
   estimatedMarketPricePerM2: number;
   acquisitionPricePerM2: number;
   apparentDiscountPercentage: number;
-  
+
   // Scores
   opportunityScore: number;
   riskScore: number;
@@ -102,7 +102,7 @@ export interface Property {
   locationScore: number;
   legalComplexityScore: number;
   renovationEstimate: number;
-  
+
   // Inteligência Geográfica e de Entorno
   safetyIndex: {
     level: 'Baixo Risco' | 'Risco Moderado' | 'Atenção Estatística';
@@ -128,19 +128,19 @@ export interface Property {
     supermarketsNearby: number;
     publicTransportNearby: number;
   };
-  
+
   // Notícias e Comparáveis
   newsIntelligence: NewsItem[];
   comparables: ComparableProperty[];
-  
+
   // Mídia e Documentos
   images: string[];
   editalUrl: string;
   matriculaUrl: string;
-  
+
   // Estágio no Funil
   lifecycleStep: LifecycleStep;
-  
+
   // Financiabilidade
   isFinancable: boolean;
   minDownPaymentPercentage: number;
@@ -171,17 +171,17 @@ export interface Partner {
   id: string;
   name: string;
   role:
-    | 'Advogado Especialista'
-    | 'Corretor de Imóveis'
-    | 'Administrador / Despachante'
-    | 'Pedreiro / Reforma'
-    | 'Engenheiro / Arquiteto'
-    | 'Avaliador Imobiliário'
-    | 'Despachante Imobiliário'
-    | 'Mestre de Obras / Empreiteiro'
-    | 'Pedreiro'
-    | 'Leiloeiro Homologado'
-    | 'Engenheiro Civil';
+  | 'Advogado Especialista'
+  | 'Corretor de Imóveis'
+  | 'Administrador / Despachante'
+  | 'Pedreiro / Reforma'
+  | 'Engenheiro / Arquiteto'
+  | 'Avaliador Imobiliário'
+  | 'Despachante Imobiliário'
+  | 'Mestre de Obras / Empreiteiro'
+  | 'Pedreiro'
+  | 'Leiloeiro Homologado'
+  | 'Engenheiro Civil';
   city: string;
   state: string;
   rating: number;
