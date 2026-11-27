@@ -22,6 +22,8 @@ import {
   Map as MapIcon,
   LayoutGrid,
   Columns2,
+  FileText,
+  Check,
 } from 'lucide-react';
 
 import {
@@ -55,6 +57,7 @@ import { EditalAnalysisModal } from './EditalAnalysisModal';
 import { FinanciamentoCaixaModal } from './FinanciamentoCaixaModal';
 import { BancosAdminPage } from './BancosAdminPage';
 import { ManualSyncModal } from './ManualSyncModal';
+import { AiInvestmentReportModal } from './AiInvestmentReportModal';
 import { PropertyMap } from './PropertyMap';
 import { useTenant } from '../config/tenant';
 import { useAuth } from '../config/auth';
@@ -79,6 +82,8 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
   const canShowAdminSyncTab = tenant.features.adminSync || Boolean(user?.isManager);
   const [activeTab, setActiveTab] = useState<'catalog' | 'sync'>('catalog');
   const [isManualSyncOpen, setIsManualSyncOpen] = useState<boolean>(false);
+  const [selectedForAiReport, setSelectedForAiReport] = useState<any[]>([]);
+  const [isAiReportModalOpen, setIsAiReportModalOpen] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'grid' | 'split' | 'map'>('grid');
   const [activeMapLayer, setActiveMapLayer] = useState<'default' | 'price' | 'flood' | 'safety' | 'noise' | '3d'>('default');
   const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState<boolean>(false);
@@ -372,6 +377,28 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const getPropSelectionKey = (prop: any): string =>
+    String(prop?.id || prop?.source_property_id || '');
+
+  const isSelectedForAiReport = (prop: any): boolean => {
+    const key = getPropSelectionKey(prop);
+    return Boolean(key && selectedForAiReport.some((item) => getPropSelectionKey(item) === key));
+  };
+
+  const toggleAiReportSelection = (prop: any) => {
+    const key = getPropSelectionKey(prop);
+    if (!key) return;
+    setSelectedForAiReport((prev) => {
+      if (prev.some((item) => getPropSelectionKey(item) === key)) {
+        return prev.filter((item) => getPropSelectionKey(item) !== key);
+      }
+      if (prev.length >= 6) {
+        return prev;
+      }
+      return [...prev, prop];
+    });
+  };
+
   return (
     <div className="max-w-7xl mx-auto space-y-5 font-sans">
       
@@ -397,6 +424,18 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsAiReportModalOpen(true)}
+              className="px-3.5 py-2 rounded-2xl text-xs font-black bg-slate-900 hover:bg-slate-800 text-white shadow-sm flex items-center gap-1.5 transition-all active:scale-95"
+              title="Gerar ou visualizar relatórios comparativos com Inteligência Artificial"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              <span>
+                Relatórios IA{selectedForAiReport.length > 0 ? ` (${selectedForAiReport.length})` : ''}
+              </span>
+            </button>
+
             <button
               type="button"
               onClick={() => setIsManualSyncOpen(true)}
@@ -1385,6 +1424,36 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
 
                 {/* BOTÕES DO CARD (Enxutos e Escaneáveis) */}
                 <div className="p-4 pt-0 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleAiReportSelection(prop)}
+                    disabled={!isSelectedForAiReport(prop) && selectedForAiReport.length >= 6}
+                    title={
+                      isSelectedForAiReport(prop)
+                        ? 'Remover da comparação do Relatório IA'
+                        : selectedForAiReport.length >= 6
+                        ? 'Limite de 6 imóveis por relatório atingido'
+                        : 'Adicionar imóvel para análise comparativa IA'
+                    }
+                    className={`w-full py-2 px-3 rounded-xl text-[11px] font-black border transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 ${
+                      isSelectedForAiReport(prop)
+                        ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 shadow-xs'
+                        : 'bg-indigo-50/70 hover:bg-indigo-100 text-indigo-800 border-indigo-200'
+                    }`}
+                  >
+                    {isSelectedForAiReport(prop) ? (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>No Relatório IA ({selectedForAiReport.length}/6)</span>
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>+ Comparar no Relatório IA</span>
+                      </>
+                    )}
+                  </button>
+
                   <div className={`grid gap-2 ${onOpenJourney ? 'grid-cols-2' : 'grid-cols-1'}`}>
                     <button
                       onClick={() => setSelectedDetailProperty(prop)}
@@ -1871,6 +1940,21 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
                 </button>
 
                 <button
+                  type="button"
+                  onClick={() => {
+                    if (!isSelectedForAiReport(selectedDetailProperty)) {
+                      toggleAiReportSelection(selectedDetailProperty);
+                    }
+                    setSelectedDetailProperty(null);
+                    setIsAiReportModalOpen(true);
+                  }}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-5 py-3 rounded-2xl transition-colors flex items-center space-x-1.5 shadow-md"
+                >
+                  <FileText className="w-4 h-4 text-indigo-100" />
+                  <span>Analisar no Relatório IA</span>
+                </button>
+
+                <button
                   onClick={() => setSelectedFinancingProperty(selectedDetailProperty)}
                   className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-5 py-3 rounded-2xl transition-colors flex items-center space-x-1.5 shadow-md"
                 >
@@ -1880,6 +1964,56 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
               </div>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* Barra Flutuante de Seleção Multi-Imóveis para Relatório IA */}
+      {selectedForAiReport.length > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[95%] max-w-4xl bg-slate-900/95 backdrop-blur-md text-white rounded-2xl border border-slate-700 shadow-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            <span className="text-[11px] font-black uppercase text-amber-300 flex items-center gap-1 shrink-0">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Comitê IA ({selectedForAiReport.length}/6):</span>
+            </span>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {selectedForAiReport.map((item) => {
+                const key = getPropSelectionKey(item);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => toggleAiReportSelection(item)}
+                    className="text-[10px] font-bold bg-slate-800 hover:bg-slate-700 border border-slate-600 px-2 py-1 rounded-lg flex items-center gap-1 max-w-[170px]"
+                    title="Clique para remover"
+                  >
+                    <span className="truncate">{item.city || item.source_property_id}</span>
+                    <X className="w-3 h-3 text-slate-400 shrink-0" />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setSelectedForAiReport([])}
+              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs"
+            >
+              Limpar
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsAiReportModalOpen(true)}
+              className="px-4 py-2 rounded-xl text-white font-black text-xs shadow-lg flex items-center gap-1.5 transition-all active:scale-95"
+              style={{
+                background: `linear-gradient(135deg, ${tenant.primaryColor}, ${tenant.accentColor})`,
+              }}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Gerar Relatório IA ({selectedForAiReport.length})</span>
+            </button>
           </div>
         </div>
       )}
@@ -1899,6 +2033,19 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
           onClose={() => setSelectedFinancingProperty(null)}
         />
       )}
+
+      {/* Modal de Relatórios Comparativos IA Multi-Imóveis */}
+      <AiInvestmentReportModal
+        isOpen={isAiReportModalOpen}
+        onClose={() => setIsAiReportModalOpen(false)}
+        selectedProperties={selectedForAiReport}
+        onRemoveProperty={(id) =>
+          setSelectedForAiReport((prev) =>
+            prev.filter((item) => getPropSelectionKey(item) !== id)
+          )
+        }
+        onClearSelection={() => setSelectedForAiReport([])}
+      />
 
       {/* Modal de Sincronização Manual Sob Demanda */}
       <ManualSyncModal

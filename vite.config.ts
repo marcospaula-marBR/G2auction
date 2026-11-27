@@ -64,6 +64,14 @@ export default defineConfig(({ mode }) => {
     {
       name: 'caixa-proxy-dev-middleware',
       configureServer(server) {
+        server.middlewares.use('/api/ai-investment-report', async (req, res) => {
+          const handler = await loadApiHandler('./api/ai-investment-report.js');
+          return handler(req, attachExpressLikeHelpers(res));
+        });
+        server.middlewares.use('/api/bcb-rates', async (req, res) => {
+          const handler = await loadApiHandler('./api/bcb-rates.js');
+          return handler(req, attachExpressLikeHelpers(res));
+        });
         server.middlewares.use('/api/sync-banks', async (req, res) => {
           const handler = await loadApiHandler('./api/sync-banks.js');
           return handler(req, attachExpressLikeHelpers(res));

@@ -5,6 +5,9 @@
   "functions": {
     "api/sync-banks.js": {
       "maxDuration": 60
+    },
+    "api/ai-investment-report.js": {
+      "maxDuration": 60
     }
   },
   "headers": [

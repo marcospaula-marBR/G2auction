@@ -1,5 +1,5 @@
 /* Service Worker para PWA instalável, controle de atualização e Web Push Notifications */
-const SW_VERSION = 'v3.18.0';
+const SW_VERSION = 'v3.19.0';
 
 self.addEventListener('install', () => {
   // Não força skipWaiting() automático para permitir sinalização e atualização controlada pela UI

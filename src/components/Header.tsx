@@ -33,7 +33,7 @@ export const Header: React.FC<HeaderProps> = ({
   onApplyUpdate,
   onCheckForUpdate,
   unreadNotifications,
-  version = 'v3.18.0',
+  version = 'v3.19.0',
 }) => {
   const { tenant } = useTenant();
   const { user, signOut } = useAuth();
