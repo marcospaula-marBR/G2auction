@@ -8,7 +8,8 @@ import {
   CreditCard, AlertCircle,
 } from 'lucide-react';
 import { CaixaFeedAdminTestPage } from './CaixaFeedAdminTestPage';
-import { batchUpsertPropertiesToSupabase, type PropertyUpsertPayload } from '../lib/supabaseClient';
+import { ManualSyncModal } from './ManualSyncModal';
+import { batchUpsertPropertiesToSupabase, clearCatalogCaches, type PropertyUpsertPayload } from '../lib/supabaseClient';
 import { cleanCaixaAddressForMaps } from '../utils/addressSanitizer';
 import { FinanciamentoCaixaModal } from './FinanciamentoCaixaModal';
 import { EditalAnalysisModal } from './EditalAnalysisModal';
@@ -841,11 +842,11 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
           calculated_discount_percentage: cleanDiscount,
           occupancy_status: 'UNKNOWN',
           description: `Leilão Santander Oficial — ${p.sale_modality}`,
-          total_area: p.area_m2 || 70,
-          private_area: p.area_m2 || 70,
+          total_area: p.area_m2 || null,
+          private_area: p.area_m2 || null,
           land_area: null,
-          bedrooms: p.bedrooms || 2,
-          parking_spaces: 1,
+          bedrooms: p.bedrooms || null,
+          parking_spaces: null,
           main_photo_url: p.main_photo_url || null,
           source_url: p.link || 'https://www.santanderimoveis.com.br',
           source_generated_at: new Date().toISOString().split('T')[0],
@@ -860,6 +861,7 @@ const SantanderPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSu
       });
 
       await batchUpsertPropertiesToSupabase(payloads);
+      clearCatalogCaches();
       setImportSuccess(`${payloads.length} imóveis do Santander importados com sucesso para o Catálogo!`);
       onImportSuccess?.();
     } catch (e: any) {
@@ -1230,11 +1232,11 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
           calculated_discount_percentage: cleanDiscount,
           occupancy_status: 'UNKNOWN',
           description: `Leilão Bradesco Oficial — ${p.sale_modality}`,
-          total_area: p.area_m2 || 74,
-          private_area: p.area_m2 || 74,
+          total_area: p.area_m2 || null,
+          private_area: p.area_m2 || null,
           land_area: null,
-          bedrooms: p.bedrooms || 2,
-          parking_spaces: 1,
+          bedrooms: p.bedrooms || null,
+          parking_spaces: null,
           main_photo_url: p.main_photo_url || null,
           source_url: p.link || 'https://vitrinebradesco.com.br',
           source_generated_at: new Date().toISOString().split('T')[0],
@@ -1249,6 +1251,7 @@ const BradescoPanel: React.FC<{ onImportSuccess?: () => void }> = ({ onImportSuc
       });
 
       await batchUpsertPropertiesToSupabase(payloads);
+      clearCatalogCaches();
       setImportSuccess(`${payloads.length} imóveis do Bradesco importados com sucesso para o Catálogo!`);
       onImportSuccess?.();
     } catch (e: any) {
@@ -1620,6 +1623,7 @@ const BBPanel: React.FC<BBPanelProps> = ({ onImportSuccess }) => {
       });
 
       await batchUpsertPropertiesToSupabase(payloads);
+      clearCatalogCaches();
       setImportSuccess(`${payloads.length} imóveis do Banco do Brasil importados com sucesso para o Catálogo!`);
       onImportSuccess?.();
     } catch (e: any) {
@@ -1825,6 +1829,7 @@ interface BancosAdminPageProps {
 
 export const BancosAdminPage: React.FC<BancosAdminPageProps> = ({ onGoToCatalog }) => {
   const [activeTab, setActiveTab] = useState<BankTab>('caixa');
+  const [isManualSyncOpen, setIsManualSyncOpen] = useState(false);
 
   const TABS: { id: BankTab; label: string; icon: React.ElementType; color: string; activeColor: string }[] = [
     { id: 'caixa', label: 'CAIXA Econômica', icon: Building2, color: 'text-sky-700', activeColor: 'bg-sky-600' },
@@ -1837,9 +1842,19 @@ export const BancosAdminPage: React.FC<BancosAdminPageProps> = ({ onGoToCatalog 
     <div className="space-y-4">
       {/* Header */}
       <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-3xl p-6 text-white">
-        <div className="flex items-center gap-3 mb-1">
-          <RefreshCw className="w-5 h-5 text-orange-400" />
-          <h2 className="font-black text-lg">Central de Ingestão Multi-Banco</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+          <div className="flex items-center gap-3">
+            <RefreshCw className="w-5 h-5 text-orange-400" />
+            <h2 className="font-black text-lg">Central de Ingestão Multi-Banco</h2>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsManualSyncOpen(true)}
+            className="px-4 py-2 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs shadow-lg flex items-center gap-1.5 transition-all active:scale-95"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Sincronizar Todos os Bancos Agora</span>
+          </button>
         </div>
         <p className="text-xs text-slate-300">
           Atualize a base de imóveis da CAIXA, Santander, Bradesco e Banco do Brasil. Os imóveis importados alimentam automaticamente o Catálogo, o Mapa 2D/3D e a Jornada do Arrematante.
@@ -1854,6 +1869,13 @@ export const BancosAdminPage: React.FC<BancosAdminPageProps> = ({ onGoToCatalog 
           </div>
         </div>
       </div>
+
+      <ManualSyncModal
+        isOpen={isManualSyncOpen}
+        onClose={() => setIsManualSyncOpen(false)}
+        defaultUf="SP"
+        onSyncCompleted={onGoToCatalog}
+      />
 
       {/* Tabs */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">

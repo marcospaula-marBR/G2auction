@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Search,
   Filter,
@@ -28,10 +28,12 @@ import {
   queryPropertiesFromSupabase,
   fetchDistinctStatesFromSupabase,
   fetchDistinctCitiesByStateFromSupabase,
+  fetchDistinctNeighborhoodsFromSupabase,
   fetchDistinctPropertyTypesFromSupabase,
   fetchDistinctSaleModalitiesFromSupabase,
   fetchCatalogSummaryStatsFromSupabase,
   fetchBankFreshnessFromSupabase,
+  clearCatalogCaches,
   type BankFreshnessInfo,
   type PropertyFilterParams,
 } from '../lib/supabaseClient';
@@ -42,12 +44,20 @@ import { formatCurrencyBRL } from '../utils/financial';
 import { cleanCaixaAddressForMaps } from '../utils/addressSanitizer';
 import { getCaixaPropertyPageUrl } from '../utils/caixaEditalHelper';
 import { extractHdnImovelFromUrl } from '../utils/caixaListImporter';
-import { getAuctionValues, getPaymentConditions, formatStandardPropertyId, extractCleanPropertyAddress } from '../utils/propertyAuctionHelper';
+import {
+  getAuctionValues,
+  getPaymentConditions,
+  formatStandardPropertyId,
+  extractCleanPropertyAddress,
+  extractPropertyLocationTokens,
+} from '../utils/propertyAuctionHelper';
 import { EditalAnalysisModal } from './EditalAnalysisModal';
 import { FinanciamentoCaixaModal } from './FinanciamentoCaixaModal';
 import { BancosAdminPage } from './BancosAdminPage';
+import { ManualSyncModal } from './ManualSyncModal';
 import { PropertyMap } from './PropertyMap';
 import { useTenant } from '../config/tenant';
+import { useAuth } from '../config/auth';
 
 interface PropertyCatalogPageProps {
   onOpenAdmin?: () => void;
@@ -65,7 +75,10 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
   onOpenDetail360,
 }) => {
   const { tenant } = useTenant();
+  const { user } = useAuth();
+  const canShowAdminSyncTab = tenant.features.adminSync || Boolean(user?.isManager);
   const [activeTab, setActiveTab] = useState<'catalog' | 'sync'>('catalog');
+  const [isManualSyncOpen, setIsManualSyncOpen] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'grid' | 'split' | 'map'>('grid');
   const [activeMapLayer, setActiveMapLayer] = useState<'default' | 'price' | 'flood' | 'safety' | 'noise' | '3d'>('default');
   const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState<boolean>(false);
@@ -84,12 +97,17 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
   // Opções Dinâmicas para os Selects (Seções 19, 20, 27, 28)
   const [availableStates, setAvailableStates] = useState<string[]>([]);
   const [availableCities, setAvailableCities] = useState<string[]>([]);
+  const [availableNeighborhoods, setAvailableNeighborhoods] = useState<string[]>([]);
   const [availableTypes, setAvailableTypes] = useState<string[]>([]);
   const [availableModalities, setAvailableModalities] = useState<string[]>([]);
 
   // Estados dos Filtros (Seção 18 a 30)
   const [selectedState, setSelectedState] = useState<string>('SP');
   const [selectedCity, setSelectedCity] = useState<string>('');
+  const [selectedNeighborhood, setSelectedNeighborhood] = useState<string>('');
+  const [streetFilter, setStreetFilter] = useState<string>('');
+  const [condominiumFilter, setCondominiumFilter] = useState<string>('');
+  const skipNextCityResetRef = useRef<boolean>(false);
   const [selectedBank, setSelectedBank] = useState<string>('ALL');
   const [priceMinInput, setPriceMinInput] = useState<string>('');
   const [priceMaxInput, setPriceMaxInput] = useState<string>('');
@@ -158,14 +176,33 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
       if (selectedState) {
         const cities = await fetchDistinctCitiesByStateFromSupabase(selectedState);
         setAvailableCities(cities);
-        setSelectedCity(''); // Limpar cidade ao trocar de estado (Seção 20)
+        if (skipNextCityResetRef.current) {
+          skipNextCityResetRef.current = false;
+        } else {
+          setSelectedCity(''); // Limpar cidade ao trocar de estado (Seção 20)
+          setSelectedNeighborhood('');
+        }
       } else {
         setAvailableCities([]);
         setSelectedCity('');
+        setSelectedNeighborhood('');
       }
     }
     loadCities();
   }, [selectedState]);
+
+  // Carregar bairros dependentes sempre que UF ou Cidade mudar
+  useEffect(() => {
+    async function loadNeighborhoods() {
+      if (selectedState) {
+        const neighs = await fetchDistinctNeighborhoodsFromSupabase(selectedState, selectedCity);
+        setAvailableNeighborhoods(neighs);
+      } else {
+        setAvailableNeighborhoods([]);
+      }
+    }
+    loadNeighborhoods();
+  }, [selectedState, selectedCity]);
 
   // Função principal de busca ao Supabase
   const executeSearch = useCallback(async (targetPage: number = 1) => {
@@ -176,6 +213,9 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
       const params: PropertyFilterParams = {
         state: selectedState || undefined,
         city: selectedCity || undefined,
+        neighborhood: selectedNeighborhood || undefined,
+        street: streetFilter || undefined,
+        condominium: condominiumFilter || undefined,
         source: selectedBank !== 'ALL' ? selectedBank : undefined,
         priceMin: priceMinInput ? Number(priceMinInput) : undefined,
         priceMax: priceMaxInput ? Number(priceMaxInput) : undefined,
@@ -213,6 +253,9 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
   }, [
     selectedState,
     selectedCity,
+    selectedNeighborhood,
+    streetFilter,
+    condominiumFilter,
     selectedBank,
     priceMinInput,
     priceMaxInput,
@@ -232,10 +275,30 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
 
   // Volta para o catálogo se adminSync for desabilitado
   useEffect(() => {
-    if (!tenant.features.adminSync && activeTab === 'sync') {
+    if (!canShowAdminSyncTab && activeTab === 'sync') {
       setActiveTab('catalog');
     }
-  }, [tenant.features.adminSync, activeTab]);
+  }, [canShowAdminSyncTab, activeTab]);
+
+  const refreshCatalogMetadata = useCallback(async () => {
+    clearCatalogCaches();
+    const [statsRes, freshnessRes, states, types, mods] = await Promise.all([
+      fetchCatalogSummaryStatsFromSupabase(),
+      fetchBankFreshnessFromSupabase(),
+      fetchDistinctStatesFromSupabase(),
+      fetchDistinctPropertyTypesFromSupabase(),
+      fetchDistinctSaleModalitiesFromSupabase(),
+    ]);
+    setSummaryStats(statsRes);
+    setBankFreshness(freshnessRes);
+    setAvailableStates(states);
+    setAvailableTypes(types);
+    setAvailableModalities(mods);
+    if (selectedState) {
+      const cities = await fetchDistinctCitiesByStateFromSupabase(selectedState);
+      setAvailableCities(cities);
+    }
+  }, [selectedState]);
 
   // Se mapa for desabilitado no tenant, força modo grid
   useEffect(() => {
@@ -269,6 +332,9 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
   const handleClearFilters = () => {
     setSelectedState('SP');
     setSelectedCity('');
+    setSelectedNeighborhood('');
+    setStreetFilter('');
+    setCondominiumFilter('');
     setSelectedBank('ALL');
     setPriceMinInput('');
     setPriceMaxInput('');
@@ -283,6 +349,27 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
     setPropertyType('Todos');
     setSaleModality('Todas');
     setPage(1);
+  };
+
+  const handleFilterSameLocation = (
+    prop: any,
+    mode: 'condominium' | 'neighborhood' | 'street'
+  ) => {
+    const tokens = extractPropertyLocationTokens(prop);
+    const targetUf = String(prop?.state || selectedState || 'SP').trim().toUpperCase();
+    const targetCity = String(prop?.city || '').trim();
+
+    if (targetUf && targetUf !== selectedState) {
+      skipNextCityResetRef.current = true;
+      setSelectedState(targetUf);
+    }
+    setSelectedCity(targetCity);
+    setSelectedNeighborhood(mode === 'neighborhood' ? tokens.neighborhood || '' : '');
+    setStreetFilter(mode === 'street' ? tokens.street || '' : '');
+    setCondominiumFilter(mode === 'condominium' ? tokens.condominium || '' : '');
+    setSelectedDetailProperty(null);
+    setPage(1);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
@@ -309,39 +396,51 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
             </span>
           </div>
 
-          {/* SELETOR DE MODO ADMIN: Apenas quando habilitado no tenant/admin */}
-          {tenant.features.adminSync && (
-            <div className="flex items-center bg-slate-100/90 backdrop-blur-sm p-1 rounded-2xl border border-slate-200/80">
-              <button
-                onClick={() => setActiveTab('catalog')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                  activeTab === 'catalog'
-                    ? 'text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-                style={activeTab === 'catalog' ? { backgroundColor: tenant.primaryColor } : undefined}
-              >
-                <Building2 className="w-3.5 h-3.5" />
-                <span>Catálogo</span>
-              </button>
-              <button
-                onClick={() => setActiveTab('sync')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                  activeTab === 'sync'
-                    ? 'text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-                style={activeTab === 'sync' ? { backgroundColor: tenant.primaryColor } : undefined}
-              >
-                <RefreshCw
-                  className={`w-3.5 h-3.5 ${
-                    activeTab === 'sync' ? 'text-white' : 'text-emerald-600'
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsManualSyncOpen(true)}
+              className="px-3.5 py-2 rounded-2xl text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center gap-1.5 transition-all active:scale-95"
+              title="Sincronizar imediatamente com os portais e bancos oficiais"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Sincronizar Agora</span>
+            </button>
+
+            {/* SELETOR DE MODO ADMIN: Quando habilitado no tenant ou usuário administrador */}
+            {canShowAdminSyncTab && (
+              <div className="flex items-center bg-slate-100/90 backdrop-blur-sm p-1 rounded-2xl border border-slate-200/80">
+                <button
+                  onClick={() => setActiveTab('catalog')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    activeTab === 'catalog'
+                      ? 'text-white shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
-                />
-                <span>Admin Sync Bancos</span>
-              </button>
-            </div>
-          )}
+                  style={activeTab === 'catalog' ? { backgroundColor: tenant.primaryColor } : undefined}
+                >
+                  <Building2 className="w-3.5 h-3.5" />
+                  <span>Catálogo</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('sync')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    activeTab === 'sync'
+                      ? 'text-white shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  style={activeTab === 'sync' ? { backgroundColor: tenant.primaryColor } : undefined}
+                >
+                  <RefreshCw
+                    className={`w-3.5 h-3.5 ${
+                      activeTab === 'sync' ? 'text-white' : 'text-emerald-600'
+                    }`}
+                  />
+                  <span>Admin Sync Bancos</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
@@ -419,6 +518,11 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
               return (
                 <div
                   key={b.source}
+                  title={
+                    isRecent
+                      ? `Base sincronizada recentemente. Clique em "Sincronizar Agora" para atualizar sob demanda.`
+                      : `Base há mais de 48h sem atualização. Clique em "Sincronizar Agora" para atualizar.`
+                  }
                   className="bg-white/75 border border-slate-200/80 px-2.5 py-1 rounded-xl flex items-center gap-1.5"
                 >
                   <span
@@ -447,11 +551,12 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
         )}
       </div>
 
-      {activeTab === 'sync' && tenant.features.adminSync ? (
+      {activeTab === 'sync' && canShowAdminSyncTab ? (
         <div className="space-y-6">
           <BancosAdminPage
             onGoToCatalog={() => {
               setActiveTab('catalog');
+              refreshCatalogMetadata();
               executeSearch(1);
             }}
           />
@@ -569,6 +674,124 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
             <span>Buscar</span>
           </button>
         </div>
+
+        {/* Localização Fina: Bairro, Rua / Logradouro e Condomínio / Edifício */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs pt-2 border-t border-slate-100">
+          <div className="space-y-1">
+            <label className="font-bold text-slate-600 uppercase text-[10px]">Bairro</label>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder={
+                  availableNeighborhoods.length > 0
+                    ? `Todos os bairros (${availableNeighborhoods.length})`
+                    : 'Digite o bairro...'
+                }
+                value={selectedNeighborhood}
+                onChange={(e) => setSelectedNeighborhood(e.target.value)}
+                list="neighborhoods-datalist"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 placeholder:text-slate-400"
+              />
+              {selectedNeighborhood && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedNeighborhood('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 font-bold"
+                  title="Limpar bairro"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            <datalist id="neighborhoods-datalist">
+              {availableNeighborhoods.map((neigh) => (
+                <option key={neigh} value={neigh} />
+              ))}
+            </datalist>
+          </div>
+
+          <div className="space-y-1">
+            <label className="font-bold text-slate-600 uppercase text-[10px]">Rua / Logradouro</label>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Ex: Av. Paulista, Rua Treze..."
+                value={streetFilter}
+                onChange={(e) => setStreetFilter(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 placeholder:text-slate-400"
+              />
+              {streetFilter && (
+                <button
+                  type="button"
+                  onClick={() => setStreetFilter('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 font-bold"
+                  title="Limpar rua"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="font-bold text-slate-600 uppercase text-[10px]">Condomínio / Edifício</label>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Ex: Edifício Murat, Cond. Village..."
+                value={condominiumFilter}
+                onChange={(e) => setCondominiumFilter(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 placeholder:text-slate-400"
+              />
+              {condominiumFilter && (
+                <button
+                  type="button"
+                  onClick={() => setCondominiumFilter('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 font-bold"
+                  title="Limpar condomínio"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {(selectedNeighborhood || streetFilter || condominiumFilter) && (
+          <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+            <span className="text-slate-500 font-bold uppercase text-[10px] mr-1">Localização ativa:</span>
+            {condominiumFilter && (
+              <button
+                type="button"
+                onClick={() => setCondominiumFilter('')}
+                className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-800 border border-indigo-200 px-2.5 py-1 rounded-full font-bold hover:bg-indigo-100"
+              >
+                <span>🏢 Condomínio: {condominiumFilter}</span>
+                <X className="w-3 h-3" />
+              </button>
+            )}
+            {selectedNeighborhood && (
+              <button
+                type="button"
+                onClick={() => setSelectedNeighborhood('')}
+                className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-full font-bold hover:bg-emerald-100"
+              >
+                <span>📍 Bairro: {selectedNeighborhood}</span>
+                <X className="w-3 h-3" />
+              </button>
+            )}
+            {streetFilter && (
+              <button
+                type="button"
+                onClick={() => setStreetFilter('')}
+                className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 px-2.5 py-1 rounded-full font-bold hover:bg-amber-100"
+              >
+                <span>🛣️ Rua: {streetFilter}</span>
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Nível 2: Gaveta de Filtros Avançados */}
         {isAdvancedFiltersOpen && (
@@ -986,6 +1209,47 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
                               Bairro: {prop.neighborhood}
                             </p>
                           )}
+
+                          {(() => {
+                            const locTokens = extractPropertyLocationTokens(prop);
+                            if (!locTokens.condominium && !locTokens.neighborhood && !locTokens.street) {
+                              return null;
+                            }
+                            return (
+                              <div className="flex flex-wrap items-center gap-1 mt-2">
+                                {locTokens.condominium && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleFilterSameLocation(prop, 'condominium')}
+                                    title={`Filtrar imóveis no mesmo condomínio/edifício: ${locTokens.condominiumLabel || locTokens.condominium}`}
+                                    className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 transition-colors"
+                                  >
+                                    🏢 Mesmo Condomínio
+                                  </button>
+                                )}
+                                {locTokens.neighborhood && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleFilterSameLocation(prop, 'neighborhood')}
+                                    title={`Filtrar imóveis no bairro ${locTokens.neighborhood}`}
+                                    className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 transition-colors"
+                                  >
+                                    📍 Mesmo Bairro
+                                  </button>
+                                )}
+                                {locTokens.street && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleFilterSameLocation(prop, 'street')}
+                                    title={`Filtrar imóveis em ${locTokens.street}`}
+                                    className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/80 transition-colors"
+                                  >
+                                    🛣️ Mesma Rua
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
 
                         {/* Valoração Financeira (Se houver 1º e 2º leilão, apresenta ambos) */}
@@ -1376,12 +1640,47 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
               })()}
 
               {/* Endereço Completo */}
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <span className="text-slate-400 font-bold text-[10px] uppercase">Endereço Completo:</span>
                 <p className="text-slate-900 font-bold text-sm">{extractCleanPropertyAddress(selectedDetailProperty)}</p>
                 {selectedDetailProperty.neighborhood && (
                   <p className="text-slate-500 font-medium">Bairro: {selectedDetailProperty.neighborhood}</p>
                 )}
+                {(() => {
+                  const locTokens = extractPropertyLocationTokens(selectedDetailProperty);
+                  if (!locTokens.condominium && !locTokens.neighborhood && !locTokens.street) return null;
+                  return (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      {locTokens.condominium && (
+                        <button
+                          type="button"
+                          onClick={() => handleFilterSameLocation(selectedDetailProperty, 'condominium')}
+                          className="text-[11px] font-bold px-2.5 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 transition-colors"
+                        >
+                          🏢 Ver no Mesmo Condomínio ({locTokens.condominiumLabel || locTokens.condominium})
+                        </button>
+                      )}
+                      {locTokens.neighborhood && (
+                        <button
+                          type="button"
+                          onClick={() => handleFilterSameLocation(selectedDetailProperty, 'neighborhood')}
+                          className="text-[11px] font-bold px-2.5 py-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition-colors"
+                        >
+                          📍 Mesmo Bairro ({locTokens.neighborhood})
+                        </button>
+                      )}
+                      {locTokens.street && (
+                        <button
+                          type="button"
+                          onClick={() => handleFilterSameLocation(selectedDetailProperty, 'street')}
+                          className="text-[11px] font-bold px-2.5 py-1 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition-colors"
+                        >
+                          🛣️ Mesma Rua ({locTokens.street})
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Atributos Extraídos da Descrição */}
@@ -1600,6 +1899,17 @@ export const PropertyCatalogPage: React.FC<PropertyCatalogPageProps> = ({
           onClose={() => setSelectedFinancingProperty(null)}
         />
       )}
+
+      {/* Modal de Sincronização Manual Sob Demanda */}
+      <ManualSyncModal
+        isOpen={isManualSyncOpen}
+        onClose={() => setIsManualSyncOpen(false)}
+        defaultUf={selectedState || 'SP'}
+        onSyncCompleted={() => {
+          refreshCatalogMetadata();
+          executeSearch(1);
+        }}
+      />
 
     </div>
   );

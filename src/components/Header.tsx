@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bot, Bell, Palette, ShieldCheck, Building2, LogIn, LogOut, Download, Briefcase } from 'lucide-react';
+import { Bot, Bell, Palette, ShieldCheck, Building2, LogIn, LogOut, Download, Briefcase, RefreshCw } from 'lucide-react';
 import { useTenant } from '../config/tenant';
 import { useAuth } from '../config/auth';
 import type { UserProfile } from '../types/auction';
@@ -14,6 +14,9 @@ interface HeaderProps {
   canInstallPwa?: boolean;
   onInstallPwa?: () => void;
   onReplayIntro?: () => void;
+  hasAppUpdate?: boolean;
+  onApplyUpdate?: () => void;
+  onCheckForUpdate?: () => void;
   unreadNotifications: number;
   version?: string;
 }
@@ -26,8 +29,11 @@ export const Header: React.FC<HeaderProps> = ({
   canInstallPwa,
   onInstallPwa,
   onReplayIntro,
+  hasAppUpdate = false,
+  onApplyUpdate,
+  onCheckForUpdate,
   unreadNotifications,
-  version = 'v3.16.1',
+  version = 'v3.18.0',
 }) => {
   const { tenant } = useTenant();
   const { user, signOut } = useAuth();
@@ -66,9 +72,31 @@ export const Header: React.FC<HeaderProps> = ({
                     {tenant.brandName}
                   </span>
                 )}
-                <span className="bg-slate-900 text-slate-100 text-[10px] font-black px-2 py-0.5 rounded-md">
-                  {version}
-                </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (hasAppUpdate && onApplyUpdate) {
+                      onApplyUpdate();
+                    } else if (onCheckForUpdate) {
+                      onCheckForUpdate();
+                    }
+                  }}
+                  title={
+                    hasAppUpdate
+                      ? 'Nova versão do PWA disponível! Clique para atualizar agora.'
+                      : 'Clique para verificar atualizações do PWA'
+                  }
+                  className={`text-[10px] font-black px-2 py-0.5 rounded-md inline-flex items-center gap-1 transition-colors ${
+                    hasAppUpdate
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
+                      : 'bg-slate-900 hover:bg-slate-800 text-slate-100'
+                  }`}
+                >
+                  {hasAppUpdate && <span className="w-1.5 h-1.5 rounded-full bg-amber-300 animate-ping" />}
+                  <span>{version}</span>
+                  {hasAppUpdate && <RefreshCw className="w-2.5 h-2.5" />}
+                </button>
                 <span className="hidden lg:inline-flex bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-full items-center gap-1 border border-emerald-200">
                   <ShieldCheck className="w-3 h-3 text-emerald-600" /> Base Multi-Bancos
                 </span>

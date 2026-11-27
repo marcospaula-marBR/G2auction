@@ -89,6 +89,10 @@ function deduplicateProperties(list: any[]): any[] {
 const DROPDOWN_CACHE_TTL_MS = 5 * 60 * 1000;
 const dropdownCache = new Map<string, { data: any; expiresAt: number }>();
 
+export function clearCatalogCaches(): void {
+  dropdownCache.clear();
+}
+
 function getCachedDropdown<T>(key: string): T | null {
   const entry = dropdownCache.get(key);
   if (entry && entry.expiresAt > Date.now()) {
@@ -464,24 +468,39 @@ export async function reconcileMissingPropertiesByState(
 
   if (supabase) {
     try {
-      const { data: existingActive } = await supabase
-        .from('properties')
-        .select('id, source_property_id')
-        .eq('source', 'CAIXA')
-        .eq('state', ufUpper)
-        .eq('status', 'ACTIVE');
+      const existingActive: { id: string; source_property_id: string }[] = [];
+      const pageSize = 1000;
+      let from = 0;
 
-      if (existingActive) {
+      while (true) {
+        const { data, error } = await supabase
+          .from('properties')
+          .select('id, source_property_id')
+          .eq('source', 'CAIXA')
+          .eq('state', ufUpper)
+          .eq('status', 'ACTIVE')
+          .range(from, from + pageSize - 1);
+
+        if (error || !data || data.length === 0) break;
+        existingActive.push(...data);
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
+
+      if (existingActive.length > 0) {
         const missingIds = existingActive
           .filter((p) => !currentImportedPropertyIds.has(p.source_property_id))
           .map((p) => p.id);
 
-        if (missingIds.length > 0) {
+        const nowIso = new Date().toISOString();
+        for (let i = 0; i < missingIds.length; i += 200) {
+          const chunk = missingIds.slice(i, i + 200);
           await supabase
             .from('properties')
-            .update({ status: 'POSSIBLY_REMOVED', updated_at: new Date().toISOString() })
-            .in('id', missingIds);
+            .update({ status: 'POSSIBLY_REMOVED', updated_at: nowIso })
+            .in('id', chunk);
         }
+        countPossiblyRemoved = Math.max(countPossiblyRemoved, missingIds.length);
       }
     } catch (err: any) {
       console.warn('[Reconcile Error]', err.message);
@@ -581,6 +600,9 @@ export async function verifySavedPropertyInSupabase(
 export interface PropertyFilterParams {
   state?: string;
   city?: string;
+  neighborhood?: string;
+  street?: string;
+  condominium?: string;
   source?: string; // 'ALL' | 'CAIXA' | 'SANTANDER' | 'BRADESCO'
   sources?: string[]; // Suporte a múltiplos bancos selecionados
   priceMin?: number;
@@ -599,6 +621,14 @@ export interface PropertyFilterParams {
   sortBy?: 'discount_desc' | 'price_asc' | 'appraisal_desc' | 'area_desc' | 'recent_desc' | 'neighborhood_asc' | 'address_asc';
   page?: number;
   pageSize?: number;
+}
+
+function sanitizeOrIlikeTerm(raw: string): string {
+  return String(raw || '')
+    .trim()
+    .replace(/[,()%*]+/g, ' ')
+    .replace(/\s+/g, '%')
+    .replace(/^%+|%+$/g, '');
 }
 
 /**
@@ -635,6 +665,16 @@ export async function queryPropertiesFromSupabase(
 
       if (filters.state) query = query.eq('state', filters.state.toUpperCase());
       if (filters.city) query = query.ilike('city', `%${filters.city.trim()}%`);
+      if (filters.neighborhood) query = query.ilike('neighborhood', `%${filters.neighborhood.trim()}%`);
+      if (filters.street) query = query.ilike('address', `%${filters.street.trim()}%`);
+      if (filters.condominium) {
+        const condoTerm = sanitizeOrIlikeTerm(filters.condominium);
+        if (condoTerm) {
+          query = query.or(
+            `address.ilike.%${condoTerm}%,title.ilike.%${condoTerm}%,neighborhood.ilike.%${condoTerm}%,description.ilike.%${condoTerm}%`
+          );
+        }
+      }
 
       if (filters.priceMin !== undefined && filters.priceMin !== null) query = query.gte('current_minimum_value', filters.priceMin);
       if (filters.priceMax !== undefined && filters.priceMax !== null) query = query.lte('current_minimum_value', filters.priceMax);
@@ -680,7 +720,9 @@ export async function queryPropertiesFromSupabase(
           break;
         case 'discount_desc':
         default:
-          query = query.lt('discount_percentage', 100).order('discount_percentage', { ascending: false, nullsFirst: false });
+          query = query
+            .or('discount_percentage.is.null,discount_percentage.lt.100')
+            .order('discount_percentage', { ascending: false, nullsFirst: false });
           break;
       }
 
@@ -728,6 +770,21 @@ export async function queryPropertiesFromSupabase(
   if (filters.city) {
     const targetNormCity = stripAccents(filters.city);
     filtered = filtered.filter((p) => stripAccents(p.city).includes(targetNormCity));
+  }
+  if (filters.neighborhood) {
+    const targetNormNeigh = stripAccents(filters.neighborhood);
+    filtered = filtered.filter((p) => stripAccents(p.neighborhood).includes(targetNormNeigh));
+  }
+  if (filters.street) {
+    const targetNormStreet = stripAccents(filters.street);
+    filtered = filtered.filter((p) => stripAccents(p.address).includes(targetNormStreet));
+  }
+  if (filters.condominium) {
+    const targetNormCondo = stripAccents(filters.condominium);
+    filtered = filtered.filter((p) => {
+      const hay = stripAccents(`${p.address || ''} ${p.title || ''} ${p.neighborhood || ''} ${p.description || ''}`);
+      return hay.includes(targetNormCondo);
+    });
   }
 
   // Quando houver ainda constando 1º e 2º leilões, utilizar o maior valor para efeitos de filtros
@@ -898,6 +955,67 @@ export async function fetchDistinctCitiesByStateFromSupabase(uf: string): Promis
 }
 
 /**
+ * BUSCAR BAIRROS POR UF / CIDADE PARA AUTOCOMPLETE
+ */
+export async function fetchDistinctNeighborhoodsFromSupabase(uf: string, city?: string): Promise<string[]> {
+  const ufUpper = (uf || '').trim().toUpperCase();
+  if (!ufUpper) return [];
+  const cityClean = (city || '').trim();
+  const cacheKey = `neighborhoods:${ufUpper}:${stripAccents(cityClean)}`;
+  const cached = getCachedDropdown<string[]>(cacheKey);
+  if (cached) return cached;
+
+  const neighMap = new Map<string, string>();
+  const addNeigh = (raw?: string | null) => {
+    const clean = String(raw || '').trim();
+    if (!clean || clean.toLowerCase() === 'n/i') return;
+    const norm = stripAccents(clean);
+    if (norm && !neighMap.has(norm)) {
+      neighMap.set(norm, formatCityDisplayName(clean));
+    }
+  };
+
+  if (supabase) {
+    try {
+      let query = supabase
+        .from('properties')
+        .select('neighborhood')
+        .eq('status', 'ACTIVE')
+        .eq('state', ufUpper)
+        .not('neighborhood', 'is', null)
+        .limit(2000);
+      if (cityClean) {
+        query = query.ilike('city', `%${cityClean}%`);
+      }
+      const { data, error } = await query;
+      if (!error && Array.isArray(data)) {
+        data.forEach((d: any) => addNeigh(d?.neighborhood));
+        return setCachedDropdown(
+          cacheKey,
+          Array.from(neighMap.values()).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+        );
+      }
+    } catch (e: any) {
+      console.warn('[Fetch Neighborhoods Error]', e.message);
+    }
+  }
+
+  const normTargetCity = stripAccents(cityClean);
+  memoryStore.properties.forEach((p) => {
+    if ((p.state || '').toUpperCase() === ufUpper && (!p.status || p.status === 'ACTIVE')) {
+      if (!normTargetCity || stripAccents(p.city).includes(normTargetCity)) {
+        addNeigh(p.neighborhood);
+      }
+    }
+  });
+
+  return setCachedDropdown(
+    cacheKey,
+    Array.from(neighMap.values()).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  );
+}
+
+/**
  * BUSCAR TIPOS DE IMÓVEIS (RPC DISTINCT no Postgres + cache)
  */
 export async function fetchDistinctPropertyTypesFromSupabase(): Promise<string[]> {
@@ -1059,4 +1177,38 @@ export async function fetchBankFreshnessFromSupabase(): Promise<BankFreshnessInf
       sourceGeneratedAt: matching[0]?.source_generated_at || null,
     };
   });
+}
+
+export interface LatestCaixaImportStatus {
+  uf: string;
+  status: string;
+  source_generated_at: string | null;
+  created_at: string;
+  valid_rows: number;
+}
+
+export async function fetchLatestCaixaImportStatusByUf(uf: string): Promise<LatestCaixaImportStatus | null> {
+  const ufUpper = (uf || '').trim().toUpperCase();
+  if (!ufUpper || !supabase) return null;
+  try {
+    const { data, error } = await supabase
+      .from('caixa_imports')
+      .select('uf, status, source_generated_at, created_at, valid_rows')
+      .eq('uf', ufUpper)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return {
+      uf: data.uf,
+      status: data.status || 'UNKNOWN',
+      source_generated_at: data.source_generated_at || null,
+      created_at: data.created_at,
+      valid_rows: Number(data.valid_rows || 0),
+    };
+  } catch (e: any) {
+    console.warn('[Latest Caixa Import Status Error]', e.message);
+    return null;
+  }
 }

@@ -651,3 +651,98 @@ export function extractCleanPropertyAddress(prop: any): string {
   return rawAddress || rawTitle || `${city} - ${state}`;
 }
 
+export interface PropertyLocationTokens {
+  neighborhood: string | null;
+  street: string | null;
+  condominium: string | null;
+  condominiumLabel: string | null;
+}
+
+/**
+ * Extrai bairro, logradouro (rua/avenida sem número) e condomínio/edifício
+ * para filtros instantâneos de "Mesmo Condomínio / Mesmo Bairro / Mesma Rua".
+ */
+export function extractPropertyLocationTokens(prop: any): PropertyLocationTokens {
+  if (!prop) {
+    return { neighborhood: null, street: null, condominium: null, condominiumLabel: null };
+  }
+
+  const city = String(prop.city || '').trim();
+  const rawNeigh = String(prop.neighborhood || (typeof prop.address === 'object' ? prop.address?.neighborhood : '') || '').trim();
+  const neighborhood =
+    rawNeigh && rawNeigh.length >= 2 && rawNeigh.toLowerCase() !== 'n/i' && rawNeigh.toLowerCase() !== city.toLowerCase()
+      ? rawNeigh
+      : null;
+
+  const cleanAddr = extractCleanPropertyAddress(prop);
+  const rawTitle = String(prop.title || prop.name || '').trim();
+  const rawDesc = String(prop.description || '').replace(/<[^>]*>/g, ' ').trim();
+
+  // 1. Extração da Rua / Logradouro sem número nem complemento
+  let street: string | null = null;
+  if (cleanAddr) {
+    let candidate = cleanAddr
+      .replace(/,\s*(?:n[°ºo.]?\s*)?(?:\d+|s\/?n|sn)\b.*$/i, '')
+      .replace(/\s+(?:n[°ºo.]?\s*)?\d+\b.*$/i, '')
+      .replace(/,\s*(?:apto|apartamento|bloco|bl|torre|sala|loja|lote|lt|quadra|qd|subcond|vg|vaga)\b.*$/i, '')
+      .trim()
+      .replace(/[,-]+$/g, '')
+      .trim();
+
+    if (
+      candidate.length >= 5 &&
+      candidate.toLowerCase() !== city.toLowerCase() &&
+      (!neighborhood || candidate.toLowerCase() !== neighborhood.toLowerCase()) &&
+      /\b(rua|r\.|avenida|av\.|alameda|al\.|travessa|trav\.|pra[çc]a|pc\.|rodovia|rod\.|estrada|est\.|largo|viaduto|viela|servid[aã]o|passeio)\b/i.test(candidate)
+    ) {
+      street = candidate;
+    }
+  }
+
+  // 2. Extração de Condomínio / Edifício / Residencial
+  let condominium: string | null = null;
+  let condominiumLabel: string | null = null;
+  const sources = [cleanAddr, rawTitle, rawNeigh, rawDesc].filter(Boolean);
+  const condoRegex =
+    /(?:condom[ií]nio|cond\.?|edif[ií]cio|ed\.?|residencial|res\.?|conjunto\s+habitacional|conj\.?\s+hab\.?|resort\s+residence|parque\s+residencial)\s*(?:residencial|edif[ií]cio)?[\s:.,-]*([A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9\s.'-]{2,55})/i;
+
+  for (const src of sources) {
+    const m = src.match(condoRegex);
+    if (m && m[1]) {
+      let extracted = m[1]
+        .split(/\s*(?:,|\bapto\b|\bapartamento\b|\bbloco\b|\bbl\b|\btorre\b|\blote\b|\blt\b|\bquadra\b|\bqd\b|\bvaga\b|\bvg\b|\bcep\b|\bcom\s+direito\b|\bpv\b|\barea\b|\bárea\b|\b\d+\s*qto|\s-\s)/i)[0]
+        .trim()
+        .replace(/[.,-]+$/g, '')
+        .trim();
+
+      if (extracted.length >= 3 && !/^\d+$/.test(extracted)) {
+        condominium = extracted;
+        condominiumLabel = m[0].split(/\s*(?:,|\bapto\b|\bapartamento\b|\bbloco\b|\bbl\b|\btorre\b|\bcom\s+direito\b|\s-\s)/i)[0].trim();
+        break;
+      }
+    }
+  }
+
+  // Fallback para prédios/condomínios identificados apenas por endereço+número + unidade (Apto/Bloco/Torre/Subcond)
+  if (!condominium && cleanAddr) {
+    const hasUnitHint = /\b(apto|apartamento|bloco|bl\s*\d|torre|subcond|conj|sala)\b/i.test(
+      `${cleanAddr} ${rawDesc}`
+    );
+    const baseNumMatch = cleanAddr.match(
+      /^((?:rua|r\.|avenida|av\.|alameda|al\.|travessa|pra[çc]a|estrada|rodovia)[^,]+,\s*(?:n[°ºo.]?\s*)?\d+)/i
+    );
+    if (hasUnitHint && baseNumMatch && baseNumMatch[1]) {
+      const buildingKey = baseNumMatch[1].replace(/\s+/g, ' ').trim();
+      condominium = buildingKey;
+      condominiumLabel = buildingKey;
+    }
+  }
+
+  return {
+    neighborhood,
+    street,
+    condominium,
+    condominiumLabel,
+  };
+}
+

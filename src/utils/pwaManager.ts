@@ -5,17 +5,212 @@ export interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 }
 
+export interface PwaUpdateInfo {
+  available: boolean;
+  latestVersion: string | null;
+  reason: 'sw_waiting' | 'version_mismatch' | null;
+}
+
+let cachedSwRegistration: ServiceWorkerRegistration | null = null;
+
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
     return null;
   }
   try {
-    const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    const registration = await navigator.serviceWorker.register('/sw.js', {
+      scope: '/',
+      updateViaCache: 'none',
+    });
+    cachedSwRegistration = registration;
     return registration;
   } catch (err) {
     console.warn('[PWA] Falha ao registrar Service Worker:', err);
     return null;
   }
+}
+
+export async function checkForPwaUpdate(currentVersion: string): Promise<PwaUpdateInfo> {
+  if (typeof window === 'undefined') {
+    return { available: false, latestVersion: null, reason: null };
+  }
+
+  let hasWaitingSw = false;
+  try {
+    if ('serviceWorker' in navigator) {
+      const reg = cachedSwRegistration || (await navigator.serviceWorker.getRegistration('/'));
+      if (reg) {
+        cachedSwRegistration = reg;
+        await reg.update().catch(() => {});
+        if (reg.waiting && navigator.serviceWorker.controller) {
+          hasWaitingSw = true;
+        }
+      }
+    }
+  } catch {
+    // ignore SW check errors
+  }
+
+  let remoteVersion: string | null = null;
+  try {
+    const resp = await fetch(`/version.json?t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' },
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data && typeof data.version === 'string' && data.version.trim()) {
+        remoteVersion = data.version.trim();
+      }
+    }
+  } catch {
+    // ignore offline fetch errors
+  }
+
+  const normalizedCurrent = (currentVersion || '').trim();
+  const hasVersionMismatch = Boolean(remoteVersion && normalizedCurrent && remoteVersion !== normalizedCurrent);
+
+  if (hasVersionMismatch) {
+    return {
+      available: true,
+      latestVersion: remoteVersion,
+      reason: 'version_mismatch',
+    };
+  }
+
+  if (hasWaitingSw) {
+    return {
+      available: true,
+      latestVersion: remoteVersion,
+      reason: 'sw_waiting',
+    };
+  }
+
+  return {
+    available: false,
+    latestVersion: remoteVersion || normalizedCurrent || null,
+    reason: null,
+  };
+}
+
+export function startPwaUpdateWatcher(
+  currentVersion: string,
+  onUpdateAvailable: (info: PwaUpdateInfo) => void
+): () => void {
+  if (typeof window === 'undefined') return () => {};
+
+  let stopped = false;
+  let lastNotifiedKey = '';
+  let trackedReg: ServiceWorkerRegistration | null = null;
+
+  const emitIfAvailable = (info: PwaUpdateInfo) => {
+    if (stopped || !info.available) return;
+    const key = `${info.reason}:${info.latestVersion || ''}`;
+    if (key === lastNotifiedKey) return;
+    lastNotifiedKey = key;
+    onUpdateAvailable(info);
+  };
+
+  const runCheck = async () => {
+    if (stopped) return;
+    const info = await checkForPwaUpdate(currentVersion);
+    emitIfAvailable(info);
+  };
+
+  const handleUpdateFound = () => {
+    const installing = trackedReg?.installing;
+    if (!installing) return;
+    installing.addEventListener('statechange', () => {
+      if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+        runCheck().then(() => {
+          emitIfAvailable({
+            available: true,
+            latestVersion: null,
+            reason: 'sw_waiting',
+          });
+        });
+      }
+    });
+  };
+
+  registerServiceWorker().then((reg) => {
+    if (stopped || !reg) return;
+    trackedReg = reg;
+    if (reg.waiting && navigator.serviceWorker.controller) {
+      runCheck();
+    }
+    reg.addEventListener('updatefound', handleUpdateFound);
+  });
+
+  const initialTimer = window.setTimeout(runCheck, 3000);
+  const intervalId = window.setInterval(runCheck, 5 * 60 * 1000);
+
+  const handleVisibility = () => {
+    if (document.visibilityState === 'visible') {
+      runCheck();
+    }
+  };
+  const handleFocus = () => {
+    runCheck();
+  };
+
+  document.addEventListener('visibilitychange', handleVisibility);
+  window.addEventListener('focus', handleFocus);
+
+  return () => {
+    stopped = true;
+    window.clearTimeout(initialTimer);
+    window.clearInterval(intervalId);
+    document.removeEventListener('visibilitychange', handleVisibility);
+    window.removeEventListener('focus', handleFocus);
+    if (trackedReg) {
+      trackedReg.removeEventListener('updatefound', handleUpdateFound);
+    }
+  };
+}
+
+export async function applyPwaUpdate(): Promise<void> {
+  if (typeof window === 'undefined') return;
+
+  try {
+    if ('serviceWorker' in navigator) {
+      const reg = cachedSwRegistration || (await navigator.serviceWorker.getRegistration('/'));
+      if (reg) {
+        await reg.update().catch(() => {});
+        if (reg.waiting) {
+          await new Promise<void>((resolve) => {
+            let resolved = false;
+            const done = () => {
+              if (!resolved) {
+                resolved = true;
+                resolve();
+              }
+            };
+            const onControllerChange = () => {
+              navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+              done();
+            };
+            navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+            reg.waiting?.postMessage({ type: 'SKIP_WAITING' });
+            window.setTimeout(done, 1200);
+          });
+        }
+      }
+    }
+  } catch {
+    // ignore SW skipWaiting errors
+  }
+
+  try {
+    if ('caches' in window) {
+      const cacheKeys = await window.caches.keys();
+      await Promise.all(cacheKeys.map((k) => window.caches.delete(k)));
+    }
+  } catch {
+    // ignore cache clear errors
+  }
+
+  window.location.reload();
 }
 
 export function isPwaStandalone(): boolean {

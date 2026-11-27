@@ -1,11 +1,30 @@
-/* Service Worker para PWA instalável e Web Push Notifications */
+/* Service Worker para PWA instalável, controle de atualização e Web Push Notifications */
+const SW_VERSION = 'v3.18.0';
 
 self.addEventListener('install', () => {
-  self.skipWaiting();
+  // Não força skipWaiting() automático para permitir sinalização e atualização controlada pela UI
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    (async () => {
+      if (self.caches) {
+        const keys = await self.caches.keys();
+        await Promise.all(
+          keys
+            .filter((key) => !key.includes(SW_VERSION))
+            .map((key) => self.caches.delete(key))
+        );
+      }
+      await self.clients.claim();
+    })()
+  );
 });
 
 self.addEventListener('push', (event) => {

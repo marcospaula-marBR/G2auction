@@ -23,7 +23,10 @@ import type { Property, LedgerEntry, UserProfile } from './types/auction';
 import { queryPropertiesFromSupabase } from './lib/supabaseClient';
 import { adaptCatalogItemToProperty } from './utils/propertyAdapter';
 import {
-  registerServiceWorker,
+  startPwaUpdateWatcher,
+  checkForPwaUpdate,
+  applyPwaUpdate,
+  type PwaUpdateInfo,
   type BeforeInstallPromptEvent,
 } from './utils/pwaManager';
 import {
@@ -33,9 +36,9 @@ import {
   scorePropertiesAgainstRadar,
   type UserRadarProfile,
 } from './utils/radarMatchEngine';
-import { Wallet, Wrench, Users, PieChart, Route, Landmark, CheckCircle2, AlertCircle, X } from 'lucide-react';
+import { Wallet, Wrench, Users, PieChart, Route, Landmark, CheckCircle2, AlertCircle, X, RefreshCw, Sparkles } from 'lucide-react';
 
-const APP_VERSION = 'v3.16.1';
+const APP_VERSION = 'v3.18.0';
 const INTRO_SEEN_KEY = 'auction_intro_seen_v1';
 
 function AppContent() {
@@ -45,11 +48,16 @@ function AppContent() {
   const [properties, setProperties] = useState<Property[]>(mockProperties);
   const [selectedProperty, setSelectedProperty] = useState<Property | undefined>(mockProperties[0]);
 
-  // PWA Service Worker + Install Prompt
+  // PWA Service Worker + Install Prompt + Auto Update Watcher
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [pwaUpdate, setPwaUpdate] = useState<PwaUpdateInfo | null>(null);
+  const [isApplyingPwaUpdate, setIsApplyingPwaUpdate] = useState(false);
+  const [pwaCheckFeedback, setPwaCheckFeedback] = useState<string | null>(null);
 
   useEffect(() => {
-    registerServiceWorker();
+    const stopWatcher = startPwaUpdateWatcher(APP_VERSION, (info) => {
+      setPwaUpdate(info);
+    });
 
     const handleBeforeInstall = (e: Event) => {
       e.preventDefault();
@@ -57,8 +65,27 @@ function AppContent() {
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
-    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+    return () => {
+      stopWatcher();
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+    };
   }, []);
+
+  const handleApplyPwaUpdate = async () => {
+    setIsApplyingPwaUpdate(true);
+    await applyPwaUpdate();
+  };
+
+  const handleManualCheckPwaUpdate = async () => {
+    const info = await checkForPwaUpdate(APP_VERSION);
+    if (info.available) {
+      setPwaUpdate(info);
+      setPwaCheckFeedback(null);
+    } else {
+      setPwaCheckFeedback(`Você já está na versão mais recente (${APP_VERSION}).`);
+      window.setTimeout(() => setPwaCheckFeedback(null), 4000);
+    }
+  };
 
   const handleInstallPwa = async () => {
     if (!deferredPrompt) return;
@@ -234,9 +261,51 @@ function AppContent() {
         canInstallPwa={Boolean(deferredPrompt)}
         onInstallPwa={handleInstallPwa}
         onReplayIntro={() => setIsIntroVisible(true)}
+        hasAppUpdate={Boolean(pwaUpdate?.available)}
+        onApplyUpdate={handleApplyPwaUpdate}
+        onCheckForUpdate={handleManualCheckPwaUpdate}
         unreadNotifications={radarMatches.length}
         version={APP_VERSION}
       />
+
+      {pwaUpdate?.available && (
+        <div className="bg-emerald-700 text-white px-4 py-2.5 border-b border-emerald-800 shadow-xs">
+          <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 font-bold">
+              <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+              <span>
+                Nova versão do aplicativo disponível
+                {pwaUpdate.latestVersion ? ` (${pwaUpdate.latestVersion})` : ''} — atualize para carregar os recursos mais recentes.
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleApplyPwaUpdate}
+                disabled={isApplyingPwaUpdate}
+                className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-emerald-50 text-emerald-900 font-black text-xs flex items-center gap-1.5 shadow-xs transition-all disabled:opacity-70"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isApplyingPwaUpdate ? 'animate-spin' : ''}`} />
+                <span>{isApplyingPwaUpdate ? 'Atualizando...' : 'Atualizar agora'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPwaUpdate(null)}
+                className="p-1 rounded-lg hover:bg-white/10 text-emerald-100"
+                title="Dispensar aviso"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pwaCheckFeedback && !pwaUpdate?.available && (
+        <div className="bg-slate-900 text-slate-100 px-4 py-2 text-xs text-center font-bold">
+          {pwaCheckFeedback}
+        </div>
+      )}
 
       {/* Navigation Bar */}
       <nav className="bg-white border-b border-slate-200 px-4 sm:px-8 py-2.5">

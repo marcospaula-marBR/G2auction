@@ -15,12 +15,14 @@ import csv
 import datetime as dt
 import hashlib
 import html as html_lib
+import http.cookiejar
 import json
 import os
 import re
 import sys
 import time
 import unicodedata
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -140,10 +142,48 @@ def parse_iso_dt(val: str | None) -> str | None:
         return None
 
 
+def _to_utc_dt(val: str | None) -> dt.datetime | None:
+    if not val:
+        return None
+    try:
+        cleaned = val.strip()
+        if cleaned.endswith("Z"):
+            cleaned = cleaned[:-1] + "+00:00"
+        parsed = dt.datetime.fromisoformat(cleaned)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=dt.timezone(dt.timedelta(hours=-3)))
+        return parsed.astimezone(dt.timezone.utc)
+    except Exception:
+        return None
+
+
+def choose_active_auction_date(*candidates: str | None) -> str | None:
+    """Seleciona a próxima data de leilão ativa (>= início do dia atual BRT) entre candidatas."""
+    valid: list[tuple[str, dt.datetime]] = []
+    for cand in candidates:
+        if not cand:
+            continue
+        parsed = _to_utc_dt(cand)
+        if parsed is not None:
+            valid.append((cand, parsed))
+    if not valid:
+        return None
+
+    brt = dt.timezone(dt.timedelta(hours=-3))
+    now_brt = dt.datetime.now(brt)
+    today_start_utc = now_brt.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(dt.timezone.utc)
+
+    for raw, parsed in valid:
+        if parsed >= today_start_utc:
+            return raw
+
+    return valid[-1][0]
+
+
 # =====================================================================
 # CONECTOR REAL: BRADESCO (API Vitrine Bradesco)
 # =====================================================================
-def fetch_bradesco_uf(uf: str) -> list[dict[str, Any]]:
+def fetch_bradesco_uf(uf: str) -> tuple[list[dict[str, Any]], bool]:
     uf_upper = uf.strip().upper()
     headers = {
         **BROWSER_HEADERS,
@@ -155,36 +195,47 @@ def fetch_bradesco_uf(uf: str) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     page = 1
     total_pages = 1
+    completed_all_pages = True
 
     while page <= total_pages:
         url = f"https://api.vitrinebradesco.com.br/v1/auctions?type=realstate&ufs={uf_upper}&page={page}"
-        try:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                if resp.status != 200:
+        page_ok = False
+        for attempt in range(3):
+            try:
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    if resp.status != 200:
+                        raise RuntimeError(f"HTTP {resp.status}")
+                    payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
+                    total_pages = int(payload.get("total_pages") or 1)
+                    data = payload.get("data") or []
+                    for item in data:
+                        items.append(normalize_bradesco_item(item, uf_upper))
+                    page_ok = True
                     break
-                payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
-                total_pages = int(payload.get("total_pages") or 1)
-                data = payload.get("data") or []
-                for item in data:
-                    items.append(normalize_bradesco_item(item, uf_upper))
-        except Exception as exc:
-            print(f"[BRADESCO {uf_upper} pág {page}] aviso: {exc}")
+            except Exception as exc:
+                if attempt < 2:
+                    time.sleep(1.0)
+                else:
+                    print(f"[BRADESCO {uf_upper} pág {page}] aviso: {exc}")
+        if not page_ok:
+            completed_all_pages = False
             break
         page += 1
         if page <= total_pages:
             time.sleep(0.25)
 
-    return items
+    return items, completed_all_pages
 
 
 def normalize_bradesco_item(item: dict[str, Any], uf_fallback: str) -> dict[str, Any]:
     val1 = float(item.get("min_auction_value_1") or 0)
     val2 = float(item.get("min_auction_value_2") or 0)
     price_raw = float(item.get("price") or 0)
+    final_val = float(item.get("final_auction_value") or 0)
 
-    sale_val = val2 if val2 > 0 else (price_raw if price_raw > 0 else val1)
-    appraisal_val = val1 if val1 > 0 else float(item.get("final_auction_value") or sale_val)
+    sale_val = val2 if val2 > 0 else (price_raw if price_raw > 0 else (val1 if val1 > 0 else final_val))
+    appraisal_val = val1 if val1 > 0 else (final_val if final_val > 0 else sale_val)
 
     discount = 0.0
     if sale_val > 0 and appraisal_val > sale_val:
@@ -194,13 +245,23 @@ def normalize_bradesco_item(item: dict[str, Any], uf_fallback: str) -> dict[str,
 
     date1 = parse_iso_dt(item.get("date_auction_1"))
     date2 = parse_iso_dt(item.get("date_auction_2"))
-    main_date = parse_iso_dt(item.get("auction_date")) or date2 or date1
+    final_date = parse_iso_dt(item.get("final_date_auction"))
+    raw_auction_date = parse_iso_dt(item.get("auction_date"))
+    main_date = choose_active_auction_date(date1, date2, final_date, raw_auction_date)
 
     desc_text = item.get("description") or ""
+    images = item.get("images") or []
     brd_code = ""
     m_cod = re.search(r"c[oó]d(?:\.|igo)?(?:\s+do\s+im[oó]vel)?\s*:?\s*(\d{3,8})", desc_text, re.IGNORECASE)
     if m_cod:
         brd_code = m_cod.group(1)
+    if not brd_code and isinstance(images, list):
+        for img in images:
+            if isinstance(img, str):
+                m_img = re.search(r"/([a-z0-9_-]+)/(\d{4,8})/", img, re.IGNORECASE)
+                if m_img:
+                    brd_code = m_img.group(2)
+                    break
     if not brd_code and item.get("slug"):
         m_slug = re.search(r"-(\d{4,8})(?:_\d+)?$", str(item["slug"]))
         if m_slug:
@@ -227,7 +288,7 @@ def normalize_bradesco_item(item: dict[str, Any], uf_fallback: str) -> dict[str,
     financed = max(0.0, sale_val - min_down)
     min_inst_val = round((financed / max_inst) + (financed * 0.0088), 2) if (can_finance and financed > 0) else 0.0
 
-    images = item.get("images") or []
+    images = images or (item.get("images") or [])
     photo = images[0] if isinstance(images, list) and images else None
 
     auct = item.get("auctioneer")
@@ -503,24 +564,35 @@ def strip_html_tags(raw: str | None) -> str:
     return re.sub(r"\s+", " ", html_lib.unescape(cleaned)).strip()
 
 
-def fetch_mega_leiloes_uf(uf: str, max_pages: int = 8) -> list[dict[str, Any]]:
+def fetch_mega_leiloes_uf(uf: str, max_pages: int = 20) -> tuple[list[dict[str, Any]], bool]:
     uf_upper = uf.strip().upper()
     uf_lower = uf_upper.lower()
     items: list[dict[str, Any]] = []
     page = 1
     total_pages = 1
     today_iso = dt.date.today().isoformat()
+    completed_all_pages = True
 
     while page <= min(total_pages, max_pages):
         url = f"https://www.megaleiloes.com.br/imoveis/{uf_lower}?pagina={page}"
-        try:
-            req = urllib.request.Request(url, headers={**BROWSER_HEADERS, "Accept": "text/html,application/xhtml+xml"})
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                if resp.status != 200:
+        html_text = ""
+        page_ok = False
+        for attempt in range(3):
+            try:
+                req = urllib.request.Request(url, headers={**BROWSER_HEADERS, "Accept": "text/html,application/xhtml+xml"})
+                with urllib.request.urlopen(req, timeout=20) as resp:
+                    if resp.status != 200:
+                        raise RuntimeError(f"HTTP {resp.status}")
+                    html_text = resp.read().decode("utf-8", errors="ignore")
+                    page_ok = True
                     break
-                html_text = resp.read().decode("utf-8", errors="ignore")
-        except Exception as exc:
-            print(f"[MEGA {uf_upper} pág {page}] aviso: {exc}")
+            except Exception as exc:
+                if attempt < 2:
+                    time.sleep(1.0)
+                else:
+                    print(f"[MEGA {uf_upper} pág {page}] aviso: {exc}")
+        if not page_ok:
+            completed_all_pages = False
             break
 
         if page == 1:
@@ -624,7 +696,7 @@ def fetch_mega_leiloes_uf(uf: str, max_pages: int = 8) -> list[dict[str, Any]]:
                 "main_photo_url": photo_url,
                 "first_auction_date": d1_iso,
                 "second_auction_date": d2_iso,
-                "auction_date": d2_iso or d1_iso,
+                "auction_date": choose_active_auction_date(d1_iso, d2_iso),
                 "auctioneer": "Mega Leilões",
                 "payment_conditions": None,
                 "max_installments": None,
@@ -642,24 +714,12 @@ def fetch_mega_leiloes_uf(uf: str, max_pages: int = 8) -> list[dict[str, Any]]:
         if page <= min(total_pages, max_pages):
             time.sleep(0.25)
 
-    return items
+    if total_pages > max_pages:
+        completed_all_pages = False
+    return items, completed_all_pages
 
 
-def fetch_portal_zuk_uf(uf: str) -> list[dict[str, Any]]:
-    uf_upper = uf.strip().upper()
-    url = f"https://www.portalzuk.com.br/leilao-de-imoveis/u/todos-imoveis/{uf_upper.lower()}"
-    today_iso = dt.date.today().isoformat()
-
-    try:
-        req = urllib.request.Request(url, headers={**BROWSER_HEADERS, "Accept": "text/html,application/xhtml+xml"})
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            if resp.status != 200:
-                return []
-            html_text = resp.read().decode("utf-8", errors="ignore")
-    except Exception as exc:
-        print(f"[ZUK {uf_upper}] aviso: {exc}")
-        return []
-
+def _parse_zuk_cards(html_text: str, uf_upper: str, source_file_url: str, today_iso: str) -> list[dict[str, Any]]:
     blocks = html_text.split('class="card-property card_lotes_div"')
     items: list[dict[str, Any]] = []
 
@@ -712,7 +772,7 @@ def fetch_portal_zuk_uf(uf: str) -> list[dict[str, Any]]:
             if m_a_num:
                 area_val = parse_br_number(m_a_num.group(1))
 
-        # Preços, descontos e datas das praças
+        # Preços, descontos e datas das praças (HTML do Zuk frequentemente omite </span> no 2º leilão)
         price_matches = re.findall(
             r'<span class="card-property-price-value">R\$\s*([\d.,]+)(?:[\s\S]*?<span class="card-property-price-percent">[\s\S]*?(\d+)[\s\S]*?</span>)?',
             card,
@@ -731,7 +791,7 @@ def fetch_portal_zuk_uf(uf: str) -> list[dict[str, Any]]:
         if sale_val and appraisal_val and appraisal_val <= sale_val and disc_val and 0 < disc_val < 99:
             appraisal_val = round(sale_val / (1 - disc_val / 100.0), 2)
 
-        date_matches = re.findall(r'<span class="card-property-price-data">([^<]+)</span>', card)
+        date_matches = re.findall(r'<span class="card-property-price-data">([^<]+)', card)
         d1_iso = parse_br_datetime_to_iso(date_matches[0]) if len(date_matches) >= 1 else None
         d2_iso = parse_br_datetime_to_iso(date_matches[1]) if len(date_matches) >= 2 else None
 
@@ -773,7 +833,7 @@ def fetch_portal_zuk_uf(uf: str) -> list[dict[str, Any]]:
             "main_photo_url": photo_url,
             "first_auction_date": d1_iso,
             "second_auction_date": d2_iso,
-            "auction_date": d2_iso or d1_iso,
+            "auction_date": choose_active_auction_date(d1_iso, d2_iso),
             "auctioneer": "Portal Zuk",
             "payment_conditions": None,
             "max_installments": None,
@@ -781,13 +841,114 @@ def fetch_portal_zuk_uf(uf: str) -> list[dict[str, Any]]:
             "min_installment_value": None,
             "status": "ACTIVE",
             "source_generated_at": today_iso,
-            "source_file_url": url,
+            "source_file_url": source_file_url,
             "raw_list_data": {"auctioneer": "Portal Zuk", "title_attr": title_attr},
         }
         record["source_hash"] = compute_hash(record)
         items.append(record)
 
     return items
+
+
+def fetch_portal_zuk_uf(uf: str, max_items: int = 450) -> tuple[list[dict[str, Any]], bool]:
+    uf_upper = uf.strip().upper()
+    url = f"https://www.portalzuk.com.br/leilao-de-imoveis/u/todos-imoveis/{uf_upper.lower()}"
+    today_iso = dt.date.today().isoformat()
+
+    cj = http.cookiejar.CookieJar()
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+
+    try:
+        req = urllib.request.Request(url, headers={**BROWSER_HEADERS, "Accept": "text/html,application/xhtml+xml"})
+        with opener.open(req, timeout=20) as resp:
+            if resp.status != 200:
+                return [], False
+            html_text = resp.read().decode("utf-8", errors="ignore")
+    except Exception as exc:
+        print(f"[ZUK {uf_upper}] aviso: {exc}")
+        return [], False
+
+    items_by_id: dict[str, dict[str, Any]] = {}
+    first_page_items = _parse_zuk_cards(html_text, uf_upper, url, today_iso)
+    for it in first_page_items:
+        items_by_id[it["source_property_id"]] = it
+
+    m_clo = re.search(r'_clo\s*=\s*Number\(\s*["\'](\d+)["\']\s*\)', html_text)
+    if not m_clo:
+        m_clo = re.search(r'_clo\s*=\s*(\d+)', html_text)
+    total_clo = int(m_clo.group(1)) if m_clo else len(first_page_items)
+
+    m_zuk_cnt = re.search(r'count_lotes_zuk\s*=\s*["\']?(\d+)', html_text)
+    count_zuk = int(m_zuk_cnt.group(1)) if m_zuk_cnt else len(first_page_items)
+
+    m_tok = re.search(r'name="_token"\s+value="([^"]+)"', html_text)
+    if not m_tok:
+        m_tok = re.search(r'<meta[^>]+name="csrf-token"[^>]+content="([^"]+)"', html_text)
+    csrf_token = m_tok.group(1) if m_tok else ""
+
+    completed_all = True
+    target_limit = min(total_clo, max_items) if total_clo > 0 else len(first_page_items)
+
+    if csrf_token and len(items_by_id) < target_limit and len(first_page_items) > 0:
+        loaded_dom_count = len(first_page_items)
+        parceiro_div_count = html_text.count('id="list-items-parceiro-carregar-mais"')
+        for _ in range(20):
+            if len(items_by_id) >= target_limit:
+                break
+            form_data = urllib.parse.urlencode({
+                "limit": loaded_dom_count,
+                "count_imovel_zuk": count_zuk,
+                "path": url,
+                "order": "relevancia",
+                "div_parceiro_count": parceiro_div_count,
+                "_token": csrf_token,
+            }).encode("utf-8")
+
+            post_headers = {
+                **BROWSER_HEADERS,
+                "Accept": "*/*",
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "Origin": "https://www.portalzuk.com.br",
+                "Referer": url,
+                "X-Requested-With": "XMLHttpRequest",
+            }
+            try:
+                post_req = urllib.request.Request(
+                    "https://www.portalzuk.com.br/leilao-de-imoveis/mais",
+                    data=form_data,
+                    headers=post_headers,
+                    method="POST",
+                )
+                with opener.open(post_req, timeout=20) as p_resp:
+                    if p_resp.status != 200:
+                        completed_all = False
+                        break
+                    chunk_html = p_resp.read().decode("utf-8", errors="ignore")
+            except Exception as exc:
+                print(f"[ZUK {uf_upper} mais limit={loaded_dom_count}] aviso: {exc}")
+                completed_all = False
+                break
+
+            new_cards = _parse_zuk_cards(chunk_html, uf_upper, url, today_iso)
+            if not new_cards:
+                break
+
+            added_new = 0
+            for it in new_cards:
+                if it["source_property_id"] not in items_by_id:
+                    items_by_id[it["source_property_id"]] = it
+                    added_new += 1
+
+            loaded_dom_count += len(new_cards)
+            parceiro_div_count += chunk_html.count('id="list-items-parceiro-carregar-mais"')
+            if added_new == 0:
+                break
+            time.sleep(0.25)
+
+    if total_clo > max_items and len(items_by_id) < total_clo:
+        completed_all = False
+
+    return list(items_by_id.values()), completed_all
 
 
 def reconcile_auctioneer_uf(conn, id_prefix: str, uf: str, active_ids: set[str]) -> int:
@@ -1001,6 +1162,29 @@ def reconcile_source_uf(conn, source: str, uf: str, active_ids: set[str]) -> int
     return removed
 
 
+def expire_past_auctions(conn, grace_days: int = 2) -> int:
+    """Marca como POSSIBLY_REMOVED leilões não-CAIXA cuja última data de praça expirou além do prazo de tolerância."""
+    cur = conn.cursor()
+    cur.execute(
+        """
+        UPDATE public.properties
+        SET status = 'POSSIBLY_REMOVED', updated_at = NOW()
+        WHERE status = 'ACTIVE'
+          AND source <> 'CAIXA'
+          AND COALESCE(second_auction_date, auction_date, first_auction_date) IS NOT NULL
+          AND GREATEST(
+                COALESCE(first_auction_date, '-infinity'::timestamptz),
+                COALESCE(second_auction_date, '-infinity'::timestamptz),
+                COALESCE(auction_date, '-infinity'::timestamptz)
+              ) < NOW() - (%s || ' days')::interval;
+        """,
+        (str(grace_days),),
+    )
+    expired = cur.rowcount
+    conn.commit()
+    return expired
+
+
 def log_import_run(conn, uf: str, status: str, meta: dict[str, Any], written: int, removed: int, elapsed: float, filename: str):
     cur = conn.cursor()
     cur.execute(
@@ -1048,17 +1232,17 @@ def main() -> int:
         if "bradesco" in banks:
             for uf in ufs:
                 t0 = time.time()
-                rows = fetch_bradesco_uf(uf)
+                rows, completed = fetch_bradesco_uf(uf)
                 if rows:
                     written = upsert_properties_batch(conn, rows)
-                    removed = reconcile_auctioneer_uf(conn, "BRD-", uf, {r["source_property_id"] for r in rows})
+                    removed = reconcile_auctioneer_uf(conn, "BRD-", uf, {r["source_property_id"] for r in rows}) if completed else 0
                     grand_total += written
-                    print(f"[BRADESCO {uf}] {written} imóveis sincronizados (removidos: {removed}) em {time.time() - t0:.1f}s")
+                    print(f"[BRADESCO {uf}] {written} imóveis sincronizados (removidos: {removed}{'' if completed else ', parcial'}) em {time.time() - t0:.1f}s")
                 else:
                     print(f"[BRADESCO {uf}] 0 leilões ativos no momento.")
 
         if "caixa" in banks:
-            for uf in ufs:
+            for idx_uf, uf in enumerate(ufs):
                 t0 = time.time()
                 use_csv = caixa_csv_path if (caixa_csv_path and uf == "SP") else None
                 status, rows, meta = fetch_caixa_uf(uf, use_csv)
@@ -1071,31 +1255,35 @@ def main() -> int:
                 else:
                     log_import_run(conn, uf, status, meta, 0, 0, time.time() - t0, f"Lista_imoveis_{uf}.csv")
                     print(f"[CAIXA {uf}] {status}: {meta.get('error', 'sem registros')}")
+                if idx_uf < len(ufs) - 1:
+                    time.sleep(1.5)
 
         if "mega" in banks:
             for uf in ufs:
                 t0 = time.time()
-                rows = fetch_mega_leiloes_uf(uf)
+                rows, completed = fetch_mega_leiloes_uf(uf)
                 if rows:
                     written = upsert_properties_batch(conn, rows)
-                    removed = reconcile_auctioneer_uf(conn, "MEGA-", uf, {r["source_property_id"] for r in rows})
+                    removed = reconcile_auctioneer_uf(conn, "MEGA-", uf, {r["source_property_id"] for r in rows}) if completed else 0
                     grand_total += written
-                    print(f"[MEGA LEILÕES {uf}] {written} imóveis sincronizados (removidos: {removed}) em {time.time() - t0:.1f}s")
+                    print(f"[MEGA LEILÕES {uf}] {written} imóveis sincronizados (removidos: {removed}{'' if completed else ', parcial'}) em {time.time() - t0:.1f}s")
                 else:
                     print(f"[MEGA LEILÕES {uf}] 0 lotes encontrados.")
 
         if "zuk" in banks:
             for uf in ufs:
                 t0 = time.time()
-                rows = fetch_portal_zuk_uf(uf)
+                rows, completed = fetch_portal_zuk_uf(uf)
                 if rows:
                     written = upsert_properties_batch(conn, rows)
-                    removed = reconcile_auctioneer_uf(conn, "ZUK-", uf, {r["source_property_id"] for r in rows})
+                    removed = reconcile_auctioneer_uf(conn, "ZUK-", uf, {r["source_property_id"] for r in rows}) if completed else 0
                     grand_total += written
-                    print(f"[PORTAL ZUK {uf}] {written} imóveis sincronizados (removidos: {removed}) em {time.time() - t0:.1f}s")
+                    print(f"[PORTAL ZUK {uf}] {written} imóveis sincronizados (removidos: {removed}{'' if completed else ', parcial'}) em {time.time() - t0:.1f}s")
                 else:
                     print(f"[PORTAL ZUK {uf}] 0 lotes encontrados.")
 
+        expired_removed = expire_past_auctions(conn, grace_days=2)
+        print(f"[EXPIRAÇÃO] {expired_removed} leilão(ões) vencido(s) (>2 dias) marcado(s) como POSSIBLY_REMOVED.")
         dedup_removed = deduplicate_cross_aggregator_active(conn)
         print(f"[DEDUP CRUZADA] {dedup_removed} registro(s) duplicado(s) entre Vitrine/Leiloeiros marcados como DUPLICATE.")
         print(f"[SYNC FINALIZADO] Total sincronizado nesta execução: {grand_total} imóveis reais.")

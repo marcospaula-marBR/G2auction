@@ -1,12 +1,85 @@
-import { defineConfig } from 'vite';
+import fs from 'node:fs';
+import path from 'node:path';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
-export default defineConfig({
+function readPackageVersion(): string {
+  try {
+    const pkgPath = path.resolve(process.cwd(), 'package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+    return `v${pkg.version || '0.0.0'}`;
+  } catch {
+    return 'v0.0.0';
+  }
+}
+
+function attachExpressLikeHelpers(res: any) {
+  res.status = (code: number) => {
+    res.statusCode = code;
+    return res;
+  };
+  res.json = (payload: any) => {
+    if (!res.getHeader('Content-Type')) {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+    res.end(JSON.stringify(payload));
+    return res;
+  };
+  return res;
+}
+
+async function loadApiHandler(modulePath: string) {
+  const mod = await import(/* @vite-ignore */ modulePath);
+  return mod.default as (req: any, res: any) => Promise<any>;
+}
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  Object.assign(process.env, env);
+
+  return {
   plugins: [
     react(),
     {
+      name: 'version-manifest-plugin',
+      configureServer(server) {
+        server.middlewares.use('/version.json', (_req, res) => {
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          res.end(JSON.stringify({ version: readPackageVersion() }));
+        });
+      },
+      generateBundle() {
+        this.emitFile({
+          type: 'asset',
+          fileName: 'version.json',
+          source: JSON.stringify(
+            { version: readPackageVersion(), builtAt: new Date().toISOString() },
+            null,
+            2
+          ),
+        });
+      },
+    },
+    {
       name: 'caixa-proxy-dev-middleware',
       configureServer(server) {
+        server.middlewares.use('/api/sync-banks', async (req, res) => {
+          const handler = await loadApiHandler('./api/sync-banks.js');
+          return handler(req, attachExpressLikeHelpers(res));
+        });
+        server.middlewares.use('/api/bradesco-proxy', async (req, res) => {
+          const handler = await loadApiHandler('./api/bradesco-proxy.js');
+          return handler(req, attachExpressLikeHelpers(res));
+        });
+        server.middlewares.use('/api/santander-proxy', async (req, res) => {
+          const handler = await loadApiHandler('./api/santander-proxy.js');
+          return handler(req, attachExpressLikeHelpers(res));
+        });
+        server.middlewares.use('/api/bb-proxy', async (req, res) => {
+          const handler = await loadApiHandler('./api/bb-proxy.js');
+          return handler(req, attachExpressLikeHelpers(res));
+        });
         server.middlewares.use('/api/caixa-proxy', async (req, res) => {
           const urlObj = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
           const action = urlObj.searchParams.get('action') || 'fetch_detail';
@@ -307,4 +380,5 @@ export default defineConfig({
       },
     },
   ],
+  };
 });
